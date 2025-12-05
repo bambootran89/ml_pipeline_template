@@ -1,0 +1,10 @@
+defaults:
+  - ../base/data.yaml
+  - ../base/preprocessing.yaml
+  - ../base/model.yaml
+  - ../base/training.yaml
+  - ../base/evaluation.yaml
+
+experiment:
+  name: "exp2_demo"
+  approaches: []

@@ -1,1 +1,11 @@
 pandas==2.2.3
+numpy
+scikit-learn
+torch
+torchvision
+pydantic
+fastapi
+uvicorn
+omegaconf
+pytest
+pyarrow

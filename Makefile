@@ -15,8 +15,10 @@ venv:
 # Style
 style:
 	black ./${MAIN_FOLDER}/
-	flake8 ./${MAIN_FOLDER}/
 	${PYTHON} -m isort -rc ./${MAIN_FOLDER}/
+	autoflake --in-place --remove-unused-variables --remove-all-unused-imports -r mlproject/
+	autopep8 -i -a -a -r mlproject/
+	flake8 ./${MAIN_FOLDER}/
 
 test:
 	${PYTHON} -m flake8 ./${MAIN_FOLDER}/

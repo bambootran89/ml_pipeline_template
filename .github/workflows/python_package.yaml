@@ -1,5 +1,4 @@
-name: IC template
-
+name: ml template
 
 on:
   push:
@@ -18,12 +17,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Check line count
-        run: |     
+        run: |
           echo "Checking lines of code in each file"
           MAX_LINES=500
           for file in $(git ls-files | grep -v '^tests/'); do
@@ -31,42 +32,30 @@ jobs:
               line_count=$(wc -l < "$file")
               if [ "$line_count" -gt "$MAX_LINES" ]; then
                 echo "::error file=$file::File $file has $line_count lines, which exceeds the threshold of $MAX_LINES lines."
-                exit 1  # Exit if any file exceeds the line limit
+                exit 1
               fi
             fi
           done
+
       - name: Check lines of code changes
         run: |
-            MAX_CHANGE_LINES=200
-            # Ensure full clone is fetched
-            git fetch origin main
+          MAX_CHANGE_LINES=200
+          git fetch origin main
+          LAST_MAIN_COMMIT=$(git rev-parse origin/main)
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          if [ "$LAST_MAIN_COMMIT" = "$CURRENT_COMMIT" ]; then
+            DIFF_RANGE="HEAD^1..HEAD"
+          else
+            DIFF_RANGE="origin/main..HEAD"
+          fi
+          CHANGES=$(git diff --numstat "$DIFF_RANGE" | awk '{added+=$1; deleted+=$2} END {print added+deleted}')
+          if [ -n "$CHANGES" ] && [ "$CHANGES" -gt "$MAX_CHANGE_LINES" ]; then
+            echo "::error::Too many changes: $CHANGES lines. Maximum allowed: $MAX_CHANGE_LINES lines."
+            exit 1
+          else
+            echo "Number of changed lines: $CHANGES"
+          fi
 
-            # Get the latest commit on origin/main before the push
-            LAST_MAIN_COMMIT=$(git rev-parse origin/main)
-
-            # Get the latest commit on the current branch (might be main or a feature branch)
-            CURRENT_COMMIT=$(git rev-parse HEAD)
-
-            # If the commits are the same, this means we're pushing directly to main
-            if [ "$LAST_MAIN_COMMIT" = "$CURRENT_COMMIT" ]; then
-              echo "Direct push to main detected. Comparing the last commit on main with the previous commit."
-              DIFF_RANGE="HEAD^1..HEAD"
-            else
-              # Comparing changes between the feature branch and main
-              echo "Feature branch push detected. Comparing origin/main with current branch."
-              DIFF_RANGE="origin/main..HEAD"
-            fi
-
-            # Calculate changes (added + deleted lines)
-            CHANGES=$(git diff --numstat "$DIFF_RANGE" | awk '{added+=$1; deleted+=$2} END {print added+deleted}')
-              
-            # Check for change limit
-            if [ -n "$CHANGES" ] && [ "$CHANGES" -gt "$MAX_CHANGE_LINES" ]; then
-              echo "::error::Too many changes: $CHANGES lines. Maximum allowed: $MAX_CHANGE_LINES lines."
-              exit 1
-            else
-              echo "Number of changed lines: $CHANGES"
-            fi
       - name: Cache python installation
         id: cache-python
         uses: actions/cache@v3
@@ -74,15 +63,25 @@ jobs:
           path: ${{ env.pythonLocation }}
           key: ${{ env.pythonLocation }}-${{ hashFiles('setup.py') }}-${{ hashFiles('requirements.txt') }}
           restore-keys: ${{ env.pythonLocation }}-${{ hashFiles('setup.py') }}
+      - name: Free up space
+        run: |
+          sudo rm -rf /usr/local/lib/python3.11/site-packages/__pycache__/*
+          sudo rm -rf ~/.cache/pip
+          df -h
       - name: Install dependencies
         if: steps.cache-python.outputs.cache-hit != 'true'
         run: |
-          python3 -m pip install --upgrade pip==23.0.1 setuptools wheel
-          python3 -m pip install -e ".[dev]"
+          # Upgrade pip, setuptools, wheel to latest versions
+          curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+          python3 get-pip.py --force-reinstall
+          python3 -m pip install --upgrade pip setuptools wheel --no-cache-dir
+          python3 -m pip install -r requirements.txt
+          python3 -m pip install -e .
+
       - name: Make test
         run: |
-          python3 -m flake8 ./packagename/
-          python3 -m mypy ./packagename/
+          export PYTHONPATH=$(pwd)
+          python3 -m flake8 ./mlproject/
+          python3 -m mypy ./mlproject/
           python3 -m pytest -s --durations=0 tests/
-          python3 -m pylint ./packagename/
-          
+          python3 -m pylint ./mlproject/

@@ -1,0 +1,6 @@
+data:
+  path: "mlproject/data/ETTh1.csv"   # optional demo
+  index_col: "date"
+  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  return_type: pandas
+

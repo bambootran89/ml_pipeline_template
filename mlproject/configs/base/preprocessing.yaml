@@ -1,1 +1,18 @@
-
+preprocessing:
+  steps:
+    - name: fill_missing
+      method: ffill
+    - name: gen_covariates
+      covariates:
+        past: ["mobility_inflow"]
+        future: ["day_of_week","is_holiday","influenza_visits"]
+        static: ["commune"]
+    - name: normalize
+      method: zscore
+      columns: null
+      save_artifact: true
+  split:
+    train: 0.6
+    val: 0.2
+    test: 0.2
+  artifacts_dir: "mlproject/artifacts/preprocessing"

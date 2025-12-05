@@ -9,7 +9,7 @@ __pycache__/
 
 # C extensions
 *.so
-
+*/artifacts/*
 # csv file
 airflow/dags/*.csv
 
@@ -83,7 +83,7 @@ celerybeat-schedule
 .env
 
 # virtualenv
-.venv/
+*_env/
 venv/
 ENV/
 packagename_env/
@@ -113,7 +113,6 @@ packagename_env/
 *.html
 
 # data
-data
 !tests/data/
 tests/data/features
 
@@ -121,7 +120,6 @@ tests/data/features
 .pytest_cache
 
 # experiments
-**/experiments
 **/test_experiments
 
 # pytorch lightning

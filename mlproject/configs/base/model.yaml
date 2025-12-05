@@ -1,0 +1,7 @@
+model_registry:
+  nlinear:
+    module: "mlproject.src.models.nlinear_wrapper"
+    class: "NLinearWrapper"
+  tft:
+    module: "mlproject.src.models.tft_wrapper"
+    class: "TFTWrapper"

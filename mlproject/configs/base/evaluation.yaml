@@ -1,0 +1,5 @@
+evaluation:
+  horizon: 24
+  metrics: ["mae","mse","smape"]
+  save_predictions: false
+  output_dir: "mlproject/results"
