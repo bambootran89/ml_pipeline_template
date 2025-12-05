@@ -27,9 +27,9 @@ with open("LICENSE") as f:
     license = f.read()
 
 setup(
-    name="dvcforecating",
+    name="mlproject",
     version="0.1",
-    description="dvcforecating does something",
+    description="mlproject does something",
     long_description=readme,
     author="VNPT@IC",
     author_email="",

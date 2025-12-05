@@ -1,4 +1,4 @@
-# packagename
+# mlproject
 
 ## Setup
 ### Requirements
@@ -8,7 +8,7 @@
 make venv PYTHON=python3.11
 ```
 ### Data
-Get data from telegram channel: `[DEV/DS/IC] packagename`.
+Get data from telegram channel: `[DEV/DS/IC] mlproject`.
 
 ## Project Commands
 ### Quick start

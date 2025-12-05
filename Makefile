@@ -1,7 +1,7 @@
 SHELL = /bin/bash
 PYTHON := python
-VENV_NAME = dvcforecating_env
-MAIN_FOLDER = dvcforecating
+VENV_NAME = mlproject_env
+MAIN_FOLDER = mlproject
 TEST_FOLDER = tests
 
 # Environment
