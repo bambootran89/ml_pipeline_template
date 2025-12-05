@@ -1,7 +1,7 @@
 SHELL = /bin/bash
-PYTHON := python3
-VENV_NAME = packagename_env
-MAIN_FOLDER = packagename
+PYTHON := python
+VENV_NAME = dvcforecating_env
+MAIN_FOLDER = dvcforecating
 TEST_FOLDER = tests
 
 # Environment

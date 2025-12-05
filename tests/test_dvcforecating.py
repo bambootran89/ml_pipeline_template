@@ -7,10 +7,10 @@ import pytest
 class TestPipeline:
     @pytest.fixture(autouse=True)
     def copy_config_folder(self):
-        config_folder = Path("packagename_configs")
+        config_folder = Path("dvcforecating_configs")
         if not config_folder.exists():
             shutil.copytree(
-                "../packagename_configs",
+                "../dvcforecating_configs",
                 config_folder,
             )
 
@@ -43,7 +43,7 @@ def cleanup(request):
     def remove_test_dir():
         paths = [
             "experiments/",
-            "packagename_configs/",
+            "dvcforecating_configs/",
         ]
         import os
 
