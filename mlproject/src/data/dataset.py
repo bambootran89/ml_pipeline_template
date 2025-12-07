@@ -1,5 +1,3 @@
-
-
 class TSDataset:
     """
     Lightweight container for preprocessed time series data.
@@ -16,10 +14,9 @@ class TSDataset:
     def __init__(self, df, cfg):
         self.df = df.copy()
         # read split config
-        sp = cfg.get(
-            "preprocessing", {}).get(
-            "split", {
-                "train": 0.6, "val": 0.2, "test": 0.2})
+        sp = cfg.get("preprocessing", {}).get(
+            "split", {"train": 0.6, "val": 0.2, "test": 0.2}
+        )
         n = len(self.df)
         i_train = int(n * sp["train"])
         i_val = i_train + int(n * sp["val"])

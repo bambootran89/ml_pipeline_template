@@ -14,7 +14,7 @@ style_packages = [
     "isort==5.12.0",
     "types-PyYAML==6.0.12.10",
     "pre-commit==3.3.2",
-    "pylint==3.2.7"
+    "pylint==3.2.7",
 ]
 
 test_packages = ["pytest==7.3.2"]
@@ -28,11 +28,11 @@ with open("LICENSE") as f:
 
 setup(
     name="mlproject",
-    version="0.1",
+    version="1.0",
     description="mlproject does something",
     long_description=readme,
-    author="VNPT@IC",
-    author_email="",
+    author="Tran Huu Cuong",
+    author_email="bambootran89@gmail.com",
     license=license,
     packages=find_packages(exclude=("tests", "docs")),
     python_requires=">=3.11",

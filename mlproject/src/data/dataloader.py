@@ -47,8 +47,9 @@ def create_windows(df, target_col, input_chunk, output_chunk, stride=1):
     for end_idx in range(input_chunk, n - output_chunk + 1, stride):
         start_idx = end_idx - input_chunk
         x_window = df.iloc[start_idx:end_idx].values  # (seq_len, feat)
-        y_window = df.iloc[end_idx:end_idx
-                           + output_chunk][target_col].values  # (output_chunk,)
+        y_window = df.iloc[end_idx : end_idx + output_chunk][
+            target_col
+        ].values  # (output_chunk,)
         x_windows.append(x_window)
         y_windows.append(y_window)
 
