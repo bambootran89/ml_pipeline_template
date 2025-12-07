@@ -35,53 +35,66 @@ This structure keeps the code simple while staying aligned with how real systems
 mlproject/
 ├── run.py                # Entry for training
 ├── serve/
-│ └── api.py              # Inference/serving API
+│   └── api.py            # Inference/serving API
 ├── configs/
-│ ├── base/.yaml          # Modular config blocks
-│ └── experiments/.yaml   # Experiment-level configs
+│   ├── base/.yaml        # Modular config blocks
+│   └── experiments/.yaml # Experiment-level configs
 └── src/
-  ├── data/               # Dataset + Dataloader (training only)
-  ├── preprocess/         # Offline = heavy, Online = serving-safe
+  ├── data/               # Dataset + DataModule (ML & DL)
+  │   ├── ml_datamodule.py # MLDataModule: XGBoost/sklearn/other ML
+  │   ├── dl_datamodule.py # DLDataModule: PyTorch windowed datasets
+  │   ├── dataloader.py    # Utilities: windowing, NumpyWindowDataset
+  │   └── base_datamodule.py # BaseDataModule class
+  ├── preprocess/         # Offline/online preprocessing
   ├── models/             # Model registry + wrappers
   ├── trainer/            # Training loop
   ├── eval/               # Evaluation logic
   ├── config_loader.py    # Unified config loader
   └── run_pipeline.py     # Orchestrates training pipeline
+
 ```
 
 ---
 
-## 3. Key Design Principles
+## DataModule Abstraction
 
-### **Clear Separation of Concerns**
-- `src/data/` is dedicated **exclusively to training**, handling datasets and dataloaders.
-- `src/preprocess/offline.py` performs the full offline preprocessing pipeline, including:
-  + heavy feature engineering
-  + fitting scalers/statistics
-  + generating covariates
-  + saving preprocessing artifacts
-  + executing all steps based on versioned configurations
+Introduces a clean separation between ML and DL data handling.
 
-This is the heavyweight, reproducible pipeline used for model training and evaluation.
+### MLDataModule
+- Returns numpy arrays for traditional ML models (XGBoost, sklearn).
+- Handles train/val/test splits and optional feature selection.
 
-- `src/preprocess/online.py` is restricted to serving-time, transform-only preprocessing, containing only lightweight and deterministic steps.
-- `src/preprocess/engine.py` acts as the runtime orchestrator:
+### DLDataModule
+- Returns PyTorch DataLoaders with windowed datasets for sequential DL models.
+- Encapsulates batch/window creation and ensures temporal splits are correct.
 
-  + a singleton that loads artifacts exactly once
-  + enforces schema consistency
-  + guarantees low-latency preprocessing for inference
+> All DataModule logic lives in `src/data/` and replaces old ad-hoc DataLoader usage.
 
-This strict separation ensures production safety and prevents accidental coupling with training logic.
+---
 
-### **Config-Driven Architecture**
+## Clear Separation of Concerns
+- `src/data/` is dedicated exclusively to training, now via DataModules.
+- `src/preprocess/offline.py` performs heavy, offline feature engineering and artifact saving.
+- `src/preprocess/online.py` performs serving-safe, deterministic preprocessing only.
+- `src/preprocess/engine.py` orchestrates runtime preprocessing with low-latency guarantees.
+
+> This strict separation ensures production safety and prevents accidental coupling with training logic.
+
+---
+
+## Config-Driven Architecture
 - All components—data, preprocessing, models, evaluation—are fully modular and configured through versioned YAML files.
-- This enables reproducible experiments, controlled variations, and seamless component swapping without code changes.
+- Enables reproducible experiments, controlled variations, and seamless component swapping without code changes.
 
-### **Feature-Store-Ready Design**
+---
+
+## Feature-Store-Ready Design
 Even in the absence of a formal feature store, the project mirrors its conceptual structure:
+
 - Offline preprocessing aligns with what an **offline feature store** would compute (batch, historical, heavy transforms).
 - Online preprocessing reflects what an **online feature store** would provide (real-time, latency-safe features).
-- This makes future integration with Feast, Feathr, Tecton, or similar systems effectively plug-and-play.
+
+> This makes future integration with Feast, Feathr, Tecton, or similar systems effectively plug-and-play.
 
 
 ---

@@ -1,6 +1,9 @@
+import pandas as pd
+
 from mlproject.src.config_loader import load_config
-from mlproject.src.data.dataloader import create_windows, get_dataloaders
+from mlproject.src.data.dataloader import create_windows
 from mlproject.src.data.dataset import TSDataset
+from mlproject.src.data.dl_datamodule import DLDataModule
 from mlproject.src.eval.evaluator import mae, mse, smape
 from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
@@ -17,20 +20,45 @@ def preprocess_data(cfg):
 
 
 def create_loaders(train_df, val_df, target_column, hyperparams, cfg):
-    """Create windowed datasets and PyTorch dataloaders."""
+    """
+    Create windowed datasets and PyTorch DataLoaders using DLDataModule.
+
+    Args:
+        train_df (pd.DataFrame): Training data
+        val_df (pd.DataFrame): Validation data
+        target_column (str): Target column name
+        hyperparams (dict):
+        Model hyperparameters containing input/output chunk lengths and batch size
+        cfg (dict): Config dict for training options
+
+    Returns:
+        Tuple[DataLoader, DataLoader, int, int]:
+        train_loader, val_loader, input_chunk, output_chunk
+    """
     input_chunk = int(hyperparams.get("input_chunk_length", 24))
     output_chunk = int(hyperparams.get("output_chunk_length", 6))
     batch_size = int(hyperparams.get("batch_size", 16))
     num_workers = int(cfg.get("training", {}).get("num_workers", 0))
 
-    x_train, y_train = create_windows(
-        train_df, target_column, input_chunk, output_chunk
+    # Initialize DLDataModule with train+val+test concatenated (DLDataModule
+    # tự chia split)
+    dl_module = DLDataModule(
+        df=pd.concat([train_df, val_df]),  # DLDataModule sẽ xử lý train/val/test
+        cfg=cfg,
+        target_column=target_column,
     )
-    x_val, y_val = create_windows(val_df, target_column, input_chunk, output_chunk)
 
-    train_loader, val_loader = get_dataloaders(
-        x_train, y_train, x_val, y_val, batch_size=batch_size, num_workers=num_workers
+    # Setup DataModule (windowing + DataLoader)
+    dl_module.setup(
+        input_chunk=input_chunk,
+        output_chunk=output_chunk,
+        batch_size=batch_size,
+        num_workers=num_workers,
     )
+
+    # Get DataLoaders
+    train_loader, val_loader, input_chunk, output_chunk = dl_module.get_loaders()
+
     return train_loader, val_loader, input_chunk, output_chunk
 
 
