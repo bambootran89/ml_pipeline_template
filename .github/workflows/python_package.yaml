@@ -67,6 +67,9 @@ jobs:
         run: |
           sudo rm -rf /usr/local/lib/python3.11/site-packages/__pycache__/*
           sudo rm -rf ~/.cache/pip
+          sudo rm -rf /opt/hostedtoolcache
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
           df -h
       - name: Install dependencies
         if: steps.cache-python.outputs.cache-hit != 'true'
@@ -75,7 +78,7 @@ jobs:
           curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py
           python3 get-pip.py --force-reinstall
           python3 -m pip install --upgrade pip setuptools wheel --no-cache-dir
-          python3 -m pip install -r requirements.txt
+          python3 -m pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
           python3 -m pip install -e .
 
       - name: Make test
