@@ -55,8 +55,23 @@ mlproject/
 
 ### **Clear Separation of Concerns**
 - `src/data/` is dedicated **exclusively to training**, handling datasets and dataloaders.
-- `src/preprocess/online.py` is restricted to **serving-time preprocessing**, ensuring deterministic, lightweight transformations.
-- This boundary eliminates training–serving drift and enforces clean operational discipline.
+- `src/preprocess/offline.py` performs the full offline preprocessing pipeline, including:
+  + heavy feature engineering
+  + fitting scalers/statistics
+  + generating covariates
+  + saving preprocessing artifacts
+  + executing all steps based on versioned configurations
+
+This is the heavyweight, reproducible pipeline used for model training and evaluation.
+
+- `src/preprocess/online.py` is restricted to serving-time, transform-only preprocessing, containing only lightweight and deterministic steps.
+- `src/preprocess/engine.py` acts as the runtime orchestrator:
+
+  + a singleton that loads artifacts exactly once
+  + enforces schema consistency
+  + guarantees low-latency preprocessing for inference
+
+This strict separation ensures production safety and prevents accidental coupling with training logic.
 
 ### **Config-Driven Architecture**
 - All components—data, preprocessing, models, evaluation—are fully modular and configured through versioned YAML files.

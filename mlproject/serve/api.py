@@ -1,5 +1,4 @@
 import os
-import pickle
 
 import numpy as np
 import torch
@@ -32,8 +31,6 @@ class ModelService:
 
     def __init__(self):
         self.model = None
-        self.scaler = None
-        self.scaler_cols = None
 
 
 model_service = ModelService()
@@ -44,11 +41,6 @@ def startup_event():
     """
     Load the scaler and PyTorch fallback model at application startup.
     """
-    if os.path.exists(SCALER_PATH):
-        with open(SCALER_PATH, "rb") as f:
-            obj = pickle.load(f)
-            model_service.scaler = obj.get("scaler")
-            model_service.scaler_cols = obj.get("columns")
 
     # Load model
     if os.path.exists(MODEL_PATH):
@@ -75,7 +67,7 @@ def predict(req: PredictRequest):
     data = req.features
     # online preprocess (fill, scale)
     processed = online_preprocess_request(
-        data, scaler=SCALER, scaler_columns=SCALER_COLS
+        data,
     )
     x = np.array([list(processed[c] for c in sorted(processed.keys()))], dtype=float)
     if model_service.model is None:
