@@ -76,7 +76,7 @@ jobs:
           python3 get-pip.py --force-reinstall
           python3 -m pip install --upgrade pip setuptools wheel
           python3 -m pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
-          python3 -m pip install -e .
+          python3 -m pip install -e .[dev]
 
       - name: Make test
         run: |
