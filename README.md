@@ -33,20 +33,20 @@ This structure keeps the code simple while staying aligned with how real systems
 ## 2. Directory Reference
 ```text
 mlproject/
-├── run.py              # Entry for training
+├── run.py                # Entry for training
 ├── serve/
-│ └── api.py            # Inference/serving API
+│ └── api.py              # Inference/serving API
 ├── configs/
-│ ├── base/.yaml        # Modular config blocks
-│ └── experiments/.yaml # Experiment-level configs
+│ ├── base/.yaml          # Modular config blocks
+│ └── experiments/.yaml   # Experiment-level configs
 └── src/
-├── data/               # Dataset + Dataloader (training only)
-├── preprocess/         # Offline = heavy, Online = serving-safe
-├── models/             # Model registry + wrappers
-├── trainer/            # Training loop
-├── eval/               # Evaluation logic
-├── config_loader.py    # Unified config loader
-└── run_pipeline.py     # Orchestrates training pipeline
+  ├── data/               # Dataset + Dataloader (training only)
+  ├── preprocess/         # Offline = heavy, Online = serving-safe
+  ├── models/             # Model registry + wrappers
+  ├── trainer/            # Training loop
+  ├── eval/               # Evaluation logic
+  ├── config_loader.py    # Unified config loader
+  └── run_pipeline.py     # Orchestrates training pipeline
 ```
 
 ---
