@@ -32,7 +32,9 @@ class PreprocessBase:
                 preprocessing steps and artifact path.
         """
         self.cfg = cfg or {}
+
         self.steps = self.cfg.get("preprocessing", {}).get("steps", [])
+
         self.artifacts_dir = self.cfg.get("preprocessing", {}).get(
             "artifacts_dir", ARTIFACT_DIR
         )
@@ -132,7 +134,6 @@ class PreprocessBase:
         if "future" in cov and "day_of_week" in cov["future"]:
             if isinstance(df.index, pd.DatetimeIndex):
                 df["day_of_week"] = df.index.dayofweek
-
         return df
 
     def _apply_fit_scaler(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -180,7 +181,6 @@ class PreprocessBase:
         """
         if self.scaler is None:
             return df
-
         # Ensure all columns exist
         for c in self.scaler_columns:
             if c not in df.columns:

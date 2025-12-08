@@ -36,8 +36,8 @@ class ModelWrapperBase(ABC):
             raise TypeError("cfg must be dict or DictConfig")
 
         self.model: Optional[nn.Module] = None
-        self.input_dim = -1
-        self.output_dim = -1
+        self.input_dim: Optional[int] = None
+        self.output_dim: Optional[int] = None
 
     @abstractmethod
     def build(self, input_dim: int, output_dim: int):

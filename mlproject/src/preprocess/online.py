@@ -1,8 +1,9 @@
 import os
 import pickle
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
+from omegaconf import DictConfig
 
 from .base import ARTIFACT_DIR
 from .engine import PreprocessEngine
@@ -49,7 +50,7 @@ def online_preprocess_request(
 
 
 def test_preprocess_request(
-    df: pd.DataFrame,
+    df: pd.DataFrame, cfg: Optional[DictConfig] = None
 ) -> pd.DataFrame:
     """
     Preprocess test df (fill missing and scale).
@@ -61,6 +62,5 @@ def test_preprocess_request(
         dict: Processed numeric features ready for model inference.
     """
 
-    engine = PreprocessEngine.instance()
-
+    engine = PreprocessEngine.instance(cfg)
     return engine.online_transform(df)

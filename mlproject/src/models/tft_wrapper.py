@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, cast
+from typing import Any, Tuple, cast
 
 import torch
 from torch import nn
@@ -58,15 +58,6 @@ class TFTWrapper(ModelWrapperBase):
         cfg (Optional[Dict[str, Any]]): Optional configuration dict
         (keys: 'hidden_size', 'num_layers').
     """
-
-    def __init__(self, cfg: Optional[Dict[str, Any]] = None):
-        # Call base class constructor to ensure proper cfg handling
-        super().__init__(cfg)
-
-        # Initialize model and dims
-        self.model: Optional[nn.Module] = None
-        self.input_dim: int = -1
-        self.output_dim: int = -1
 
     def build(self, input_dim: int, output_dim: int) -> None:
         """

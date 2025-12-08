@@ -22,7 +22,7 @@ class TestPipeline(BasePipeline):
         """
         if data is None:
             raise ValueError("Preprocess requires input data for inference")
-        return test_preprocess_request(self.cfg).run(data)
+        return test_preprocess_request(data, self.cfg)
 
     def _load_model(self, approach):
         name = approach["model"]
@@ -50,5 +50,5 @@ class TestPipeline(BasePipeline):
 
         wrapper = self._load_model(approach)
         preds = wrapper.predict(x_latest)
-
+        print(preds)
         return preds

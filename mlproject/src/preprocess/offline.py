@@ -55,7 +55,7 @@ class OfflinePreprocessor:
             pd.DataFrame: Transformed dataset.
         """
         df = self.engine.offline_transform(df)
-        self._save_features(df)
+        # self._save_features(df)
         return df
 
     def run(self) -> pd.DataFrame:
@@ -138,4 +138,5 @@ class OfflinePreprocessor:
             index=idx,
         )
         df.index.name = index_col
+        # df.to_csv("sample_input.csv")
         return df

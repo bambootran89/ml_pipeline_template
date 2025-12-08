@@ -59,6 +59,8 @@ class NLinearWrapper(ModelWrapperBase):
         """
         hidden = self.cfg.get("hidden", 128)
         self.model = FallbackNLinear(input_dim, output_dim, hidden=hidden)
+        self.input_dim = input_dim
+        self.output_dim = output_dim
 
     def train_step(self, batch, optimizer, loss_fn, device):
         """

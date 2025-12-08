@@ -6,13 +6,13 @@ defaults:
   - ../base/evaluation.yaml
 
 experiment:
-  name: "etth1_demo"
+  name: "etth2_demo"
   approaches:
-    - name: "multivariate_tft"
-      type: "multivariate"
-      model: "tft"
+    - name: "univariate_nlinear"
+      type: "univariate_per_series"
+      model: "nlinear"
       hyperparams:
         input_chunk_length: 24
         output_chunk_length: 6
-        n_epochs: 20
-        batch_size: 16
+        n_epochs: 2
+        batch_size: 8

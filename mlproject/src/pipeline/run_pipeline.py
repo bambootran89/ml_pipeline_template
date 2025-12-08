@@ -26,13 +26,11 @@ def run_testing(cfg_path: str, input_path: str) -> None:
 
     pipeline = TestPipeline(cfg_path)
     raw_df = pd.read_csv(input_path)
+    assert "date" in raw_df.columns
+    raw_df = raw_df.set_index("date")
 
     # run pipeline without assigning return
     pipeline.run(raw_df)
-
-    # optionally, call predict if TestPipeline has such method
-    # preds = pipeline.predict(raw_df)
-    # print(preds)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
