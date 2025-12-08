@@ -35,8 +35,6 @@ def online_preprocess_request(
 
     Args:
         features (dict): Raw features for a single request.
-        scaler (optional): Fitted sklearn scaler object (legacy).
-        scaler_columns (optional): Expected column list (legacy).
 
     Returns:
         dict: Processed numeric features ready for model inference.
@@ -48,3 +46,21 @@ def online_preprocess_request(
     df = engine.online_transform(df)
 
     return df.iloc[0].to_dict()
+
+
+def test_preprocess_request(
+    df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Preprocess test df (fill missing and scale).
+
+    Args:
+        df (DataFrame): DataFrame
+
+    Returns:
+        dict: Processed numeric features ready for model inference.
+    """
+
+    engine = PreprocessEngine.instance()
+
+    return engine.online_transform(df)

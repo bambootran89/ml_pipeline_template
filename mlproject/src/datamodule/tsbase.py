@@ -97,6 +97,9 @@ class TSBaseDataModule:
         return np.stack(x_windows), np.stack(y_windows)
 
     def summary(self) -> Tuple[int, int, int]:
+        """
+        summary ***
+        """
         assert isinstance(self.x_train, np.ndarray)
         assert isinstance(self.x_val, np.ndarray)
         assert isinstance(self.x_test, np.ndarray)

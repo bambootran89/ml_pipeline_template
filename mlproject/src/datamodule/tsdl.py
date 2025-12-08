@@ -3,8 +3,8 @@ from typing import Optional, Tuple
 import numpy as np
 from torch.utils.data import DataLoader
 
-from mlproject.src.datamodele.dataset import NumpyWindowDataset
-from mlproject.src.datamodele.tsbase import TSBaseDataModule
+from mlproject.src.datamodule.dataset import NumpyWindowDataset
+from mlproject.src.datamodule.tsbase import TSBaseDataModule
 
 
 class TSDLDataModule(TSBaseDataModule):

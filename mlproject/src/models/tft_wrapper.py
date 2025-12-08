@@ -1,7 +1,9 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 import torch
 from torch import nn
+
+from mlproject.src.models.base import ModelWrapperBase
 
 
 class TFTFallback(nn.Module):
@@ -48,20 +50,23 @@ class TFTFallback(nn.Module):
         return self.head(last)
 
 
-class TFTWrapper:
+class TFTWrapper(ModelWrapperBase):
     """
     Wrapper for training and prediction using a fallback TFT-like model.
 
     Args:
-        cfg (Optional[Dict[str, Any]]): Optional configuration
-        dict (keys: 'hidden_size', 'num_layers').
+        cfg (Optional[Dict[str, Any]]): Optional configuration dict
+        (keys: 'hidden_size', 'num_layers').
     """
 
     def __init__(self, cfg: Optional[Dict[str, Any]] = None):
-        self.cfg = cfg or {}
-        self.model: Optional[TFTFallback] = None
-        self.input_dim: Optional[int] = None
-        self.output_dim: Optional[int] = None
+        # Call base class constructor to ensure proper cfg handling
+        super().__init__(cfg)
+
+        # Initialize model and dims
+        self.model: Optional[nn.Module] = None
+        self.input_dim: int = -1
+        self.output_dim: int = -1
 
     def build(self, input_dim: int, output_dim: int) -> None:
         """
@@ -115,9 +120,6 @@ class TFTWrapper:
             x = x.to(torch.float32)
         return x
 
-    # -------------------------
-    # TRAINING STEP
-    # -------------------------
     def train_step(
         self,
         batch: Tuple[Any, Any],
@@ -155,7 +157,10 @@ class TFTWrapper:
         x = self._ensure_seq_dim(x)
         batch_input_dim = x.shape[-1]
 
-        if batch_input_dim != self.model.rnn.input_size:
+        if not isinstance(self.model, TFTFallback):
+            raise RuntimeError("Model is not TFTFallback")
+
+        if batch_input_dim != cast(TFTFallback, self.model).rnn.input_size:
             self.build(batch_input_dim, y.shape[-1])
             assert self.model is not None
 
@@ -168,9 +173,6 @@ class TFTWrapper:
 
         return float(loss.item())
 
-    # -------------------------
-    # PREDICT
-    # -------------------------
     def predict(self, x_numpy):
         """
         Make predictions with the trained TFTFallback model.

@@ -2,7 +2,7 @@ from typing import Tuple
 
 import numpy as np
 
-from mlproject.src.datamodele.tsbase import TSBaseDataModule
+from mlproject.src.datamodule.tsbase import TSBaseDataModule
 
 
 class TSMLDataModule(TSBaseDataModule):

@@ -84,6 +84,8 @@ def train_model(
         )
 
     # --- save model ---
-    save_model(wrapper, save_dir)
+    # save_model(wrapper, save_dir)
+    print(save_dir)
+    wrapper.save(save_dir)
 
     return wrapper

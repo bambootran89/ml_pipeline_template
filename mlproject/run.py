@@ -1,8 +1,6 @@
-"""Top-level runner for mlproject package."""
-
 import argparse
 
-from mlproject.src.run_pipeline import main
+from mlproject.src.pipeline.run_pipeline import main
 
 
 def run():
@@ -14,9 +12,5 @@ def run():
         default="mlproject/configs/experiments/etth1.yaml",
         help="Path to experiment config YAML",
     )
-    args = parser.parse_args()
-    main(cfg_path=args.config)
-
-
-if __name__ == "__main__":
-    run()
+    parser.parse_args()
+    main()  # Không truyền cfg_path

@@ -2,6 +2,8 @@
 import torch
 from torch import nn
 
+from mlproject.src.models.base import ModelWrapperBase
+
 
 class FallbackNLinear(nn.Module):
     """
@@ -37,7 +39,7 @@ class FallbackNLinear(nn.Module):
         return self.net(x)
 
 
-class NLinearWrapper:
+class NLinearWrapper(ModelWrapperBase):
     """
     Wrapper class for FallbackNLinear providing build,
     training, and prediction methods.
@@ -46,10 +48,6 @@ class NLinearWrapper:
         cfg (dict, optional): Configuration dictionary.
         Can include 'hidden' key for hidden units.
     """
-
-    def __init__(self, cfg=None):
-        self.cfg = cfg or {}
-        self.model = None
 
     def build(self, input_dim, output_dim):
         """

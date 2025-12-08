@@ -149,7 +149,9 @@ This includes:
 Run training pipeline
 
 ```bash
-python mlproject/run.py --config mlproject/configs/experiments/etth1.yaml
+python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/etth1.yaml
+python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth1.yaml
+python -m mlproject.src.pipeline.run_pipeline test --config mlproject/configs/experiments/etth1.yaml --input sample_input.csv
 ```
 Start API
 ```bash

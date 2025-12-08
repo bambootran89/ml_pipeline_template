@@ -3,8 +3,8 @@ import pandas as pd
 import pytest
 from torch.utils.data import DataLoader
 
-from mlproject.src.datamodele.tsdl import TSDLDataModule
-from mlproject.src.datamodele.tsml import TSMLDataModule
+from mlproject.src.datamodule.tsdl import TSDLDataModule
+from mlproject.src.datamodule.tsml import TSMLDataModule
 
 
 class TestDataModules:
