@@ -69,7 +69,7 @@ class OfflinePreprocessor:
         Returns:
             pd.DataFrame: Fully processed dataset.
         """
-        df = self._load_raw_data()
+        df = self.load_raw_data()
         df = self.fit(df)
         df = self.transform(df)
         return df
@@ -84,7 +84,7 @@ class OfflinePreprocessor:
         os.makedirs(self.artifacts_dir, exist_ok=True)
         df.to_parquet(os.path.join(self.artifacts_dir, "features.parquet"))
 
-    def _load_raw_data(self):
+    def load_raw_data(self):
         """
         Load raw dataset from CSV path provided in cfg.
 

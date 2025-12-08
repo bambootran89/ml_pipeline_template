@@ -11,10 +11,12 @@ class EvalPipeline(BasePipeline):
     """
     Evaluation-only pipeline.
 
-    Loads:
-        - Preprocessed dataset (or recompute)
-        - DataModule
-        - Saved model weights
+    Responsibilities:
+    - Load preprocessed dataset (or transform using SAVED scaler)
+    - Load trained model weights
+    - Evaluate model
+
+    IMPORTANT: Does NOT fit scaler, only transforms using saved scaler.
     """
 
     def __init__(self, cfg_path=""):
@@ -22,11 +24,32 @@ class EvalPipeline(BasePipeline):
         super().__init__(self.cfg)
 
     def preprocess(self):
-        """Run preprocessing and return dataset for evaluation."""
-        return OfflinePreprocessor(self.cfg).run()
+        """
+        Transform data using SAVED scaler (does NOT fit).
+
+        Returns:
+            pd.DataFrame: Transformed dataset.
+        """
+        preprocessor = OfflinePreprocessor(self.cfg)
+
+        # Load raw data
+        df = preprocessor.load_raw_data()
+
+        # Transform only (using saved scaler)
+        df = preprocessor.transform(df)
+
+        return df
 
     def _load_model(self, approach):
-        """Load the trained model wrapper from artifacts."""
+        """
+        Load trained model wrapper from artifacts.
+
+        Args:
+            approach: Experiment approach config.
+
+        Returns:
+            Loaded model wrapper.
+        """
         name = approach["model"]
         hp = approach.get("hyperparams", {})
 
@@ -42,13 +65,13 @@ class EvalPipeline(BasePipeline):
 
     def run_approach(self, approach, data):
         """
-        Run evaluation for a single approach.
+        Evaluate a single approach.
 
         Args:
-            approach (dict): Experiment approach config.
-            data (pd.DataFrame): Preprocessed dataset.
+            approach: Experiment approach config.
+            data: Preprocessed dataset (transformed using saved scaler).
         """
-        df = data  # rename locally for clarity
+        df = data
 
         dm = DataModuleFactory.build(self.cfg, df)
         dm.setup()

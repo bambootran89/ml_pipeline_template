@@ -30,29 +30,36 @@ This structure keeps the code simple while staying aligned with how real systems
 
 ---
 
-## 2. Directory Reference
-```text
-mlproject/
-├── run.py                # Entry for training
-├── serve/
-│   └── api.py            # Inference/serving API
-├── configs/
-│   ├── base/.yaml        # Modular config blocks
-│   └── experiments/.yaml # Experiment-level configs
-└── src/
-  ├── datamodule/               # Dataset + DataModule (ML & DL)
-  │   ├── tsml.py               # Timeseries MLDataModule: XGBoost/sklearn/other ML
-  │   ├── tsdl.py               # Timeseries DLDataModule: PyTorch windowed datasets
-  │   ├── tsbase.py             # BaseDataModule class
-  │   └── dataset.py            # own dataset
-  ├── preprocess/         # Offline/online preprocessing
-  ├── models/             # Model registry + wrappers
-  ├── trainer/            # Training loop
-  ├── eval/               # Evaluation logic
-  ├── config_loader.py    # Unified config loader
-  └── run_pipeline.py     # Orchestrates training pipeline
+## 2. Highlights Inside `src/`
 
-```
+---
+
+- **datamodule/**
+  - Provides a unified interface for ML & DL data handling.
+  - ML vs DL separated: `tsml.py` for XGBoost/sklearn; `tsdl.py` for PyTorch.
+  - `dm_factory.py` allows easy instantiation based on model type.
+
+- **preprocess/**
+  - Offline preprocessing (`offline.py`) for training: scaling, feature engineering, missing values.
+  - Online preprocessing (`online.py`) for serving: deterministic, ensures no train-serving drift.
+  - `engine.py` centralizes all transform logic.
+
+- **models/**
+  - Wrap models with consistent API (`fit/predict/save/load`).
+  - Supports multiple architectures (`NLinear`, `TFT`) via wrapper classes.
+
+- **trainer/**
+  - Centralized training loop for both ML and DL models.
+  - TrainerFactory instantiates correct trainer based on model type.
+  - DL-specific logic isolated in `dltrainer.py`.
+
+- **eval/**
+  - Centralized evaluation metrics (MAE, MSE, SMAPE) for both ML and DL.
+
+- **pipeline/**
+  - `run_pipeline.py` orchestrates complete pipeline: config load → datamodule → model → trainer → evaluation → artifact save.
+  - Separate pipelines for training, evaluation, and testing (`training_pipeline.py`, `eval_pipeline.py`, `test_pipeline.py`).
+
 
 ---
 
