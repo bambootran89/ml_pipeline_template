@@ -1,18 +1,26 @@
 from typing import Optional, Tuple
 
+import numpy as np
 from torch.utils.data import DataLoader
 
-from mlproject.src.data.base_datamodule import BaseDataModule
-from mlproject.src.data.dataloader import NumpyWindowDataset, create_windows
+from mlproject.src.datamodele.dataset import NumpyWindowDataset
+from mlproject.src.datamodele.tsbase import TSBaseDataModule
 
 
-class DLDataModule(BaseDataModule):
+class TSDLDataModule(TSBaseDataModule):
     """
     DL DataModule for PyTorch models.
     Creates windowed dataset + DataLoader using dataloader.py utilities.
     """
 
-    def __init__(self, df, cfg, target_column: str):
+    def __init__(
+        self,
+        df,
+        cfg,
+        target_column: str,
+        input_chunk: int,
+        output_chunk: int,
+    ):
         """
         Initialize DLDataModule.
 
@@ -21,16 +29,12 @@ class DLDataModule(BaseDataModule):
             cfg (dict): Configuration dict
             target_column (str): Name of target column
         """
-        super().__init__(df, cfg, target_column)
-        self.input_chunk: Optional[int] = None
-        self.output_chunk: Optional[int] = None
+        super().__init__(df, cfg, target_column, input_chunk, output_chunk)
         self.train_loader: Optional[DataLoader] = None
         self.val_loader: Optional[DataLoader] = None
 
     def setup(
         self,
-        input_chunk: int,
-        output_chunk: int,
         batch_size: int = 16,
         num_workers: int = 0,
     ):
@@ -43,30 +47,21 @@ class DLDataModule(BaseDataModule):
             batch_size (int): Batch size for DataLoader
             num_workers (int): Number of workers for DataLoader
         """
-        self.input_chunk = input_chunk
-        self.output_chunk = output_chunk
-
-        x_train, y_train = create_windows(
-            self.train_df,
-            self.target_column,
-            input_chunk,
-            output_chunk,
-        )
-        x_val, y_val = create_windows(
-            self.val_df,
-            self.target_column,
-            input_chunk,
-            output_chunk,
-        )
+        assert isinstance(self.x_train, np.ndarray)
+        assert isinstance(self.y_train, np.ndarray)
 
         self.train_loader = DataLoader(
-            NumpyWindowDataset(x_train, y_train),
+            NumpyWindowDataset(self.x_train, self.y_train),
             batch_size=batch_size,
             shuffle=True,
             num_workers=num_workers,
         )
+
+        assert isinstance(self.x_val, np.ndarray)
+        assert isinstance(self.y_val, np.ndarray)
+
         self.val_loader = DataLoader(
-            NumpyWindowDataset(x_val, y_val),
+            NumpyWindowDataset(self.x_val, self.y_val),
             batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
@@ -81,7 +76,6 @@ class DLDataModule(BaseDataModule):
             train_loader, val_loader, input_chunk, output_chunk
         """
         assert self.train_loader is not None and self.val_loader is not None
-        assert self.input_chunk is not None and self.output_chunk is not None
         return self.train_loader, self.val_loader, self.input_chunk, self.output_chunk
 
     def get_test_windows(self) -> Tuple:
@@ -91,8 +85,4 @@ class DLDataModule(BaseDataModule):
         Returns:
             Tuple[np.ndarray, np.ndarray]: x_test, y_test
         """
-        assert self.input_chunk is not None and self.output_chunk is not None
-        x_test, y_test = create_windows(
-            self.test_df, self.target_column, self.input_chunk, self.output_chunk
-        )
-        return x_test, y_test
+        return self.x_test, self.y_test

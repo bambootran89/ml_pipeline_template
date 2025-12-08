@@ -3,8 +3,8 @@ import pandas as pd
 import pytest
 from torch.utils.data import DataLoader
 
-from mlproject.src.data.dl_datamodule import DLDataModule
-from mlproject.src.data.ml_datamodule import MLDataModule
+from mlproject.src.datamodele.tsdl import TSDLDataModule
+from mlproject.src.datamodele.tsml import TSMLDataModule
 
 
 class TestDataModules:
@@ -34,8 +34,14 @@ class TestDataModules:
 
     def test_dl_datamodule(self):
         """Test DLDataModule creates DataLoaders and windows correctly."""
-        dl_module = DLDataModule(self.df, self.cfg, self.target_column)
-        dl_module.setup(input_chunk=5, output_chunk=2, batch_size=8, num_workers=0)
+        dl_module = TSDLDataModule(
+            self.df,
+            self.cfg,
+            self.target_column,
+            input_chunk=5,
+            output_chunk=2,
+        )
+        dl_module.setup(batch_size=8, num_workers=0)
         train_loader, val_loader, input_chunk, output_chunk = dl_module.get_loaders()
 
         # Check types
@@ -63,11 +69,14 @@ class TestDataModules:
         """Test MLDataModule returns correct numpy arrays for train/val/test."""
         # chọn HUFL làm target cho ML
 
-        ml_module = MLDataModule(self.df, self.cfg, target_column=self.target_column)
-        ml_module.setup(
+        ml_module = TSMLDataModule(
+            self.df,
+            self.cfg,
+            target_column=self.target_column,
             input_chunk=5,
             output_chunk=2,
         )
+
         # setup với window length để có consistency với DLDataModule
         X_train, y_train, X_val, y_val, X_test, y_test = ml_module.get_data()
 

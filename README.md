@@ -40,11 +40,11 @@ mlproject/
 │   ├── base/.yaml        # Modular config blocks
 │   └── experiments/.yaml # Experiment-level configs
 └── src/
-  ├── data/               # Dataset + DataModule (ML & DL)
-  │   ├── ml_datamodule.py # MLDataModule: XGBoost/sklearn/other ML
-  │   ├── dl_datamodule.py # DLDataModule: PyTorch windowed datasets
-  │   ├── dataloader.py    # Utilities: windowing, NumpyWindowDataset
-  │   └── base_datamodule.py # BaseDataModule class
+  ├── datamodule/               # Dataset + DataModule (ML & DL)
+  │   ├── tsml.py               # Timeseries MLDataModule: XGBoost/sklearn/other ML
+  │   ├── tsdl.py               # Timeseries DLDataModule: PyTorch windowed datasets
+  │   ├── tsbase.py             # BaseDataModule class
+  │   └── dataset.py            # own dataset
   ├── preprocess/         # Offline/online preprocessing
   ├── models/             # Model registry + wrappers
   ├── trainer/            # Training loop
