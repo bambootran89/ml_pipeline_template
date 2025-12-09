@@ -5,3 +5,6 @@ model_registry:
   tft:
     module: "mlproject.src.models.tft_wrapper"
     class: "TFTWrapper"
+  xgboost:
+    module: "mlproject.src.models.xgboost_wrapper"
+    class: "XGBWrapper"

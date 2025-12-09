@@ -35,8 +35,6 @@ class TSDLDataModule(TSBaseDataModule):
 
     def setup(
         self,
-        batch_size: int = 16,
-        num_workers: int = 0,
     ):
         """
         Prepare train/val DataLoaders from windowed datasets.
@@ -44,11 +42,23 @@ class TSDLDataModule(TSBaseDataModule):
         Args:
             input_chunk (int): Length of input sequence
             output_chunk (int): Length of output sequence
-            batch_size (int): Batch size for DataLoader
-            num_workers (int): Number of workers for DataLoader
         """
         assert isinstance(self.x_train, np.ndarray)
         assert isinstance(self.y_train, np.ndarray)
+        if isinstance(self.cfg, dict):
+            batch_size = (
+                self.cfg.get("experiment", {})
+                .get("hyperparams", {})
+                .get("batch_size", 16)
+            )
+            num_workers = (
+                self.cfg.get("experiment", {})
+                .get("hyperparams", {})
+                .get("num_workers", 0)
+            )
+        else:
+            batch_size = self.cfg.experiment.hyperparams.get("batch_size", 16)
+            num_workers = self.cfg.experiment.hyperparams.get("num_workers", 0)
 
         self.train_loader = DataLoader(
             NumpyWindowDataset(self.x_train, self.y_train),

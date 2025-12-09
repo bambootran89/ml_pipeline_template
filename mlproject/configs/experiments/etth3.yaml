@@ -1,0 +1,18 @@
+defaults:
+  - ../base/data.yaml
+  - ../base/preprocessing.yaml
+  - ../base/model.yaml
+  - ../base/training.yaml
+  - ../base/evaluation.yaml
+
+experiment:
+  name: "xgboost"
+  type: "xgboost_per_series"
+  model: "xgboost"
+  hyperparams:
+    input_chunk_length: 24
+    output_chunk_length: 6
+    n_estimators: 20
+    max_depth: 3
+    learning_rate: 0.1
+    objective: "reg:squarederror"

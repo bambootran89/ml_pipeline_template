@@ -3,7 +3,7 @@ from typing import Any, Tuple, cast
 import torch
 from torch import nn
 
-from mlproject.src.models.base import ModelWrapperBase
+from mlproject.src.models.base import DLModelWrapperBase
 
 
 class TFTFallback(nn.Module):
@@ -50,7 +50,7 @@ class TFTFallback(nn.Module):
         return self.head(last)
 
 
-class TFTWrapper(ModelWrapperBase):
+class TFTWrapper(DLModelWrapperBase):
     """
     Wrapper for training and prediction using a fallback TFT-like model.
 
@@ -164,13 +164,13 @@ class TFTWrapper(ModelWrapperBase):
 
         return float(loss.item())
 
-    def predict(self, x_numpy):
+    def predict(self, x: Any, **kwargs: Any):
         """
         Make predictions with the trained TFTFallback model.
 
         Args:
-            x_numpy (np.ndarray): Input data array of shape (batch, seq_len, input_dim)
-                                  or (batch, input_dim).
+            x (Any): Input data array of shape (batch, seq_len, input_dim)
+                    or (batch, input_dim).
 
         Returns:
             np.ndarray: Predicted outputs.
@@ -186,7 +186,7 @@ class TFTWrapper(ModelWrapperBase):
 
         assert self.model is not None  # fix mypy
 
-        t = self._ensure_float(x_numpy)
+        t = self._ensure_float(x)
         t = self._ensure_seq_dim(t)
 
         if t.shape[-1] != self.model.rnn.input_size:

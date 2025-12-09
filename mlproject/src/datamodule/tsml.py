@@ -11,6 +11,22 @@ class TSMLDataModule(TSBaseDataModule):
     Returns numpy arrays (train/val/test) with optional feature selection.
     """
 
+    def setup(
+        self,
+    ):
+        """
+        Prepare train/val DataLoaders from windowed datasets.
+
+        Args:
+            input_chunk (int): Length of input sequence
+            output_chunk (int): Length of output sequence
+        """
+        assert isinstance(self.x_train, np.ndarray)
+        assert isinstance(self.y_train, np.ndarray)
+
+        assert isinstance(self.x_val, np.ndarray)
+        assert isinstance(self.y_val, np.ndarray)
+
     def get_data(
         self,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:

@@ -1,31 +1,26 @@
-import json
 import os
 from abc import ABC, abstractmethod
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
+import joblib
 import torch
 from omegaconf import DictConfig, OmegaConf
-from torch import nn
+from sklearn.base import BaseEstimator
 
 
-class ModelWrapperBase(ABC):
+class BaseModelWrapper(ABC):
     """
-    Base class for all model wrappers.
+    Generic base wrapper for any ML or DL model.
 
     Responsibilities:
-        - Build model architecture
-        - Predict (in child)
-        - Save / Load model weights and metadata
+        - Build / initialize model
+        - Fit / train
+        - Predict
+        - Save / Load model and metadata
         - Ensure model is initialized
     """
 
     def __init__(self, cfg: Optional[dict] = None):
-        """
-        Initialize the wrapper with a configuration.
-
-        Args:
-            cfg (dict or DictConfig, optional): configuration dictionary or DictConfig
-        """
         if cfg is None:
             self.cfg = DictConfig({})
         elif isinstance(cfg, DictConfig):
@@ -35,87 +30,181 @@ class ModelWrapperBase(ABC):
         else:
             raise TypeError("cfg must be dict or DictConfig")
 
-        self.model: Optional[nn.Module] = None
+        self.model: Optional[Any] = None
         self.input_dim: Optional[int] = None
         self.output_dim: Optional[int] = None
 
     @abstractmethod
     def build(self, input_dim: int, output_dim: int):
-        """Build model architecture. Must be implemented by subclasses."""
+        """Build or initialize model."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def predict(self, x, **kwargs):
+        """Predict using the model."""
         raise NotImplementedError
 
     def ensure_built(self):
-        """Raise an error if model is not yet built."""
+        """Ensure model is initialized before use."""
+        if self.model is None:
+            raise RuntimeError(
+                "Model is not built yet. Call build(input_dim, output_dim)."
+            )
+
+    @abstractmethod
+    def save(self, save_dir: str):
+        """Save model and metadata. To be implemented in subclass."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def load(self, save_dir: str):
+        """Load model and metadata. To be implemented in subclass."""
+        raise NotImplementedError
+
+
+class DLModelWrapperBase(BaseModelWrapper):
+    """
+    Base class for all deep-learning model wrappers.
+    """
+
+    @abstractmethod
+    def build(self, input_dim: int, output_dim: int):
+        """Build model architecture."""
+        raise NotImplementedError
+
+    def ensure_built(self):
+        """Ensure DL model is initialized."""
         if self.model is None:
             raise RuntimeError(
                 "Model is not built yet. Call build(input_dim, output_dim)."
             )
 
     def save(self, save_dir: str):
-        """
-        Save model weights and metadata.
+        """Save model weights + metadata with torch.save."""
+        self.ensure_built()
+        os.makedirs(save_dir, exist_ok=True)
+        assert self.model is not None
 
-        Args:
-            save_dir (str): directory path to save model.pt and meta.json
+        state = {
+            "model_state": self.model.state_dict(),
+            "input_dim": self.input_dim,
+            "output_dim": self.output_dim,
+            "cfg": OmegaConf.to_container(self.cfg, resolve=True),
+        }
+        torch.save(state, os.path.join(save_dir, "model.pt"))
+
+    def load(self, save_dir: str):
+        """Load DL model from disk (weights + metadata)."""
+        path = os.path.join(save_dir, "model.pt")
+        if not os.path.exists(path):
+            raise RuntimeError(f"Model file not found: {path}")
+
+        state = torch.load(path, map_location="cpu")
+
+        self.input_dim = state["input_dim"]
+        self.output_dim = state["output_dim"]
+
+        loaded_cfg = OmegaConf.create(state["cfg"])
+        if not isinstance(self.cfg, DictConfig):
+            self.cfg = DictConfig({})
+        self.cfg = cast(DictConfig, OmegaConf.merge(self.cfg, loaded_cfg))
+
+        assert isinstance(self.input_dim, int)
+        assert isinstance(self.output_dim, int)
+
+        self.build(self.input_dim, self.output_dim)
+        assert self.model is not None
+        self.model.load_state_dict(state["model_state"])
+
+        print(f"[Model Loaded] {path}")
+        return self
+
+
+class MLModelWrapper(BaseModelWrapper):
+    """
+    Generic ML wrapper for sklearn-style estimators.
+    """
+
+    def __init__(
+        self,
+        cfg: Optional[dict] = None,
+        estimator_class: Any = BaseEstimator,
+        **estimator_kwargs,
+    ):
         """
+        Args:
+            cfg: configuration dictionary
+            estimator_class: sklearn-like estimator
+            estimator_kwargs: parameters for estimator init
+        """
+        super().__init__(cfg)
+        self.estimator_class = estimator_class
+        self.estimator_kwargs = estimator_kwargs
+
+    def build(self, input_dim: int, output_dim: int):
+        """Initialize estimator."""
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.model = self.estimator_class(**self.estimator_kwargs)
+
+    def fit(self, x, y, **kwargs):
+        """Train model with sklearn-style estimator."""
+        if self.model is None:
+            self.build(self.input_dim, self.output_dim)
+
+        self.ensure_built()
+
+        shape = x.shape
+        assert len(shape) <= 3
+        if len(shape) == 3:
+            x = x.reshape(-1, shape[1] * shape[2])
+
+        self.model.fit(x, y, **kwargs)
+
+    def predict(self, x, **kwargs):
+        """Predict with sklearn estimator."""
+        self.ensure_built()
+
+        shape = x.shape
+        assert len(shape) <= 3
+        if len(shape) == 3:
+            x = x.reshape(-1, shape[1] * shape[2])
+
+        return self.model.predict(x, **kwargs)
+
+    def save(self, save_dir: str):
+        """Save estimator + metadata with joblib."""
         self.ensure_built()
         os.makedirs(save_dir, exist_ok=True)
 
-        assert self.model is not None
-        # Save weights
-        torch.save(self.model.state_dict(), os.path.join(save_dir, "model.pt"))
-
-        # Ensure cfg is DictConfig
-        cfg_to_save = self.cfg
-        if not isinstance(cfg_to_save, DictConfig):
-            cfg_to_save = OmegaConf.create(cfg_to_save)
-
-        # Save metadata
-        meta = {
+        state = {
+            "model": self.model,
             "input_dim": self.input_dim,
             "output_dim": self.output_dim,
-            "cfg": OmegaConf.to_container(cfg_to_save, resolve=True),
+            "cfg": OmegaConf.to_container(self.cfg, resolve=True),
         }
 
-        with open(os.path.join(save_dir, "meta.json"), "w", encoding="utf-8") as f:
-            json.dump(meta, f, indent=2)
+        joblib.dump(state, os.path.join(save_dir, "model.pkl"))
+        print(f"[ML Model Saved] {os.path.join(save_dir, 'model.pkl')}")
 
     def load(self, save_dir: str):
-        """
-        Load model weights and rebuild from metadata.
+        """Load estimator + metadata via joblib."""
+        path = os.path.join(save_dir, "model.pkl")
+        if not os.path.exists(path):
+            raise RuntimeError(f"Model file not found: {path}")
 
-        Args:
-            save_dir (str): directory path containing model.pt and meta.json
+        state = joblib.load(path)
 
-        Returns:
-            self
-        """
-        meta_path = os.path.join(save_dir, "meta.json")
-        if not os.path.exists(meta_path):
-            raise RuntimeError("meta.json not found — model cannot be rebuilt")
+        self.input_dim = state.get("input_dim")
+        self.output_dim = state.get("output_dim")
 
-        with open(meta_path, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-
-        # Ensure cfg is DictConfig
+        loaded_cfg = OmegaConf.create(state.get("cfg", {}))
         if not isinstance(self.cfg, DictConfig):
             self.cfg = DictConfig({})
-
-        # Merge metadata cfg
-        loaded_cfg = OmegaConf.create(meta["cfg"])
         self.cfg = cast(DictConfig, OmegaConf.merge(self.cfg, loaded_cfg))
 
-        # Save dims
-        self.cfg.input_dim = meta["input_dim"]
-        self.cfg.output_dim = meta["output_dim"]
+        self.model = state["model"]
+        self.ensure_built()
 
-        # Rebuild model
-        self.build(meta["input_dim"], meta["output_dim"])
-
-        # Load weights
-        weight_path = os.path.join(save_dir, "model.pt")
-        assert self.model is not None
-        self.model.load_state_dict(torch.load(weight_path, map_location="cpu"))
-
-        print(f"[Model Loaded] {weight_path}")
+        print(f"[ML Model Loaded] {path}")
         return self

@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.models.nlinear_wrapper import NLinearWrapper
-from mlproject.src.models.tft_wrapper import TFTWrapper
+from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.online import serve_preprocess_request
@@ -39,26 +39,15 @@ class TestPipeline(BasePipeline):
 
     def _load_model(self, approach):
         """
-        Load trained model from artifacts.
-
-        Args:
-            approach: Experiment approach config.
-
-        Returns:
-            Model wrapper with loaded weights.
+        Load trained model wrapper from artifacts.
         """
-        name = approach["model"]
+        name = approach["model"].lower()
         hp = approach.get("hyperparams", {})
 
-        if name == "nlinear":
-            wrapper = NLinearWrapper(hp)
-        elif name == "tft":
-            wrapper = TFTWrapper(hp)
-        else:
-            raise RuntimeError(f"Unknown model {name}")
+        if isinstance(hp, DictConfig):
+            hp = OmegaConf.to_container(hp, resolve=True)
 
-        wrapper.load(self.cfg.training.artifacts_dir)
-        return wrapper
+        return ModelFactory.load(name, hp, self.cfg.training.artifacts_dir)
 
     def _prepare_input_window(
         self, df: pd.DataFrame, input_chunk_length: int

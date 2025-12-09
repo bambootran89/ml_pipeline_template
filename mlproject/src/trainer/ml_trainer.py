@@ -22,6 +22,6 @@ class MLTrainer(BaseTrainer):
         """
         _ = val_data  # mark as intentionally unused
         _ = hyperparams  # mark as intentionally unused
-        self.wrapper.fit(train_data)
+        self.wrapper.fit(train_data[0], train_data[1])
         self.save()
         return self.wrapper

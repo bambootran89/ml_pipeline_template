@@ -29,6 +29,7 @@ class TestDataModules:
         self.cfg = {
             "preprocessing": {"split": {"train": 0.6, "val": 0.2, "test": 0.2}},
             "training": {"num_workers": 0},
+            "experiment": {"hyperparams": {"batch_size": 16}},
         }
         self.target_column = ["HUFL", "MUFL", "mobility_inflow"]
 
@@ -41,7 +42,7 @@ class TestDataModules:
             input_chunk=5,
             output_chunk=2,
         )
-        dl_module.setup(batch_size=8, num_workers=0)
+        dl_module.setup()
         train_loader, val_loader, input_chunk, output_chunk = dl_module.get_loaders()
 
         # Check types
