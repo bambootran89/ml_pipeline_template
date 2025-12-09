@@ -9,3 +9,5 @@ uvicorn
 omegaconf
 pytest
 pyarrow
+requests
+httpx

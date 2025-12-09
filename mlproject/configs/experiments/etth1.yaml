@@ -6,13 +6,11 @@ defaults:
   - ../base/evaluation.yaml
 
 experiment:
-  name: "etth1_demo"
-  approaches:
-    - name: "multivariate_tft"
-      type: "multivariate"
-      model: "tft"
-      hyperparams:
-        input_chunk_length: 24
-        output_chunk_length: 6
-        n_epochs: 20
-        batch_size: 16
+  name: "multivariate_tft"
+  type: "multivariate"
+  model: "tft"
+  hyperparams:
+    input_chunk_length: 24
+    output_chunk_length: 6
+    n_epochs: 20
+    batch_size: 16

@@ -1,79 +1,80 @@
-import os
+from fastapi import FastAPI, HTTPException
 
-import numpy as np
-import torch
-from fastapi import FastAPI
-from pydantic import BaseModel
-
-from mlproject.src.models.nlinear_wrapper import FallbackNLinear
-from mlproject.src.preprocess.online import online_preprocess_request
+from mlproject.serve.models_service import ModelService
+from mlproject.serve.schemas import PredictRequest
 
 app = FastAPI(title="mlproject Forecast API")
 
-MODEL_PATH = os.path.join("mlproject", "artifacts", "models", "model.pt")
-SCALER_PATH = os.path.join("mlproject", "artifacts", "preprocessing", "scaler.pkl")
-
-MODEL = None
-SCALER = None
-SCALER_COLS = None
-
-
-class PredictRequest(BaseModel):
-    """dict"""
-
-    features: dict
-
-
-class ModelService:
-    """
-    ModelService
-    """
-
-    def __init__(self):
-        self.model = None
-
-
+# Initialize a single ModelService instance for the API
 model_service = ModelService()
 
 
 @app.on_event("startup")
 def startup_event():
     """
-    Load the scaler and PyTorch fallback model at application startup.
-    """
+    FastAPI startup event handler.
 
-    # Load model
-    if os.path.exists(MODEL_PATH):
-        input_dim = (
-            model_service.scaler.shape[1] if model_service.scaler is not None else 10
-        )
-        model_service.model = FallbackNLinear(input_dim=input_dim, output_dim=6)
-        model_service.model.load_state_dict(torch.load(MODEL_PATH))
-        model_service.model.eval()
+    This function is called automatically when the FastAPI app starts.
+    It loads the configuration and the trained model into the global
+    `model_service` instance.
+
+    Raises:
+        Exception: If the configuration or model cannot be loaded.
+    """
+    try:
+        model_service.load_config()
+        model_service.load_model()
+        print("[API] Model loaded successfully")
+    except Exception as e:
+        print(f"[API] Failed to load model: {e}")
+        raise
 
 
 @app.post("/predict")
 def predict(req: PredictRequest):
     """
-    Process input features, apply online preprocessing, and return model predictions.
+    Predict endpoint.
+
+    This endpoint receives historical time-series data in the request body,
+    preprocesses it, extracts the required input window, and returns model
+    predictions.
 
     Args:
-        req (PredictRequest): Request body containing a dictionary of features.
+        req (PredictRequest): Pydantic request model containing the `data` dictionary
+                              with historical features. Example keys include "date",
+                              "HUFL", "MUFL", etc.
 
     Returns:
-        dict: A dictionary with key 'prediction' containing a list of predicted values,
-              or an error message if the model is not loaded.
+        dict: A dictionary with a single key "prediction", containing a list of
+              predicted values.
+
+    Raises:
+        HTTPException 500: If the model is not loaded or if prediction fails.
+        HTTPException 400: If input data is invalid (e.g., too few rows).
     """
-    data = req.features
-    # online preprocess (fill, scale)
-    processed = online_preprocess_request(
-        data,
-    )
-    x = np.array([list(processed[c] for c in sorted(processed.keys()))], dtype=float)
     if model_service.model is None:
-        return {"error": "model not loaded"}
-    with torch.no_grad():
-        pred = (
-            model_service.model(torch.from_numpy(x.astype("float32"))).numpy().tolist()
-        )
-    return {"prediction": pred}
+        raise HTTPException(status_code=500, detail="Model not loaded")
+    try:
+        predictions = model_service.predict(req.data)
+        return {"prediction": predictions}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}") from e
+
+
+@app.get("/health")
+def health_check():
+    """
+    Health check endpoint.
+
+    Returns the current health status of the API and whether the model
+    is successfully loaded.
+
+    Returns:
+        dict: {
+            "status": "ok",
+            "model_loaded": bool - True if model is loaded, False otherwise
+        }
+    """
+    return {"status": "ok", "model_loaded": model_service.model is not None}

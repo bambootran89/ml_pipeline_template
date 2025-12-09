@@ -60,7 +60,9 @@ class TestPipeline(BasePipeline):
         wrapper.load(self.cfg.training.artifacts_dir)
         return wrapper
 
-    def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
+    def _prepare_input_window(
+        self, df: pd.DataFrame, input_chunk_length: int
+    ) -> np.ndarray:
         """
         Extract last window from transformed data for inference.
 
@@ -70,7 +72,7 @@ class TestPipeline(BasePipeline):
         Returns:
             np.ndarray: Input window [1, seq_len, n_features].
         """
-        seq_len = self.cfg.data.get("seq_len", 96)
+        seq_len = input_chunk_length
 
         # Get last seq_len rows
         if len(df) < seq_len:
@@ -94,10 +96,11 @@ class TestPipeline(BasePipeline):
         """
         # Step 1: Preprocess
         df_transformed = self.preprocess(data)
-
+        input_chunk_length = approach.get("hyperparams", {}).get(
+            "input_chunk_length", 24
+        )
         # Step 2: Prepare input window
-        x_input = self._prepare_input_window(df_transformed)
-
+        x_input = self._prepare_input_window(df_transformed, input_chunk_length)
         # Step 3: Load model and predict
         wrapper = self._load_model(approach)
         preds = wrapper.predict(x_input)

@@ -34,18 +34,17 @@ class BasePipeline(ABC):
 
     def run(self, data: Optional[pd.DataFrame] = None):
         """
-        Execute preprocessing and run all approaches.
+        Execute preprocessing and run the experiment.
         If data is provided, skip preprocessing.
         """
         if data is None:
             data = self.preprocess()
 
-        # supports DictConfig for cfg
-        approaches = OmegaConf.select(self.cfg, "experiment.approaches") or []
+        # Lấy experiment config trực tiếp (không còn approaches list)
+        experiment = OmegaConf.select(self.cfg, "experiment")
 
-        if not approaches:
-            raise RuntimeError("No approaches defined under experiment.approaches")
+        if not experiment:
+            raise RuntimeError("No experiment config found")
 
-        for approach in approaches:
-            print(f"\n=== Running approach: {approach.get('name', 'Unnamed')} ===")
-            self.run_approach(approach, data)
+        print(f"\n=== Running experiment: {experiment.get('name', 'Unnamed')} ===")
+        self.run_approach(experiment, data)
