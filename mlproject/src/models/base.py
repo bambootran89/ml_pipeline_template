@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, cast
 
 import joblib
+import numpy as np
 import torch
 from omegaconf import DictConfig, OmegaConf
 from sklearn.base import BaseEstimator
@@ -147,30 +148,56 @@ class MLModelWrapper(BaseModelWrapper):
         self.output_dim = output_dim
         self.model = self.estimator_class(**self.estimator_kwargs)
 
-    def fit(self, x, y, **kwargs):
+    def fit(
+        self,
+        x,
+        y,
+        x_val: Optional[np.ndarray] = None,
+        y_val: Optional[np.ndarray] = None,
+        **kwargs,
+    ):
         """Train model with sklearn-style estimator."""
         if self.model is None:
-            self.build(self.input_dim, self.output_dim)
+            if x.ndim not in [2, 3]:
+                raise ValueError("Input features 'x' must be 2D or 3D numpy arrays.")
+            input_dim: int
+            if x.ndim == 2:
+                input_dim = x.shape[1]
+            else:  # x.ndim == 3
+                input_dim = x.shape[1] * x.shape[2]
+
+            # Output dimension (1D -> 1, 2D -> features)
+            output_dim: int = y.shape[-1] if y.ndim > 1 else 1
+
+            self.build(input_dim, output_dim)  # Dùng giá trị int đã tính toán
 
         self.ensure_built()
 
-        shape = x.shape
-        assert len(shape) <= 3
-        if len(shape) == 3:
-            x = x.reshape(-1, shape[1] * shape[2])
+        x_reshaped = self._reshape_input_for_ml(x)
 
-        self.model.fit(x, y, **kwargs)
+        # Tạo eval_set nếu có validation data
+        fit_params = kwargs.copy()
+        if x_val is not None and y_val is not None:
+            x_val_reshaped = self._reshape_input_for_ml(x_val)
+            fit_params["eval_set"] = [(x_val_reshaped, y_val)]
+            fit_params["verbose"] = False
+        model = cast(BaseEstimator, self.model)
+        model.fit(x_reshaped, y, **fit_params)
+
+    def _reshape_input_for_ml(self, arr: Any) -> np.ndarray:
+        arr = np.asarray(arr, dtype=np.float32)
+        shape = arr.shape
+        if len(shape) == 3:
+            # Flatten (batch, seq, feat) -> (batch, seq*feat)
+            return arr.reshape(-1, shape[1] * shape[2])
+        return arr
 
     def predict(self, x, **kwargs):
         """Predict with sklearn estimator."""
         self.ensure_built()
+        x_reshaped = self._reshape_input_for_ml(x)
 
-        shape = x.shape
-        assert len(shape) <= 3
-        if len(shape) == 3:
-            x = x.reshape(-1, shape[1] * shape[2])
-
-        return self.model.predict(x, **kwargs)
+        return self.model.predict(x_reshaped, **kwargs)
 
     def save(self, save_dir: str):
         """Save estimator + metadata with joblib."""
