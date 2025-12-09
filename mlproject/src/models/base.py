@@ -152,8 +152,7 @@ class MLModelWrapper(BaseModelWrapper):
         self,
         x,
         y,
-        x_val: Optional[np.ndarray] = None,
-        y_val: Optional[np.ndarray] = None,
+        sample_weight: Optional[np.ndarray] = None,
         **kwargs,
     ):
         """Train model with sklearn-style estimator."""
@@ -175,14 +174,8 @@ class MLModelWrapper(BaseModelWrapper):
 
         x_reshaped = self._reshape_input_for_ml(x)
 
-        # Tạo eval_set nếu có validation data
-        fit_params = kwargs.copy()
-        if x_val is not None and y_val is not None:
-            x_val_reshaped = self._reshape_input_for_ml(x_val)
-            fit_params["eval_set"] = [(x_val_reshaped, y_val)]
-            fit_params["verbose"] = False
         model = cast(BaseEstimator, self.model)
-        model.fit(x_reshaped, y, **fit_params)
+        model.fit(x_reshaped, y, sample_weight, **kwargs)
 
     def _reshape_input_for_ml(self, arr: Any) -> np.ndarray:
         arr = np.asarray(arr, dtype=np.float32)

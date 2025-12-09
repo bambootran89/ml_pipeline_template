@@ -1,3 +1,5 @@
+from typing import Any
+
 from mlproject.src.trainer.dl_trainer import DeepLearningTrainer
 from mlproject.src.trainer.ml_trainer import MLTrainer
 
@@ -12,7 +14,7 @@ class TrainerFactory:
     ML_MODELS = {"xgboost", "xgb", "lgbm", "lightgbm", "rf", "svm", "sklearn"}
 
     @classmethod
-    def create(cls, model_name: str, wrapper):
+    def create(cls, model_name: str, wrapper: Any, save_dir: str):
         """
         Create and return a Trainer instance for the given model type.
 
@@ -27,8 +29,8 @@ class TrainerFactory:
             RuntimeError: If no trainer exists for the provided model name.
         """
         if model_name in cls.DL_MODELS:
-            return DeepLearningTrainer(wrapper)
+            return DeepLearningTrainer(wrapper, save_dir=save_dir)
         if model_name in cls.ML_MODELS:
-            return MLTrainer(wrapper)
+            return MLTrainer(wrapper, save_dir=save_dir)
 
         raise RuntimeError(f"No trainer available for model {model_name}")

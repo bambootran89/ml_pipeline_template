@@ -16,3 +16,4 @@ experiment:
     max_depth: 3
     learning_rate: 0.1
     objective: "reg:squarederror"
+    early_stopping_round: 15

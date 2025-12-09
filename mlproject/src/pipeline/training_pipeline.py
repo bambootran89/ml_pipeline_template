@@ -86,7 +86,9 @@ class TrainingPipeline(BasePipeline):
         dm = DataModuleFactory.build(self.cfg, df)
         dm.setup()
 
-        trainer = TrainerFactory.create(model_name, wrapper)
+        trainer = TrainerFactory.create(
+            model_name, wrapper, self.cfg.training.artifacts_dir
+        )
 
         # Dispatch theo DataModule class → không đụng vào model logic
         if isinstance(dm, TSDLDataModule):
