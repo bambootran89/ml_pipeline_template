@@ -3,7 +3,7 @@ from typing import Any, Dict
 from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
-from mlproject.src.eval.evaluator import mae, mse, smape
+from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
 from mlproject.src.pipeline.base import BasePipeline
@@ -84,20 +84,7 @@ class TrainingPipeline(BasePipeline):
 
         # Evaluation
         x_test, y_test = dm.get_test_windows()
-        self.evaluate(wrapper, x_test, y_test)
-
-    def evaluate(self, wrapper, x_test, y_test):
-        """
-        Evaluate model on test set and print metrics.
-
-        Args:
-            wrapper: Trained model wrapper.
-            x_test: Test input windows.
-            y_test: Test target values.
-        """
         preds = wrapper.predict(x_test)
-        print(
-            f"MAE={mae(y_test, preds):.6f}, "
-            f"MSE={mse(y_test, preds):.6f}, "
-            f"SMAPE={smape(y_test, preds):.6f}"
-        )
+        metrics = TimeSeriesEvaluator().evaluate(y_test, preds)
+
+        print(metrics)

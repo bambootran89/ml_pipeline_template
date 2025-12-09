@@ -1,5 +1,5 @@
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
-from mlproject.src.eval.evaluator import mae, mse, smape
+from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
 from mlproject.src.pipeline.base import BasePipeline
@@ -80,9 +80,6 @@ class EvalPipeline(BasePipeline):
 
         wrapper = self._load_model(approach)
         preds = wrapper.predict(x_test)
+        metrics = TimeSeriesEvaluator().evaluate(y_test, preds)
 
-        print(
-            f"[EVAL] MAE={mae(y_test, preds):.6f}, "
-            f"MSE={mse(y_test, preds):.6f}, "
-            f"SMAPE={smape(y_test, preds):.6f}"
-        )
+        print(metrics)
