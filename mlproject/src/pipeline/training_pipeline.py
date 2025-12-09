@@ -9,7 +9,7 @@ from mlproject.src.models.tft_wrapper import TFTWrapper
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.offline import OfflinePreprocessor
-from mlproject.src.trainer.trainer import train_model
+from mlproject.src.trainer.dl_trainer import DeepLearningTrainer
 
 
 class TrainingPipeline(BasePipeline):
@@ -63,13 +63,7 @@ class TrainingPipeline(BasePipeline):
         raise RuntimeError(f"Unknown model {name}")
 
     def run_approach(self, approach: Dict[str, Any], data):
-        """
-        Train and evaluate one approach.
-
-        Args:
-            approach: Experiment approach config.
-            data: Preprocessed DataFrame (already fitted and transformed).
-        """
+        """Train and evaluate one approach."""
         df = data
         batch_size = int(approach.get("hyperparams", {}).get("batch_size", 16))
         num_workers = self.cfg.training.get("num_workers", 0)
@@ -80,15 +74,12 @@ class TrainingPipeline(BasePipeline):
 
         wrapper = self._init_model(approach)
 
-        wrapper = train_model(
-            wrapper,
-            train_loader,
-            val_loader,
-            approach.get("hyperparams", {}),
-            device=self.cfg.training.get("device", "cpu"),
-            save_dir=self.cfg.training.get(
-                "artifacts_dir", "mlproject/artifacts/models"
-            ),
+        # Use DeepLearningTrainer for PyTorch wrappers
+        trainer = DeepLearningTrainer(
+            wrapper, device=self.cfg.training.get("device", "cpu")
+        )
+        wrapper = trainer.train(
+            train_loader, val_loader, approach.get("hyperparams", {})
         )
 
         # Evaluation
