@@ -5,7 +5,7 @@ from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
-from mlproject.src.preprocess.online import test_preprocess_request
+from mlproject.src.preprocess.online import serve_preprocess_request
 
 
 class TestPipeline(BasePipeline):
@@ -35,7 +35,7 @@ class TestPipeline(BasePipeline):
         """
         if data is None:
             raise ValueError("Test mode requires input data")
-        return test_preprocess_request(data, self.cfg)
+        return serve_preprocess_request(data, self.cfg)
 
     def _load_model(self, approach):
         """

@@ -58,7 +58,7 @@ This structure keeps the code simple while staying aligned with how real systems
 
 - **pipeline/**
   - `run_pipeline.py` orchestrates complete pipeline: config load → datamodule → model → trainer → evaluation → artifact save.
-  - Separate pipelines for training, evaluation, and testing (`training_pipeline.py`, `eval_pipeline.py`, `test_pipeline.py`).
+  - Separate pipelines for training, evaluation, and testing (`training_pipeline.py`, `eval_pipeline.py`, `serve_pipeline.py`).
 
 
 ---
@@ -75,12 +75,12 @@ Introduces a clean separation between ML and DL data handling.
 - Returns PyTorch DataLoaders with windowed datasets for sequential DL models.
 - Encapsulates batch/window creation and ensures temporal splits are correct.
 
-> All DataModule logic lives in `src/data/` and replaces old ad-hoc DataLoader usage.
+> All DataModule logic lives in `src/datamodule/` and replaces old ad-hoc DataLoader usage.
 
 ---
 
 ## Clear Separation of Concerns
-- `src/data/` is dedicated exclusively to training, now via DataModules.
+- `src/datamodule/` is dedicated exclusively to training, now via DataModules.
 - `src/preprocess/offline.py` performs heavy, offline feature engineering and artifact saving.
 - `src/preprocess/online.py` performs serving-safe, deterministic preprocessing only.
 - `src/preprocess/engine.py` orchestrates runtime preprocessing with low-latency guarantees.
@@ -160,7 +160,15 @@ python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/e
 python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth1.yaml
 python -m mlproject.src.pipeline.run_pipeline test --config mlproject/configs/experiments/etth1.yaml --input sample_input.csv
 ```
-Start API
+Start FastAPI API
 ```bash
 uvicorn mlproject.serve.api:app --reload
+```
+
+Deployment with Ray
+```bash
+1. ray start --head
+2. python mlproject/serve/ray/ray_deploy.py
+3. curl http://localhost:8000/health
+4. ray stop
 ```

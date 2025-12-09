@@ -49,7 +49,7 @@ def online_preprocess_request(
     return df.iloc[0].to_dict()
 
 
-def test_preprocess_request(
+def serve_preprocess_request(
     df: pd.DataFrame, cfg: Optional[DictConfig] = None
 ) -> pd.DataFrame:
     """

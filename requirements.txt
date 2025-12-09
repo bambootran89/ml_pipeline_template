@@ -5,6 +5,7 @@ torch
 torchvision
 pydantic
 fastapi
+ray[serve]
 uvicorn
 omegaconf
 pytest

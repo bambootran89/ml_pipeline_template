@@ -3,7 +3,7 @@ import argparse
 import pandas as pd
 
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
-from mlproject.src.pipeline.test_pipeline import TestPipeline
+from mlproject.src.pipeline.serve_pipeline import TestPipeline
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
 
 

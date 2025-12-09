@@ -7,7 +7,7 @@ import pandas as pd
 from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
 from mlproject.src.pipeline.config_loader import ConfigLoader
-from mlproject.src.preprocess.online import test_preprocess_request
+from mlproject.src.preprocess.online import serve_preprocess_request
 
 ARTIFACTS_DIR = os.path.join("mlproject", "artifacts", "models")
 CONFIG_PATH = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
@@ -104,7 +104,7 @@ class ModelService:
         df = pd.DataFrame(data_dict)
         if "date" in df.columns:
             df = df.set_index("date")
-        return test_preprocess_request(df, self.cfg)
+        return serve_preprocess_request(df, self.cfg)
 
     def prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
         """
