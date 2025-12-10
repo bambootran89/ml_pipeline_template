@@ -4,6 +4,7 @@ defaults:
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
+  - ../base/mlflow.yaml
 
 experiment:
   name: "multivariate_tft"
