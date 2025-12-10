@@ -23,10 +23,8 @@ class PredictRequest(BaseModel):
         }
     """
 
-    # Sử dụng List[Any] để tránh warning về type hint
     data: Dict[str, List[Any]]
 
-    # CẬP NHẬT: Dùng model_config thay cho class Config (Pydantic V2)
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
