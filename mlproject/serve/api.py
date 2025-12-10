@@ -1,11 +1,4 @@
-import uvicorn
-from fastapi import FastAPI, HTTPException
-
-from mlproject.serve.models_service import ModelsService
-from mlproject.serve.schemas import PredictRequest
-
-"""
-API module for serving time series forecasts.
+"""API module for serving time series forecasts.
 
 Provides three endpoints:
 - GET /health
@@ -13,6 +6,11 @@ Provides three endpoints:
 - POST /predict
 """
 
+import uvicorn
+from fastapi import FastAPI, HTTPException
+
+from mlproject.serve.models_service import ModelsService
+from mlproject.serve.schemas import PredictRequest
 
 # Initialize FastAPI app
 app = FastAPI(title="TS Forecasting API", version="1.0.0")
@@ -59,10 +57,14 @@ def predict(request: PredictRequest):
         return result
 
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # explicitly chain exception
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+        # explicitly chain exception
+        raise HTTPException(
+            status_code=500, detail=f"Internal Server Error: {str(e)}"
+        ) from e
 
 
 if __name__ == "__main__":

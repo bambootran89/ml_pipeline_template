@@ -1,3 +1,8 @@
+"""ModelsService module.
+
+Contains ModelsService which loads a model and runs inference.
+"""
+
 from typing import Any, Dict
 
 import mlflow
@@ -10,12 +15,6 @@ from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.online import serve_preprocess_request
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-
-"""
-ModelsService module.
-
-Contains ModelsService which loads a model and runs inference.
-"""
 
 
 class ModelsService:
@@ -48,41 +47,26 @@ class ModelsService:
         self.load_model()
 
     def load_model(self):
-        """
-        Load model according to configuration priority.
-
-        Priority:
-        1. MLflow Registry (if enabled).
-        2. Local artifacts directory (fallback).
-
-        The method assigns self.model. On failure to load
-        from MLflow, it logs a warning and loads local model.
-        """
-        # 1. Try Loading from MLflow Registry
+        """Load model from MLflow Registry or fallback to local artifacts."""
         if self.mlflow_manager.enabled:
             try:
                 registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
                 model_name = registry_conf.get("model_name", "ts_forecast_model")
-                version = "latest"  # Can be parameterized if needed
-
+                version = "latest"
                 model_uri = f"models:/{model_name}/{version}"
                 print(
-                    f"[ModelsService] Loading model from MLflow Registry: "
-                    f"{model_uri}"
+                    f"[ModelsService] Loading model from MLflow Registry: {model_uri}"
                 )
-
                 self.model = mlflow.pyfunc.load_model(model_uri)
                 return
-            except Exception as e:  # pragma: no cover - runtime loading error
+            except Exception as e:
                 print(
-                    "[ModelsService] Warning: Could not load from MLflow "
-                    f"({e}). Falling back to local artifacts."
+                    f"[ModelsService] Warning: Could not load from MLflow ({e}). "
+                    "Falling back to local artifacts."
                 )
 
-        # 2. Fallback: Load from Local Artifacts
+        # Fallback to local artifacts
         print("[ModelsService] Loading model from Local Artifacts...")
-
-        # Assume single approach for simplicity or get from config
         approach = self.cfg.approaches[0]
         name = approach["model"].lower()
         hp = approach.get("hyperparams", {})
@@ -93,81 +77,30 @@ class ModelsService:
         self.model = ModelFactory.load(name, hp, self.cfg.training.artifacts_dir)
 
     def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
-        """
-        Build the model input window from a preprocessed DataFrame.
-
-        Steps:
-        - Read input_chunk_length from config.
-        - Ensure DataFrame has enough rows.
-        - Extract the last window rows.
-        - Return array shaped [1, seq_len, features] as float32.
-
-        Raises:
-            ValueError: If provided DataFrame is shorter than
-                the configured input window length.
-        """
-        # Get input_chunk_length from first approach hyperparams
+        """Build model input window from preprocessed DataFrame."""
         input_chunk_length = self.cfg.approaches[0].hyperparams.get(
             "input_chunk_length", 24
         )
-
         if len(df) < input_chunk_length:
             raise ValueError(
                 f"Not enough data. Needed {input_chunk_length}, got {len(df)}"
             )
 
-        # Take the last 'input_chunk_length' rows
         window = df.iloc[-input_chunk_length:].values
-
-        # Expand dims to [1, seq_len, features] and cast to float32
-        # (Required for MLflow PyFunc and many wrappers)
         return window[np.newaxis, :].astype(np.float32)
 
     def predict(self, request: PredictRequest) -> Dict[str, Any]:
-        """
-        Run full prediction pipeline and return JSON-serializable dict.
-
-        Flow:
-        1. Convert request.data to pandas.DataFrame.
-        2. Apply serving preprocessing (serve_preprocess_request).
-        3. Build input window via _prepare_input_window.
-        4. Call model.predict and flatten results.
-
-        Args:
-            request: PredictRequest object containing input data.
-                Expectation: request.data is convertible to a
-                pandas.DataFrame (list[dict] or list[list]).
-
-        Returns:
-            A dict with key "prediction" and value as a list of
-            numeric predictions (JSON serializable).
-
-        Raises:
-            RuntimeError: If model is not loaded.
-            Exception: Propagates unexpected errors during processing.
-        """
+        """Run full prediction pipeline and return JSON-serializable dict."""
         if self.model is None:
             raise RuntimeError("Model is not loaded.")
 
         try:
-            # 1. Convert Input Data to DataFrame
-            # Assuming request.data is a list of dicts or list of lists
             data = pd.DataFrame(request.data)
-
-            # 2. Preprocess (Scaling/Feature Engineering)
             df_transformed = serve_preprocess_request(data, self.cfg)
-
-            # 3. Prepare Input Window
             x_input = self._prepare_input_window(df_transformed)
-
-            # 4. Predict
-            # Works for both MLflow PyFunc and Custom Wrapper
             preds = self.model.predict(x_input)
-
-            # 5. Format Output
-            # Flatten to 1D list for JSON response
             return {"prediction": preds.flatten().tolist()}
 
-        except Exception as e:  # pragma: no cover - propagate runtime errors
+        except Exception as e:
             print(f"[ModelsService] Error during prediction: {e}")
             raise e

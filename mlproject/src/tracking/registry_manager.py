@@ -8,6 +8,7 @@ MLflow Model Registry.
 from typing import Optional
 
 import mlflow
+from mlflow.entities.model_registry import ModelVersion
 
 
 class RegistryManager:
@@ -32,7 +33,7 @@ class RegistryManager:
 
     def register_model(
         self, model_uri: str, model_name: Optional[str] = None
-    ) -> Optional[mlflow.entities.ModelVersion]:
+    ) -> Optional[ModelVersion]:
         """
         Register a model in the MLflow Model Registry.
 
@@ -46,7 +47,7 @@ class RegistryManager:
                 Defaults to None.
 
         Returns:
-            Optional[mlflow.entities.ModelVersion]:
+            Optional[ModelVersion]:
               Registered model version, or None if disabled.
         """
         if not self.enabled:

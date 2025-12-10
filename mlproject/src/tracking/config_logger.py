@@ -7,7 +7,7 @@ Provides ConfigLogger to standardize logging:
 - Logging training/validation metrics
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import mlflow
 from omegaconf import OmegaConf
@@ -39,8 +39,15 @@ class ConfigLogger:
         Returns:
             None
         """
-        cfg_dict = OmegaConf.to_container(cfg, resolve=True)
-        mlflow.log_dict(cfg_dict, "config/full_config.yaml")
+        cfg_dict_raw = OmegaConf.to_container(cfg, resolve=True)
+        # Ensure type is dict[str, Any] for mypy
+        if isinstance(cfg_dict_raw, dict):
+            cfg_dict: Dict[str, Any] = {str(k): v for k, v in cfg_dict_raw.items()}
+            mlflow.log_dict(cfg_dict, "config/full_config.yaml")
+        else:
+            raise TypeError(
+                f"Expected OmegaConf container to be dict, got {type(cfg_dict_raw)}"
+            )
 
     @staticmethod
     def flatten_dict(
@@ -59,7 +66,7 @@ class ConfigLogger:
         Returns:
             Dict[str, Any]: A new dictionary with flattened keys.
         """
-        items = []
+        items: List[Tuple[str, Any]] = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
             if isinstance(v, dict):

@@ -11,6 +11,7 @@ import mlflow
 import mlflow.pyfunc
 import numpy as np
 from mlflow.models import infer_signature
+from mlflow.pyfunc import PyFuncModel
 
 from .pyfunc_wrapper import MLflowModelWrapper
 
@@ -53,13 +54,13 @@ class ModelLogger:
         Args:
             model_wrapper (Any): Model object implementing predict().
             artifact_path (str, optional):
-            Path within the MLflow run to log the model. Defaults to "model".
+                Path within the MLflow run to log the model. Defaults to "model".
             input_example (Optional[Any], optional):
-              Example input for schema inference. Defaults to None.
+                 Example input for schema inference. Defaults to None.
             signature (Optional[Any], optional):
-            MLflow signature object. Defaults to None.
+                MLflow signature object. Defaults to None.
             registered_model_name (Optional[str], optional):
-            Name to register the model in MLflow Registry. Defaults to None.
+                 Name to register the model in MLflow Registry. Defaults to None.
 
         Returns:
             None
@@ -90,7 +91,7 @@ class ModelLogger:
             registered_model_name=registered_model_name,
         )
 
-    def load_model(self, model_uri: str) -> mlflow.pyfunc.PyFuncModel:
+    def load_model(self, model_uri: str) -> PyFuncModel:
         """
         Load a PyFunc model from MLflow.
 
@@ -98,7 +99,7 @@ class ModelLogger:
             model_uri (str): MLflow model URI (e.g., runs:/<run_id>/model).
 
         Returns:
-            mlflow.pyfunc.PyFuncModel: Loaded PyFunc model.
+            PyFuncModel: Loaded MLflow PyFunc model.
         """
         print(f"[MLflow] Loading model from: {model_uri}")
         return mlflow.pyfunc.load_model(model_uri)

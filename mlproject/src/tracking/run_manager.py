@@ -12,6 +12,14 @@ from typing import Generator, Optional
 import mlflow
 import pandas as pd
 
+# Optional import of git for logging git metadata
+try:
+    import git
+
+    _GIT_AVAILABLE = True
+except ImportError:
+    _GIT_AVAILABLE = False
+
 
 class RunManager:
     """
@@ -45,7 +53,7 @@ class RunManager:
 
         Args:
             run_name (Optional[str]):
-            Display name for the run. Defaults to a timestamped name.
+                Display name for the run. Defaults to a timestamped name.
 
         Yields:
             Optional[mlflow.ActiveRun]: Active MLflow run if enabled, else None.
@@ -71,16 +79,15 @@ class RunManager:
             - Git commit hash and dirty flag (if git is available)
             - Username of the executing environment
         """
-        try:
-            import git
+        if _GIT_AVAILABLE:
+            try:
+                repo = git.Repo(search_parent_directories=True)
+                sha = repo.head.object.hexsha
+                mlflow.set_tag("git_commit", sha)
 
-            repo = git.Repo(search_parent_directories=True)
-            sha = repo.head.object.hexsha
-            mlflow.set_tag("git_commit", sha)
-
-            if repo.is_dirty():
-                mlflow.set_tag("git_dirty", "True")
-        except Exception:
-            pass
+                if repo.is_dirty():
+                    mlflow.set_tag("git_dirty", "True")
+            except Exception:
+                pass
 
         mlflow.set_tag("user", getpass.getuser())

@@ -1,18 +1,11 @@
-"""
-PyFunc model wrapper for MLflow.
+from typing import Any
 
-Provides MLflowModelWrapper to serve arbitrary model wrappers
-through MLflow PyFunc interface, ensuring consistent input preprocessing.
-"""
-
-from typing import Any, Union
-
-import mlflow.pyfunc
 import numpy as np
 import pandas as pd
+from mlflow.pyfunc import PythonModel
 
 
-class MLflowModelWrapper(mlflow.pyfunc.PythonModel):
+class MLflowModelWrapper(PythonModel):
     """
     MLflow PyFunc wrapper for serving arbitrary model wrappers.
 
@@ -33,7 +26,7 @@ class MLflowModelWrapper(mlflow.pyfunc.PythonModel):
         self.model_wrapper = model_wrapper
 
     def predict(
-        self, context: Any, model_input: Union[np.ndarray, pd.DataFrame]
+        self, context: Any, model_input: Any, params: dict[str, Any] | None = None
     ) -> Any:
         """
         Execute model prediction using standardized input.
@@ -43,8 +36,8 @@ class MLflowModelWrapper(mlflow.pyfunc.PythonModel):
 
         Args:
             context (Any): MLflow context (unused).
-            model_input (Union[np.ndarray, pd.DataFrame]):
-              Raw input data for prediction.
+            model_input (Any): Raw input data for prediction.
+            params (dict[str, Any] | None): Optional parameters (unused).
 
         Returns:
             Any: Predictions from the wrapped model.
@@ -54,3 +47,18 @@ class MLflowModelWrapper(mlflow.pyfunc.PythonModel):
 
         model_input = np.asarray(model_input, dtype=np.float32)
         return self.model_wrapper.predict(model_input)
+
+    def predict_stream(
+        self, context: Any, model_input: Any, params: dict[str, Any] | None = None
+    ) -> Any:
+        """
+        Implement abstract method predict_stream to satisfy PythonModel.
+
+        Simply calls self.predict; MLflow streaming input is passed as model_input.
+
+        Args:
+            context (Any): MLflow context (unused)
+            model_input (Any): Streaming input
+            params (dict[str, Any] | None): Optional parameters (unused)
+        """
+        return self.predict(context, model_input, params)
