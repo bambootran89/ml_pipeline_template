@@ -8,33 +8,26 @@ Run:
 import os
 from typing import Any, Dict, List
 
+import mlflow
 import numpy as np
 import pandas as pd
 import ray
 from fastapi import FastAPI, HTTPException
+from omegaconf import DictConfig, OmegaConf
 from ray import serve
 
 from mlproject.serve.schemas import PredictRequest
-from mlproject.src.models.nlinear_wrapper import NLinearWrapper
-from mlproject.src.models.tft_wrapper import TFTWrapper
+from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.online import serve_preprocess_request
+from mlproject.src.tracking.mlflow_manager import MLflowManager
 
-# --------------------------
-# Config / Artifacts paths
-# --------------------------
 ARTIFACTS_DIR = os.path.join("mlproject", "artifacts", "models")
 CONFIG_PATH = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
 
-# --------------------------
-# FastAPI app
-# --------------------------
 app = FastAPI(title="mlproject Ray Serve Forecast API")
 
 
-# --------------------------
-# Ray Deployments
-# --------------------------
 @serve.deployment  # type: ignore
 class PreprocessingService:
     """Ray deployment for preprocessing input data."""
@@ -65,24 +58,40 @@ class ModelService:
 
     def __init__(self):
         """Initialize model service and load the trained model."""
-        cfg = ConfigLoader.load(CONFIG_PATH)
-        self.cfg = cfg
+        self.cfg = ConfigLoader.load(CONFIG_PATH)
+        self.mlflow_manager = MLflowManager(self.cfg)
+        self.model = None
+        self.model_loaded = False
+
+        if self.mlflow_manager.enabled:
+            try:
+                registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
+                model_name = registry_conf.get("model_name", "ts_forecast_model")
+                version = "latest"
+                model_uri = f"models:/{model_name}/{version}"
+                print(f"[ModelService] Loading MLflow model: {model_uri}")
+                self.model = mlflow.pyfunc.load_model(model_uri)
+                self.model_loaded = True
+            except Exception as e:
+                print(
+                    f"[ModelService] Warning: \
+                          Could not load MLflow model ({e}). \
+                              Falling back to local artifacts."
+                )
+
+        if not self.model_loaded:
+            approach = self.cfg.approaches[0]
+            name = approach["model"].lower()
+            hp = approach.get("hyperparams", {})
+            if isinstance(hp, DictConfig):
+                hp = OmegaConf.to_container(hp, resolve=True)
+            self.model = ModelFactory.load(name, hp, ARTIFACTS_DIR)
+            self.model_loaded = True
+
         experiment = self.cfg.experiment
         self.input_chunk_length = experiment.get("hyperparams", {}).get(
             "input_chunk_length", 24
         )
-        model_name = experiment.get("model")
-        hp = experiment.get("hyperparams", {})
-
-        if model_name == "nlinear":
-            self.model = NLinearWrapper(hp)
-        elif model_name == "tft":
-            self.model = TFTWrapper(hp)
-        else:
-            raise RuntimeError(f"Unknown model {model_name}")
-
-        self.model.load(ARTIFACTS_DIR)
-        self.model_loaded = True
 
     def predict(self, x_input: np.ndarray) -> List[float]:
         """

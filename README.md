@@ -30,93 +30,107 @@ This structure keeps the code simple while staying aligned with how real systems
 
 ---
 
-## 2. Highlights Inside `src/`
+## 2. MLProject Directory Structure Documentation
+*Perspective: OOP + Modern MLOps*
 
 ---
 
-- **datamodule/**
-  - Provides a unified interface for ML & DL data handling.
-  - ML vs DL separated: `tsml.py` for XGBoost/sklearn; `tsdl.py` for PyTorch.
-  - `dm_factory.py` allows easy instantiation based on model type.
+### Root Package
 
-- **preprocess/**
-  - Offline preprocessing (`offline.py`) for training: scaling, feature engineering, missing values.
-  - Online preprocessing (`online.py`) for serving: deterministic, ensures no train-serving drift.
-  - `engine.py` centralizes all transform logic.
+- `configs/`
+  Configuration-driven design separates **hyperparameters, paths, experiment overrides**.
+  - `base/` — Reusable core configs.
+    - `data.yaml`, `evaluation.yaml`, `mlflow.yaml`, `model.yaml`, `preprocessing.yaml`, `training.yaml`
+  - `experiments/` — Specific experiment configs.
+    - `etth1.yaml`, `etth2.yaml`, `etth3.yaml`
+    > Demonstrates **reproducibility & parameterized experimentation**.
 
-- **models/**
-  - Wrap models with consistent API (`fit/predict/save/load`).
-  - Supports multiple architectures (`NLinear`, `TFT`) via wrapper classes.
+- `data/`
+  Raw datasets; **source-of-truth separated**.
+  - `ETTh1.csv` — example time-series dataset.
 
-- **trainer/**
-  - Centralized training loop for both ML and DL models.
-  - TrainerFactory instantiates correct trainer based on model type.
-  - DL-specific logic isolated in `dltrainer.py`.
-
-- **eval/**
-  - Centralized evaluation metrics (MAE, MSE, SMAPE) for both ML and DL.
-
-- **pipeline/**
-  - `run_pipeline.py` orchestrates complete pipeline: config load → datamodule → model → trainer → evaluation → artifact save.
-  - Separate pipelines for training, evaluation, and testing (`training_pipeline.py`, `eval_pipeline.py`, `serve_pipeline.py`).
-
+- `run.py`
+  CLI / orchestrator for training, evaluation, serving. Implements **single responsibility principle**.
 
 ---
 
-## DataModule Abstraction
+### Serving Layer (`serve/`)
+Separation of concerns: API, services, schemas, deployment scripts.
 
-Introduces a clean separation between ML and DL data handling.
-
-### MLDataModule
-- Returns numpy arrays for traditional ML models (XGBoost, sklearn).
-- Handles train/val/test splits and optional feature selection.
-
-### DLDataModule
-- Returns PyTorch DataLoaders with windowed datasets for sequential DL models.
-- Encapsulates batch/window creation and ensures temporal splits are correct.
-
-> All DataModule logic lives in `src/datamodule/` and replaces old ad-hoc DataLoader usage.
-
----
-
-## Clear Separation of Concerns
-- `src/datamodule/` is dedicated exclusively to training, now via DataModules.
-- `src/preprocess/offline.py` performs heavy, offline feature engineering and artifact saving.
-- `src/preprocess/online.py` performs serving-safe, deterministic preprocessing only.
-- `src/preprocess/engine.py` orchestrates runtime preprocessing with low-latency guarantees.
-
-> This strict separation ensures production safety and prevents accidental coupling with training logic.
+- `api.py` — FastAPI endpoints; minimal logic, delegates to service classes.
+- `models_service.py` — Encapsulates:
+  - Model loading (MLflow or local)
+  - Input preprocessing
+  - Windowing
+  - Prediction
+  > **Reusable service class** for API, Ray, or CLI.
+- `schemas.py` — Pydantic models for validation.
+- `ray/` — Ray Serve deployment.
+  - `ray_deploy.py` — PreprocessingService & ModelService, exposes ForecastAPI.
 
 ---
 
-## Config-Driven Architecture
-- All components—data, preprocessing, models, evaluation—are fully modular and configured through versioned YAML files.
-- Enables reproducible experiments, controlled variations, and seamless component swapping without code changes.
+### Core ML Library (`src/`)
+
+#### `datamodule/` — Dataset abstraction & modular pipelines
+- `dataset.py` — Base dataset interface
+- `dm_factory.py` — Factory pattern for data modules
+- `tsbase.py` — Base class for time-series datasets
+- `tsdl.py` — Deep learning DataLoader
+- `tsml.py` — Traditional ML DataLoader
+
+#### `eval/` — Evaluation layer
+- `base.py` — Abstract evaluation class
+- `regression_eval.py` — MAE, MSE, SMAPE; **strategy pattern** for metric selection
+- `ts_eval.py` — Time-series specific evaluation
+
+#### `models/` — Model implementations & wrappers
+- `base.py` — Base model interface (`fit`, `predict`)
+- `model_factory.py` — Factory pattern
+- `nlinear_wrapper.py`, `tft_wrapper.py`, `xgboost_wrapper.py` — Adapter pattern for unified API
+
+#### `pipeline/` — Orchestration layer
+- `base.py` — Abstract BasePipeline class
+- `config_loader.py` — Hierarchical config loader
+- `eval_pipeline.py`, `run_pipeline.py`, `serve_pipeline.py`, `training_pipeline.py` — Full ML lifecycle orchestration
+
+#### `preprocess/` — Feature engineering
+- `base.py` — Abstract Preprocessor interface
+- `engine.py` — Core transformation logic
+- `offline.py` — Training-time preprocessing
+- `online.py` — Serving-time preprocessing
+> Guarantees **train-serving parity** (critical in MLOps)
+
+#### `tracking/` — MLflow & experiment tracking
+- `config_logger.py` — Logging setup
+- `experiment_manager.py` — Manages experiments lifecycle
+- `mlflow_manager.py` — MLflow wrapper
+- `model_logger.py` — Logs model metadata
+- `pyfunc_wrapper.py` — Makes arbitrary models MLflow PyFunc compatible
+- `registry_manager.py` — MLflow registry interactions
+- `run_manager.py` — Run lifecycle & reproducibility metadata
+> Supports **reproducibility, auditability, and experiment versioning**
+
+#### `trainer/` — Training abstractions
+- `base_trainer.py` — Base trainer interface
+- `dl_trainer.py` — Deep learning trainer
+- `ml_trainer.py` — Traditional ML trainer
+- `trainer_factory.py` — Dynamic trainer instantiation (**factory pattern**)
 
 ---
 
-## Feature-Store-Ready Design
-Even in the absence of a formal feature store, the project mirrors its conceptual structure:
-
-- Offline preprocessing aligns with what an **offline feature store** would compute (batch, historical, heavy transforms).
-- Online preprocessing reflects what an **online feature store** would provide (real-time, latency-safe features).
-
-> This makes future integration with Feast, Feathr, Tecton, or similar systems effectively plug-and-play.
-
+### Design Patterns & Best Practices Highlighted
+1. **Encapsulation:** Expose minimal public API, hide internal logic.
+2. **Modularity & Reusability:** Services reusable across FastAPI, Ray, CLI.
+3. **Factory Pattern:** `ModelFactory`, `TrainerFactory`, `DataModuleFactory`.
+4. **Adapter Pattern:** Standardizes `predict` interface across heterogeneous models.
+5. **Separation of Concerns:** `preprocess/` vs `models/` vs `pipeline/` vs `tracking/`.
+6. **Configuration-Driven Design:** All hyperparameters, paths, experiment settings live in `configs/`.
+7. **Reproducibility & Experiment Tracking:** MLflow + `run_manager` ensures audit trail.
+8. **Train-Serving Parity:** Offline and online preprocessing ensures consistent production input.
+9. **Deployment Ready:** FastAPI + Ray Serve for **scalable, async endpoints**.
 
 ---
-
-## 4. Summary
-
-This architecture strikes a balance between **simplicity** and **production scalability**:
-
-- Lean, maintainable codebase
-- Strong separation between training and serving paths
-- Guaranteed consistency with no preprocessing drift
-- Designed for seamless integration with feature stores, model registries, and monitoring systems
-
-Overall, it provides a lightweight yet production-aligned template for building reliable, end-to-end ML pipelines.
-
 
 # Usage Guide
 
@@ -167,8 +181,8 @@ uvicorn mlproject.serve.api:app --reload
 
 Deployment with Ray
 ```bash
-1. ray start --head
-2. python mlproject/serve/ray/ray_deploy.py
-3. curl http://localhost:8000/health
-4. ray stop
+ray start --head
+python mlproject/serve/ray/ray_deploy.py
+curl http://localhost:8000/health
+ray stop
 ```
