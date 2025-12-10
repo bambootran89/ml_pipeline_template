@@ -1,8 +1,11 @@
 """
-Model logging utilities for MLflow:
-- log_model() for pyfunc custom models
-- load_model() helper
+Model logging utilities for MLflow.
+
+Provides ModelLogger to handle logging and loading PyFunc models,
+including automatic signature inference and optional registry registration.
 """
+
+from typing import Any, Optional
 
 import mlflow
 import mlflow.pyfunc
@@ -14,35 +17,52 @@ from .pyfunc_wrapper import MLflowModelWrapper
 
 class ModelLogger:
     """
-    Handles logging pyfunc models and loading models back.
+    Handles logging and loading MLflow PyFunc models.
+
+    Attributes:
+        mlflow_cfg (dict): MLflow-specific configuration block.
+        enabled (bool): Flag indicating whether MLflow tracking is enabled.
     """
 
-    def __init__(self, mlflow_cfg, enabled: bool):
+    def __init__(self, mlflow_cfg: dict, enabled: bool):
         """
+        Initialize ModelLogger.
+
         Args:
-            mlflow_cfg: MLflow config.
-            enabled: Whether MLflow tracking is enabled.
+            mlflow_cfg (dict): MLflow configuration.
+            enabled (bool): Whether MLflow tracking is enabled.
         """
         self.mlflow_cfg = mlflow_cfg
         self.enabled = enabled
 
     def log_model(
         self,
-        model_wrapper,
-        artifact_path="model",
-        input_example=None,
-        signature=None,
-        registered_model_name=None,
-    ):
+        model_wrapper: Any,
+        artifact_path: str = "model",
+        input_example: Optional[Any] = None,
+        signature: Optional[Any] = None,
+        registered_model_name: Optional[str] = None,
+    ) -> None:
         """
-        Log wrapped model as MLflow pyfunc.
+        Log a wrapped model as an MLflow PyFunc model.
+
+        Converts the model_wrapper into a PyFunc model, infers the signature
+        from the input_example if not provided, and logs the model to MLflow.
+        Optionally registers the model in the MLflow Registry.
 
         Args:
-            model_wrapper: Custom wrapper implementing predict().
-            artifact_path: MLflow artifact folder path.
-            input_example: Optional example input.
-            signature: Optional MLflow signature.
-            registered_model_name: Optional registry name.
+            model_wrapper (Any): Model object implementing predict().
+            artifact_path (str, optional):
+            Path within the MLflow run to log the model. Defaults to "model".
+            input_example (Optional[Any], optional):
+              Example input for schema inference. Defaults to None.
+            signature (Optional[Any], optional):
+            MLflow signature object. Defaults to None.
+            registered_model_name (Optional[str], optional):
+            Name to register the model in MLflow Registry. Defaults to None.
+
+        Returns:
+            None
         """
         if not self.enabled:
             return
@@ -70,15 +90,15 @@ class ModelLogger:
             registered_model_name=registered_model_name,
         )
 
-    def load_model(self, model_uri: str):
+    def load_model(self, model_uri: str) -> mlflow.pyfunc.PyFuncModel:
         """
-        Load a pyfunc model from MLflow.
+        Load a PyFunc model from MLflow.
 
         Args:
-            model_uri: e.g. "runs:/<id>/model"
+            model_uri (str): MLflow model URI (e.g., runs:/<run_id>/model).
 
         Returns:
-            PythonModel
+            mlflow.pyfunc.PyFuncModel: Loaded PyFunc model.
         """
         print(f"[MLflow] Loading model from: {model_uri}")
         return mlflow.pyfunc.load_model(model_uri)

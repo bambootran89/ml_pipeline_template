@@ -1,9 +1,13 @@
 """
-Run lifecycle & environment metadata logging for MLflow.
+Run lifecycle and environment metadata logging for MLflow.
+
+Provides RunManager to manage MLflow runs, including context-managed
+lifecycle and logging of reproducibility metadata.
 """
 
 import contextlib
 import getpass
+from typing import Generator, Optional
 
 import mlflow
 import pandas as pd
@@ -11,29 +15,40 @@ import pandas as pd
 
 class RunManager:
     """
-    Provides:
-    - MLflow start_run() context manager
-    - Environment info logging (git commit, user)
+    Manages MLflow run lifecycle and environment metadata logging.
+
+    Attributes:
+        mlflow_cfg (dict): MLflow-specific configuration block.
+        enabled (bool): Flag indicating whether MLflow tracking is enabled.
     """
 
-    def __init__(self, mlflow_cfg):
+    def __init__(self, mlflow_cfg: dict, enabled: bool):
         """
+        Initialize RunManager.
+
         Args:
-            mlflow_cfg: MLflow config block.
+            mlflow_cfg (dict): MLflow configuration dictionary.
+            enabled (bool): Whether MLflow tracking is enabled.
         """
         self.mlflow_cfg = mlflow_cfg
-        self.enabled = mlflow_cfg.get("enabled", False)
+        self.enabled = enabled
 
     @contextlib.contextmanager
-    def start_run(self, run_name=None):
+    def start_run(
+        self, run_name: Optional[str] = None
+    ) -> Generator[Optional[mlflow.ActiveRun], None, None]:
         """
-        Context manager wrapper around mlflow.start_run().
+        Start an MLflow run within a context manager.
+
+        Automatically generates a timestamped run name if none is provided,
+        and logs environment metadata for reproducibility.
 
         Args:
-            run_name: Optional run display name.
+            run_name (Optional[str]):
+            Display name for the run. Defaults to a timestamped name.
 
         Yields:
-            Active MLflow run.
+            Optional[mlflow.ActiveRun]: Active MLflow run if enabled, else None.
         """
         if not self.enabled:
             yield None
@@ -48,11 +63,13 @@ class RunManager:
             self._log_environment_info()
             yield run
 
-    def _log_environment_info(self):
+    def _log_environment_info(self) -> None:
         """
-        Log metadata for reproducibility:
-        - Git commit & dirty flag
-        - Username
+        Log environment metadata for reproducibility.
+
+        Includes:
+            - Git commit hash and dirty flag (if git is available)
+            - Username of the executing environment
         """
         try:
             import git
