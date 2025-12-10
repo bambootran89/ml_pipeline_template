@@ -67,6 +67,15 @@ class ModelsService:
 
         # Fallback to local artifacts
         print("[ModelsService] Loading model from Local Artifacts...")
+
+        # FIX: Check if 'approaches' exists in config before accessing
+        if not self.cfg.get("approaches"):
+            print(
+                "[ModelsService] Warning: 'approaches' key missing in config. "
+                "Skipping local model load."
+            )
+            return
+
         approach = self.cfg.approaches[0]
         name = approach["model"].lower()
         hp = approach.get("hyperparams", {})
@@ -78,9 +87,13 @@ class ModelsService:
 
     def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
         """Build model input window from preprocessed DataFrame."""
-        input_chunk_length = self.cfg.approaches[0].hyperparams.get(
-            "input_chunk_length", 24
-        )
+        # FIX: Provide default if approaches is missing
+        input_chunk_length = 24
+        if self.cfg.get("approaches"):
+            input_chunk_length = self.cfg.approaches[0].hyperparams.get(
+                "input_chunk_length", 24
+            )
+
         if len(df) < input_chunk_length:
             raise ValueError(
                 f"Not enough data. Needed {input_chunk_length}, got {len(df)}"
