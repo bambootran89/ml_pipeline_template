@@ -1,148 +1,173 @@
-import os
-from typing import Dict, List
+from typing import Any, Dict
 
+import mlflow
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.models.nlinear_wrapper import NLinearWrapper
-from mlproject.src.models.tft_wrapper import TFTWrapper
+from mlproject.serve.schemas import PredictRequest
+from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.online import serve_preprocess_request
+from mlproject.src.tracking.mlflow_manager import MLflowManager
 
-ARTIFACTS_DIR = os.path.join("mlproject", "artifacts", "models")
-CONFIG_PATH = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
+"""
+ModelsService module.
+
+Contains ModelsService which loads a model and runs inference.
+"""
 
 
-class ModelService:
+class ModelsService:
     """
-    Service managing the model and configuration for time-series forecasting inference.
+    Unified service for loading models and serving predictions.
 
     Responsibilities:
-        1. Load configuration from YAML file.
-        2. Load a trained model (NLinearWrapper or TFTWrapper) from artifacts.
-        3. Preprocess raw input data into model-ready features.
-        4. Prepare the input window of appropriate length.
-        5. Perform predictions and return flattened output.
-
-    Attributes:
-        model: The loaded model wrapper instance.
-        cfg: The OmegaConf configuration object.
-        input_chunk_length: Number of timesteps required for the input window.
+    - Load model from MLflow Registry when enabled.
+    - Fall back to local artifacts when registry access fails.
+    - Preprocess incoming data for serving.
+    - Build model input windows and run inference.
     """
 
-    def __init__(self):
+    def __init__(self, cfg_path: str = ""):
         """
-        Initialize an empty ModelService instance.
+        Initialize service using a config path.
 
-        The model, configuration, and input_chunk_length are None until
-        `load_config` and `load_model` are called.
-        """
-        self.model = None
-        self.cfg = None
-        self.input_chunk_length = None
-
-    def load_config(self, cfg_path: str = CONFIG_PATH):
-        """
-        Load configuration from a YAML file and set input window length.
+        Loads configuration, instantiates MLflow manager,
+        and attempts to load the model on initialization.
 
         Args:
-            cfg_path (str): Path to the experiment config YAML file.
-
-        Side Effects:
-            Sets `self.cfg` and `self.input_chunk_length`.
+            cfg_path: Path to configuration file or empty to
+                use default loader behavior.
         """
         self.cfg = ConfigLoader.load(cfg_path)
-        experiment = self.cfg.experiment
-        self.input_chunk_length = experiment.get("hyperparams", {}).get(
-            "input_chunk_length", 24
-        )
+        self.model = None
+        self.mlflow_manager = MLflowManager(self.cfg)
+
+        # Load model on initialization
+        self.load_model()
 
     def load_model(self):
         """
-        Load the trained model from the artifacts directory.
+        Load model according to configuration priority.
+
+        Priority:
+        1. MLflow Registry (if enabled).
+        2. Local artifacts directory (fallback).
+
+        The method assigns self.model. On failure to load
+        from MLflow, it logs a warning and loads local model.
+        """
+        # 1. Try Loading from MLflow Registry
+        if self.mlflow_manager.enabled:
+            try:
+                registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
+                model_name = registry_conf.get("model_name", "ts_forecast_model")
+                version = "latest"  # Can be parameterized if needed
+
+                model_uri = f"models:/{model_name}/{version}"
+                print(
+                    f"[ModelsService] Loading model from MLflow Registry: "
+                    f"{model_uri}"
+                )
+
+                self.model = mlflow.pyfunc.load_model(model_uri)
+                return
+            except Exception as e:  # pragma: no cover - runtime loading error
+                print(
+                    "[ModelsService] Warning: Could not load from MLflow "
+                    f"({e}). Falling back to local artifacts."
+                )
+
+        # 2. Fallback: Load from Local Artifacts
+        print("[ModelsService] Loading model from Local Artifacts...")
+
+        # Assume single approach for simplicity or get from config
+        approach = self.cfg.approaches[0]
+        name = approach["model"].lower()
+        hp = approach.get("hyperparams", {})
+
+        if isinstance(hp, DictConfig):
+            hp = OmegaConf.to_container(hp, resolve=True)
+
+        self.model = ModelFactory.load(name, hp, self.cfg.training.artifacts_dir)
+
+    def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
+        """
+        Build the model input window from a preprocessed DataFrame.
+
+        Steps:
+        - Read input_chunk_length from config.
+        - Ensure DataFrame has enough rows.
+        - Extract the last window rows.
+        - Return array shaped [1, seq_len, features] as float32.
 
         Raises:
-            RuntimeError: If configuration has not been loaded.
-            RuntimeError: If the model type is unknown.
-
-        Side Effects:
-            Sets `self.model` to the loaded model wrapper.
+            ValueError: If provided DataFrame is shorter than
+                the configured input window length.
         """
-        if self.cfg is None:
-            raise RuntimeError("Config not loaded")
+        # Get input_chunk_length from first approach hyperparams
+        input_chunk_length = self.cfg.approaches[0].hyperparams.get(
+            "input_chunk_length", 24
+        )
 
-        experiment = self.cfg.experiment
-        model_name = experiment.get("model")
-        hp = experiment.get("hyperparams", {})
-
-        if model_name == "nlinear":
-            wrapper = NLinearWrapper(hp)
-        elif model_name == "tft":
-            wrapper = TFTWrapper(hp)
-        else:
-            raise RuntimeError(f"Unknown model {model_name}")
-
-        wrapper.load(ARTIFACTS_DIR)
-        self.model = wrapper
-
-    def preprocess(self, data_dict: Dict[str, List]) -> pd.DataFrame:
-        """
-        Convert raw input dictionary to a preprocessed DataFrame for inference.
-
-        Args:
-            data_dict (Dict[str, List]): Dictionary containing raw historical
-                                         data. Keys are feature names, values
-                                         are lists of feature values.
-
-        Returns:
-            pd.DataFrame: Transformed features ready for model input.
-
-        Side Effects:
-            Uses the loaded configuration (`self.cfg`) and preprocessing
-            utilities from `test_preprocess_request`.
-        """
-        df = pd.DataFrame(data_dict)
-        if "date" in df.columns:
-            df = df.set_index("date")
-        return serve_preprocess_request(df, self.cfg)
-
-    def prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
-        """
-        Extract the last `input_chunk_length` rows from transformed data.
-
-        Args:
-            df (pd.DataFrame): Preprocessed DataFrame.
-
-        Returns:
-            np.ndarray: 3D array shaped [1, seq_len, n_features] ready for
-                        model prediction.
-
-        Raises:
-            ValueError: If `df` has fewer rows than `self.input_chunk_length`.
-        """
-        if len(df) < self.input_chunk_length:
+        if len(df) < input_chunk_length:
             raise ValueError(
-                f"Input data has {len(df)} rows,\
-                      need at least {self.input_chunk_length}"
+                f"Not enough data. Needed {input_chunk_length}, got {len(df)}"
             )
-        return df.iloc[-self.input_chunk_length :].values[np.newaxis, :]
 
-    def predict(self, data_dict: Dict[str, List]) -> list:
+        # Take the last 'input_chunk_length' rows
+        window = df.iloc[-input_chunk_length:].values
+
+        # Expand dims to [1, seq_len, features] and cast to float32
+        # (Required for MLflow PyFunc and many wrappers)
+        return window[np.newaxis, :].astype(np.float32)
+
+    def predict(self, request: PredictRequest) -> Dict[str, Any]:
         """
-        Perform inference on raw input data.
+        Run full prediction pipeline and return JSON-serializable dict.
+
+        Flow:
+        1. Convert request.data to pandas.DataFrame.
+        2. Apply serving preprocessing (serve_preprocess_request).
+        3. Build input window via _prepare_input_window.
+        4. Call model.predict and flatten results.
 
         Args:
-            data_dict (Dict[str, List]): Raw input dictionary containing
-                                         historical features.
+            request: PredictRequest object containing input data.
+                Expectation: request.data is convertible to a
+                pandas.DataFrame (list[dict] or list[list]).
 
         Returns:
-            list: Flattened list of predicted values.
+            A dict with key "prediction" and value as a list of
+            numeric predictions (JSON serializable).
 
         Raises:
-            Any exception raised by preprocessing, input window preparation,
-            or the model's predict method.
+            RuntimeError: If model is not loaded.
+            Exception: Propagates unexpected errors during processing.
         """
-        df_transformed = self.preprocess(data_dict)
-        x_input = self.prepare_input_window(df_transformed)
-        preds = self.model.predict(x_input)
-        return preds.flatten().tolist()
+        if self.model is None:
+            raise RuntimeError("Model is not loaded.")
+
+        try:
+            # 1. Convert Input Data to DataFrame
+            # Assuming request.data is a list of dicts or list of lists
+            data = pd.DataFrame(request.data)
+
+            # 2. Preprocess (Scaling/Feature Engineering)
+            df_transformed = serve_preprocess_request(data, self.cfg)
+
+            # 3. Prepare Input Window
+            x_input = self._prepare_input_window(df_transformed)
+
+            # 4. Predict
+            # Works for both MLflow PyFunc and Custom Wrapper
+            preds = self.model.predict(x_input)
+
+            # 5. Format Output
+            # Flatten to 1D list for JSON response
+            return {"prediction": preds.flatten().tolist()}
+
+        except Exception as e:  # pragma: no cover - propagate runtime errors
+            print(f"[ModelsService] Error during prediction: {e}")
+            raise e
