@@ -1,6 +1,6 @@
-from typing import Dict, List
+from typing import Any, Dict, List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class PredictRequest(BaseModel):
@@ -23,12 +23,12 @@ class PredictRequest(BaseModel):
         }
     """
 
-    data: Dict[str, List]
+    # Sử dụng List[Any] để tránh warning về type hint
+    data: Dict[str, List[Any]]
 
-    class Config:
-        """Pydantic configuration with JSON schema example for documentation."""
-
-        json_schema_extra = {
+    # CẬP NHẬT: Dùng model_config thay cho class Config (Pydantic V2)
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "data": {
                     "date": ["2020-01-01 00:00:00", "2020-01-01 01:00:00"],
@@ -38,3 +38,4 @@ class PredictRequest(BaseModel):
                 }
             }
         }
+    )
