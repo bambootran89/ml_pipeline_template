@@ -2,6 +2,7 @@ mlflow:
   tracking_uri: "mlruns"  # hoặc remote server
   experiment_name: "timeseries_forecasting"
   run_name_prefix: "exp"
+  enabled: true
 
   # Model registry
   registry:

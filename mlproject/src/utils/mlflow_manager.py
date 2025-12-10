@@ -1,193 +1,206 @@
 """
-MLflow manager để quản lý tracking, artifacts và model registry.
+MLflow manager module for tracking, artifacts, and model registry management.
+Optimized for MLOps best practices: Autologging, Context Management, and Reproducibility.
 """
+import contextlib
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Generator, Optional
 
 import mlflow
 import mlflow.pyfunc
+import mlflow.pytorch
+import mlflow.sklearn
+import mlflow.xgboost
 import numpy as np
+import pandas as pd
 from mlflow.models import infer_signature
 from omegaconf import DictConfig, OmegaConf
 
 
 class MLflowManager:
     """
-    Quản lý MLflow tracking, logging và model registry.
+    Manages MLflow tracking, logging, and model registry.
 
-    Chức năng:
-    - Khởi tạo experiment và run
-    - Log parameters, metrics, artifacts
-    - Log model với signature
-    - Register model vào Model Registry
-    - Load model từ registry
+    Advanced features:
+    - Context Manager for safe Run management.
+    - Autologging for popular frameworks.
+    - Automatic Git commit hash logging.
+    - Automatic Model Signature and Input Example handling.
+    - Model Registry Support.
     """
 
     def __init__(self, cfg: DictConfig):
         """
+        Initialize MLflowManager.
+
         Args:
-            cfg: Configuration chứa mlflow settings
+            cfg: Configuration dictionary containing mlflow settings.
         """
         self.cfg = cfg
         self.mlflow_cfg = cfg.get("mlflow", {})
+        self.enabled = self.mlflow_cfg.get("enabled", False)
 
-        # Setup tracking URI
+        if not self.enabled:
+            return
+
+        # 1. Setup Tracking URI
         tracking_uri = self.mlflow_cfg.get("tracking_uri", "mlruns")
         mlflow.set_tracking_uri(tracking_uri)
 
-        # Setup experiment với error handling
-        exp_name = self.mlflow_cfg.get("experiment_name", "default")
+        # 2. Setup Experiment (Robust creation/restoration)
+        self._setup_experiment()
 
+        # 3. Setup Autologging
+        self._setup_autologging()
+
+        self.run = None
+        self.run_id = None
+
+    def _setup_experiment(self):
+        """Sets up the experiment, automatically restoring it if deleted."""
+        exp_name = self.mlflow_cfg.get("experiment_name", "Default_Experiment")
         try:
             self.experiment = mlflow.set_experiment(exp_name)
         except mlflow.exceptions.MlflowException as e:
-            if "deleted experiment" in str(e):
-                print(f"[MLflow] Experiment '{exp_name}' was deleted. Restoring...")
-
-                # Try to restore
+            if "deleted experiment" in str(e).lower():
+                print(
+                    f"[MLflow] Experiment '{exp_name}' was deleted. Attempting to restore..."
+                )
                 client = mlflow.MlflowClient()
                 experiments = client.search_experiments(
                     view_type=mlflow.entities.ViewType.DELETED_ONLY
                 )
-
                 for exp in experiments:
                     if exp.name == exp_name:
                         client.restore_experiment(exp.experiment_id)
                         print(f"[MLflow] Restored experiment: {exp_name}")
                         self.experiment = mlflow.set_experiment(exp_name)
-                        break
-                else:
-                    # Nếu không restore được, tạo mới với tên khác
-                    new_name = f"{exp_name}_v2"
-                    print(f"[MLflow] Creating new experiment: {new_name}")
-                    self.experiment = mlflow.set_experiment(new_name)
+                        return
+
+                # Fallback: Create new name if restoration fails
+                new_name = f"{exp_name}_v2"
+                print(f"[MLflow] Cannot restore. Creating new experiment: {new_name}")
+                self.experiment = mlflow.set_experiment(new_name)
             else:
-                raise
+                raise e
 
-        self.run = None
-        self.run_id = None
+    def _setup_autologging(self):
+        """Enables autologging for supported libraries."""
+        if self.mlflow_cfg.get("autolog", True):
+            # General autolog (covers sklearn, xgboost, statsmodels, etc.)
+            # log_models=False so we can control custom pyfunc model wrapper saving
+            mlflow.autolog(log_models=False, exclusive=False)
+            print("[MLflow] Autologging enabled.")
 
-    def start_run(self, run_name: Optional[str] = None) -> mlflow.ActiveRun:
+    @contextlib.contextmanager
+    def start_run(
+        self, run_name: Optional[str] = None
+    ) -> Generator[mlflow.ActiveRun, None, None]:
         """
-        Bắt đầu MLflow run mới.
-
-        Args:
-            run_name: Tên run (optional)
-
-        Returns:
-            Active MLflow run
+        Context Manager to start an MLflow run.
         """
+        if not self.enabled:
+            yield None
+            return
+
+        # Create default run name if missing
         if run_name is None:
-            prefix = self.mlflow_cfg.get("run_name_prefix", "exp")
-            run_name = f"{prefix}_{self.experiment.experiment_id}"
+            prefix = self.mlflow_cfg.get("run_name_prefix", "run")
+            run_name = f"{prefix}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
 
-        self.run = mlflow.start_run(run_name=run_name)
-        self.run_id = self.run.info.run_id
+        # Start Run
+        with mlflow.start_run(run_name=run_name) as run:
+            self.run = run
+            self.run_id = run.info.run_id
+            print(f"\n[MLflow] Run started: {run_name} (ID: {self.run_id})")
 
-        print(f"\n[MLflow] Run started: {run_name}")
-        print(f"[MLflow] Run ID: {self.run_id}")
-        print(f"[MLflow] Experiment: {self.experiment.name}")
+            # Log basic environment info
+            self._log_environment_info()
 
-        # Log config
-        if self.mlflow_cfg.get("artifacts", {}).get("log_config", True):
-            self._log_config()
+            # Log Config
+            if self.mlflow_cfg.get("artifacts", {}).get("log_config", True):
+                self._log_config()
 
-        return self.run
+            try:
+                yield run
+            finally:
+                self.run = None
+                self.run_id = None
 
-    def end_run(self):
-        """Kết thúc MLflow run."""
-        if self.run is not None:
-            mlflow.end_run()
-            self.run = None
-            self.run_id = None
+    def _log_environment_info(self):
+        """Logs Git commit hash and system info for Reproducibility."""
+        # Log Git Commit
+        try:
+            import git
+
+            repo = git.Repo(search_parent_directories=True)
+            sha = repo.head.object.hexsha
+            mlflow.set_tag("git_commit", sha)
+            if repo.is_dirty():
+                mlflow.set_tag("git_dirty", "True")
+        except (ImportError, Exception):
+            # Suppress warning if git is not installed or not a git repo
+            pass
+
+        # Log User
+        import getpass
+
+        mlflow.set_tag("user", getpass.getuser())
 
     def log_params(self, params: Dict[str, Any]):
-        """
-        Log parameters vào MLflow.
-
-        Args:
-            params: Dictionary chứa parameters
-        """
-        # Flatten nested dict
+        """Logs parameters (Flattened)."""
+        if not self.enabled:
+            return
         flat_params = self._flatten_dict(params)
         mlflow.log_params(flat_params)
 
     def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
-        """
-        Log metrics vào MLflow.
-
-        Args:
-            metrics: Dictionary chứa metrics
-            step: Training step (optional)
-        """
+        """Logs metrics."""
+        if not self.enabled:
+            return
         mlflow.log_metrics(metrics, step=step)
 
     def log_model(
         self,
         model_wrapper: Any,
         artifact_path: str = "model",
-        input_example: Optional[np.ndarray] = None,
+        input_example: Optional[Any] = None,
         signature: Optional[Any] = None,
         registered_model_name: Optional[str] = None,
     ):
         """
-        Log model vào MLflow với signature.
-
-        Sử dụng PyFunc wrapper để tránh dtype issues.
-
-        Args:
-            model_wrapper: Model wrapper instance
-            artifact_path: Đường dẫn artifact trong MLflow
-            input_example: Ví dụ input để infer signature
-            signature: MLflow signature (tự động infer nếu None)
-            registered_model_name: Tên model để register (optional)
+        Logs custom model wrapper as a PyFunc model with Signature.
         """
+        if not self.enabled:
+            return
         if not self.mlflow_cfg.get("artifacts", {}).get("log_model", True):
             return
 
-        # Ensure float32 dtype cho input_example
-        if input_example is not None:
+        # Handle Input Example
+        if input_example is not None and hasattr(input_example, "values"):
+            pass
+        elif input_example is not None:
             input_example = np.asarray(input_example, dtype=np.float32)
 
-        # Infer signature nếu có input example
+        # Auto-infer Signature if missing
         if signature is None and input_example is not None:
-            predictions = model_wrapper.predict(input_example)
-            signature = infer_signature(input_example, predictions)
+            try:
+                preds = model_wrapper.predict(input_example)
+                signature = infer_signature(input_example, preds)
+            except Exception as e:
+                print(f"[MLflow] Warning: Could not infer signature. Error: {e}")
 
-        # Wrap model với MLflowModelWrapper
+        # Wrap model
         pyfunc_model = MLflowModelWrapper(model_wrapper)
 
-        # Log as PyFunc model
+        print(f"[MLflow] Logging model to artifact path: '{artifact_path}'")
         mlflow.pyfunc.log_model(
             artifact_path=artifact_path,
             python_model=pyfunc_model,
             signature=signature,
             input_example=input_example,
-            registered_model_name=registered_model_name,
+            registered_model_name=registered_model_name,  # Support direct registration
         )
-
-    def log_artifact(self, local_path: str, artifact_path: Optional[str] = None):
-        """
-        Log artifact file vào MLflow.
-
-        Args:
-            local_path: Đường dẫn file local
-            artifact_path: Đường dẫn trong MLflow artifacts
-        """
-        mlflow.log_artifact(local_path, artifact_path)
-
-    def log_scaler(self, scaler_path: str):
-        """
-        Log scaler artifact.
-
-        Args:
-            scaler_path: Đường dẫn đến scaler.pkl
-        """
-        if not self.mlflow_cfg.get("artifacts", {}).get("log_scaler", True):
-            return
-
-        if os.path.exists(scaler_path):
-            mlflow.log_artifact(scaler_path, "preprocessing")
 
     def register_model(
         self,
@@ -195,15 +208,17 @@ class MLflowManager:
         model_name: Optional[str] = None,
     ) -> Optional[Any]:
         """
-        Register model vào Model Registry.
+        Register a model to the MLflow Model Registry.
 
         Args:
-            model_uri: URI của model (ví dụ: runs:/<run_id>/model)
-            model_name: Tên model trong registry
+            model_uri: The URI of the model (e.g., 'runs:/<run_id>/model').
+            model_name: The name in the registry. If None, uses config.
 
         Returns:
-            ModelVersion object
+            ModelVersion: The registered model version object.
         """
+        if not self.enabled:
+            return None
         if not self.mlflow_cfg.get("registry", {}).get("enabled", True):
             return None
 
@@ -212,93 +227,69 @@ class MLflowManager:
                 "model_name", "ts_forecast_model"
             )
 
+        print(f"[MLflow] Registering model URI '{model_uri}' to name '{model_name}'")
         return mlflow.register_model(model_uri, model_name)
 
     def load_model(self, model_uri: str) -> Any:
         """
-        Load model từ MLflow.
+        Load a model from MLflow (Registry or Run).
 
         Args:
-            model_uri: URI của model
+            model_uri: The URI of the model (e.g., 'models:/MyModel/Production').
 
         Returns:
-            Loaded model
+            The loaded PyFunc model (wrapper).
         """
+        print(f"[MLflow] Loading model from {model_uri}")
         return mlflow.pyfunc.load_model(model_uri)
 
+    def log_artifact(self, local_path: str, artifact_path: Optional[str] = None):
+        """Logs any file."""
+        if self.enabled and os.path.exists(local_path):
+            mlflow.log_artifact(local_path, artifact_path)
+        elif self.enabled:
+            print(f"[MLflow] Warning: Artifact not found at {local_path}")
+
     def _log_config(self):
-        """Log toàn bộ config vào MLflow artifacts."""
+        """Logs full config as a YAML file."""
+        if not self.enabled:
+            return
         config_dict = OmegaConf.to_container(self.cfg, resolve=True)
-        mlflow.log_dict(config_dict, "config.yaml")
+        mlflow.log_dict(config_dict, "config/full_config.yaml")
 
     def _flatten_dict(
         self, d: Dict[str, Any], parent_key: str = "", sep: str = "."
     ) -> Dict[str, Any]:
-        """
-        Flatten nested dictionary.
-
-        Args:
-            d: Dictionary cần flatten
-            parent_key: Key của parent
-            sep: Separator
-
-        Returns:
-            Flattened dictionary
-        """
+        """Flattens nested dictionary for params logging."""
         items = []
         for k, v in d.items():
             new_key = f"{parent_key}{sep}{k}" if parent_key else k
-
             if isinstance(v, dict):
                 items.extend(self._flatten_dict(v, new_key, sep=sep).items())
-            elif isinstance(v, (list, tuple)):
-                items.append((new_key, str(v)))
             else:
                 items.append((new_key, v))
-
         return dict(items)
 
 
 class MLflowModelWrapper(mlflow.pyfunc.PythonModel):
     """
-    Wrapper để log custom model vào MLflow.
-    Wrap model wrapper thành MLflow PyFunc model.
-
-    Fix dtype issues khi serving với MLflow.
+    Wrapper class to standardize Serving via MLflow.
+    Ensures input data type (float32) before passing to the original model.
     """
 
-    def __init__(self, model_wrapper: Any, preprocessor: Optional[Any] = None):
-        """
-        Args:
-            model_wrapper: Model wrapper instance
-            preprocessor: Preprocessor instance (optional)
-        """
+    def __init__(self, model_wrapper: Any):
         self.model_wrapper = model_wrapper
-        self.preprocessor = preprocessor
 
     def predict(self, context, model_input):
         """
-        Predict method cho MLflow PyFunc.
-
-        Args:
-            context: MLflow context
-            model_input: Input data (numpy array or pandas DataFrame)
-
-        Returns:
-            Predictions
+        Predict method called when serving model or load_model().predict().
         """
-        import numpy as np
-
-        # Convert to numpy if needed
-        if hasattr(model_input, "values"):
+        # 1. Standardize Input to Numpy Array Float32
+        if isinstance(model_input, pd.DataFrame):
             model_input = model_input.values
 
-        # Ensure float32 dtype
+        # Ensure safe data type for model (especially Torch/TF)
         model_input = np.asarray(model_input, dtype=np.float32)
 
-        # Preprocess nếu có
-        if self.preprocessor is not None:
-            model_input = self.preprocessor.transform(model_input)
-
-        # Predict
+        # 2. Call original model's predict
         return self.model_wrapper.predict(model_input)

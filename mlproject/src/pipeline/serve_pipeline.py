@@ -1,3 +1,4 @@
+import mlflow
 import numpy as np
 import pandas as pd
 from omegaconf import DictConfig, OmegaConf
@@ -6,6 +7,7 @@ from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.online import serve_preprocess_request
+from mlproject.src.utils.mlflow_manager import MLflowManager
 
 
 class TestPipeline(BasePipeline):
@@ -22,6 +24,12 @@ class TestPipeline(BasePipeline):
     def __init__(self, cfg_path=""):
         self.cfg = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
+        # Initialize MLflow Manager
+        self.mlflow = (
+            MLflowManager(self.cfg)
+            if self.cfg.get("mlflow", {}).get("enabled", False)
+            else None
+        )
 
     def preprocess(self, data=None):
         """
@@ -39,8 +47,30 @@ class TestPipeline(BasePipeline):
 
     def _load_model(self, approach):
         """
-        Load trained model wrapper from artifacts.
+        Load trained model.
+        Priority: MLflow Registry > Local Artifacts.
         """
+        # 1. Try Loading from MLflow Registry
+        if self.mlflow.enabled:
+            try:
+                # Determine Model Name from Config (Registry) or Approach
+                registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
+                model_name = registry_conf.get("model_name", approach["model"])
+                version = "latest"  # Or specify version via config/args
+
+                model_uri = f"models:/{model_name}/{version}"
+                print(f"[TestPipeline] Loading model from MLflow Registry: {model_uri}")
+
+                # Load as PyFunc model (Generic wrapper)
+                return mlflow.pyfunc.load_model(model_uri)
+
+            except Exception as e:
+                print(
+                    f"[TestPipeline] Warning: Could not load from MLflow ({e}). Falling back to local artifacts."
+                )
+
+        # 2. Fallback: Load from Local Artifacts
+        print("[TestPipeline] Loading model from Local Artifacts...")
         name = approach["model"].lower()
         hp = approach.get("hyperparams", {})
 
@@ -70,7 +100,7 @@ class TestPipeline(BasePipeline):
         window = df.iloc[-seq_len:].values
 
         # Add batch dimension [1, seq_len, n_features]
-        return window[np.newaxis, :]
+        return window[np.newaxis, :].astype(np.float32)
 
     def run_approach(self, approach, data):
         """

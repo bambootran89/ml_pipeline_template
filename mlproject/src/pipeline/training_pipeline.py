@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -11,6 +11,7 @@ from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.trainer.trainer_factory import TrainerFactory
+from mlproject.src.utils.mlflow_manager import MLflowManager
 
 
 class TrainingPipeline(BasePipeline):
@@ -23,11 +24,18 @@ class TrainingPipeline(BasePipeline):
     - Initialize model via ModelFactory
     - Train model using TrainerFactory (DL or ML trainer)
     - Evaluate predictions with TimeSeriesEvaluator
+    - Log experiments to MLflow (if enabled)
     """
 
     def __init__(self, cfg_path: str = ""):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
+        # Initialize MLflowManager if enabled in config
+        self.mlflow = (
+            MLflowManager(self.cfg)
+            if self.cfg.get("mlflow", {}).get("enabled", False)
+            else None
+        )
 
     def preprocess(self):
         """Fit scaler once and return transformed dataset."""
@@ -72,10 +80,43 @@ class TrainingPipeline(BasePipeline):
         preds = wrapper.predict(x_test)
         return y_test, preds
 
+    def _execute_training(self, trainer, dm, wrapper, hyperparams: Dict[str, Any]):
+        """
+        Execute the core training and evaluation logic.
+        This method is separated to allow reuse within/without MLflow context.
+        """
+        # Dispatch based on DataModule class -> model agnostic logic
+        if isinstance(dm, TSDLDataModule):
+            y_test, preds = self._run_dl(trainer, dm, wrapper, hyperparams)
+
+        elif isinstance(dm, TSMLDataModule):
+            y_test, preds = self._run_ml(trainer, dm, wrapper, hyperparams)
+
+        else:
+            raise NotImplementedError(f"Unsupported DataModule type: {type(dm)}")
+
+        metrics = TimeSeriesEvaluator().evaluate(y_test, preds)
+        print(metrics)
+        return metrics
+
+    def _get_sample_input(self, dm):
+        """
+        Helper to retrieve a sample input (x_test) from DataModule
+        for MLflow Model Signature inference.
+        """
+        if isinstance(dm, TSDLDataModule):
+            x_test, _ = dm.get_test_windows()
+            # Return a small batch or first 5 samples
+            return x_test[:5]
+        elif isinstance(dm, TSMLDataModule):
+            _, _, _, _, x_test, _ = dm.get_data()
+            return x_test[:5]
+        return None
+
     def run_approach(self, approach: Dict[str, Any], data):
         """
         Train + evaluate one approach.
-        No if/else on model type — only dispatch based on DataModule class.
+        Uses MLflow context manager to LOG METRICS & REGISTER MODEL.
         """
 
         df = data
@@ -90,15 +131,38 @@ class TrainingPipeline(BasePipeline):
             model_name, wrapper, self.cfg.training.artifacts_dir
         )
 
-        # Dispatch theo DataModule class → không đụng vào model logic
-        if isinstance(dm, TSDLDataModule):
-            y_test, preds = self._run_dl(trainer, dm, wrapper, hyperparams)
+        # Optimization: Use MLflow Manager Context if enabled
+        if self.mlflow:
+            run_name = f"{model_name}_run"
 
-        elif isinstance(dm, TSMLDataModule):
-            y_test, preds = self._run_ml(trainer, dm, wrapper, hyperparams)
+            # Lấy tên model để register từ config (nếu có)
+            # Ví dụ: config.yaml -> mlflow.registry.model_name: "ts_forecast_production"
+            reg_name = self.cfg.get("mlflow", {}).get("registry", {}).get("model_name")
+
+            with self.mlflow.start_run(run_name=run_name):
+                # 1. Execute training & evaluation
+                metrics = self._execute_training(trainer, dm, wrapper, hyperparams)
+
+                # 2. Log Metrics
+                print(f"[MLflow] Logging metrics for {run_name}...")
+                self.mlflow.log_metrics(metrics)
+
+                # 3. Log Model & Register to Registry
+                sample_input = self._get_sample_input(dm)
+
+                print(
+                    f"[MLflow] Logging & Registering model artifact for {run_name}..."
+                )
+                self.mlflow.log_model(
+                    model_wrapper=wrapper,
+                    artifact_path="model",
+                    input_example=sample_input,
+                    registered_model_name=reg_name,  # <--- THÊM DÒNG NÀY
+                )
+
+                if reg_name:
+                    print(f"[MLflow] Model registered as '{reg_name}' version 'latest'")
 
         else:
-            raise NotImplementedError(f"Unsupported DataModule type: {type(dm)}")
-
-        metrics = TimeSeriesEvaluator().evaluate(y_test, preds)
-        print(metrics)
+            # Run normally without MLflow
+            self._execute_training(trainer, dm, wrapper, hyperparams)
