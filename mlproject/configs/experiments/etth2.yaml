@@ -4,7 +4,7 @@ defaults:
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
-
+  - ../base/mlflow.yaml
 experiment:
   name: "univariate_nlinear"
   type: "univariate_per_series"

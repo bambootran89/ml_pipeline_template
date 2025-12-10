@@ -4,7 +4,7 @@ defaults:
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
-
+  - ../base/mlflow.yaml
 experiment:
   name: "xgboost"
   type: "xgboost_per_series"
