@@ -59,6 +59,7 @@ class FoldRunner:
             preprocessor: Fitted PreprocessBase instance.
             x_train_scaled: Scaled train data.
         """
+        _ = fold_num
         preprocessor = PreprocessBase(self.cfg)
         n_samples, seq_len, n_features = x_train.shape
         x_flat = x_train.reshape(-1, n_features)
@@ -152,6 +153,7 @@ class FoldRunner:
         """Train a classical machine learning model."""
         x_train, y_train = train_data
         x_test, y_test = test_data
+        _ = wrapper
         return trainer.train((x_train, y_train), (x_test, y_test), hyperparams)
 
     def _evaluate(
@@ -192,7 +194,7 @@ class FoldRunner:
 
             # Log scaler artifact
             with tempfile.TemporaryDirectory() as _:
-                preprocessor._save_scaler()
+                preprocessor.save_scaler()
                 scaler_path = preprocessor.artifacts_dir + "/scaler.pkl"
                 self.mlflow_manager.log_artifact(
                     scaler_path, artifact_path=f"fold_{fold_num}/scaler"
@@ -211,52 +213,35 @@ class FoldRunner:
     ) -> Dict[str, float]:
         """
         Run a single fold with isolated preprocessing.
-
-        Args:
-            fold_num: Fold index.
-            train_idx: Training indices.
-            test_idx: Testing indices.
-            x_full_raw: Raw input windows (not normalized).
-            y_full: Target windows.
-            model_name: Name of the model.
-            hyperparams: Model hyperparameters.
-            is_tuning: Skip MLflow logging if True.
-
-        Returns:
-            Dictionary of evaluation metrics for the fold.
         """
-        train_data_raw, test_data_raw = self._slice_fold_data(
+        # 1. Slice data for fold
+        x_train_raw, y_train, x_test_raw, y_test = self._slice_fold(
             x_full_raw, y_full, train_idx, test_idx
         )
-        x_train_raw, y_train = train_data_raw
-        x_test_raw, y_test = test_data_raw
 
-        preprocessor, x_train_scaled = self._fit_fold_scaler(x_train_raw, fold_num)
-        x_test_scaled = self._transform_with_scaler(x_test_raw, preprocessor)
+        # 2. Preprocess
+        preprocessor, x_train_scaled, x_test_scaled = self._preprocess_fold(
+            x_train_raw, x_test_raw, fold_num
+        )
 
+        # 3. Build model and trainer
         wrapper, trainer = self._create_model_and_trainer(model_name, hyperparams)
         if is_tuning and hasattr(trainer, "artifacts_dir"):
             trainer.artifacts_dir = None
 
-        if isinstance(trainer, DeepLearningTrainer):
-            wrapper = self._train_dl(
-                trainer,
-                wrapper,
-                hyperparams,
-                (x_train_scaled, y_train),
-                (x_test_scaled, y_test),
-            )
-        else:
-            wrapper = self._train_ml(
-                trainer,
-                wrapper,
-                hyperparams,
-                (x_train_scaled, y_train),
-                (x_test_scaled, y_test),
-            )
+        # 4. Train
+        wrapper = self._train_fold(
+            trainer,
+            wrapper,
+            hyperparams,
+            (x_train_scaled, y_train),
+            (x_test_scaled, y_test),
+        )
 
+        # 5. Evaluate
         metrics = self._evaluate(wrapper, (x_test_scaled, y_test))
 
+        # 6. Optional logging
         if not is_tuning:
             self._log_fold(
                 fold_num,
@@ -269,3 +254,25 @@ class FoldRunner:
             )
 
         return metrics
+
+    def _slice_fold(self, x_full_raw, y_full, train_idx, test_idx):
+        """Slice raw data for a single fold."""
+        train_data_raw, test_data_raw = self._slice_fold_data(
+            x_full_raw, y_full, train_idx, test_idx
+        )
+        x_train_raw, y_train = train_data_raw
+        x_test_raw, y_test = test_data_raw
+        return x_train_raw, y_train, x_test_raw, y_test
+
+    def _preprocess_fold(self, x_train_raw, x_test_raw, fold_num):
+        """Fit scaler on train data and transform train/test."""
+        preprocessor, x_train_scaled = self._fit_fold_scaler(x_train_raw, fold_num)
+        x_test_scaled = self._transform_with_scaler(x_test_raw, preprocessor)
+        return preprocessor, x_train_scaled, x_test_scaled
+
+    def _train_fold(self, trainer, wrapper, hyperparams, train_data, test_data):
+        """Train DL or ML model depending on trainer type."""
+        if isinstance(trainer, DeepLearningTrainer):
+            return self._train_dl(trainer, wrapper, hyperparams, train_data, test_data)
+        else:
+            return self._train_ml(trainer, wrapper, hyperparams, train_data, test_data)

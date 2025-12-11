@@ -187,7 +187,7 @@ class PreprocessBase:
         self.scaler = scaler
         self.scaler_columns = cols
 
-        self._save_scaler()
+        self.save_scaler()
 
         return df
 
@@ -213,7 +213,7 @@ class PreprocessBase:
         df[self.scaler_columns] = self.scaler.transform(df[self.scaler_columns])
         return df
 
-    def _save_scaler(self):
+    def save_scaler(self):
         """
         Save scaler + column list to artifact directory.
 

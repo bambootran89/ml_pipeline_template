@@ -6,7 +6,7 @@ to CVInitializer, FoldRunner, and CVAggregator to keep functions short
 and testable.
 """
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 
 import numpy as np
 from omegaconf import DictConfig
@@ -67,64 +67,96 @@ class CrossValidationPipeline(BasePipeline):
         """
         raise NotImplementedError("Use run_cv() for cross-validation")
 
-    def _initialize_context(
-        self, approach: Dict[str, Any], data: Any = None
-    ) -> Tuple[Any, Any, str, Dict[str, Any], int]:
-        """
-        Prepare raw data and model info for CV.
+    # def _initialize_context(
+    #     self, approach: Dict[str, Any], data: Any = None
+    # ) -> Tuple[Any, Any, str, Dict[str, Any], int]:
+    #     """
+    #     Prepare raw data and model info for CV.
 
-        Args:
-            approach: Model configuration dictionary.
-            data: Not used (kept for API compatibility).
+    #     Args:
+    #         approach: Model configuration dictionary.
+    #         data: Not used (kept for API compatibility).
 
-        Returns:
-            x_full_raw: Raw input windows.
-            y_full: Target windows.
-            model_name: Model name string.
-            hyperparams: Model hyperparameters.
-            total_folds: Number of CV folds.
-        """
-        return self._initializer.initialize(approach)
+    #     Returns:
+    #         x_full_raw: Raw input windows.
+    #         y_full: Target windows.
+    #         model_name: Model name string.
+    #         hyperparams: Model hyperparameters.
+    #         total_folds: Number of CV folds.
+    #     """
+    #     return self._initializer.initialize(approach)
 
     def run_cv(
         self, approach: Dict[str, Any], data: Any = None, is_tuning=False
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, float]:
         """
         Execute cross-validation using raw input windows.
-
-        Args:
-            approach: Model configuration.
-            data: Not used (data is loaded by initializer).
-            is_tuning: Flag indicating if hyperparameter tuning is active.
-
-        Returns:
-            List of metrics dictionaries, one per fold.
         """
+        _ = data
         x_full_raw, y_full, model_name, hyperparams, _ = self._initializer.initialize(
             approach
         )
 
-        fold_metrics: List[Dict[str, Any]] = []
+        fold_metrics: list[Dict[str, float]] = []
         for fold_idx, (train_idx, test_idx) in enumerate(
             self.splitter.split(x_full_raw, y_full)
         ):
-            fold_num = fold_idx + 1
-            metrics = self._fold_runner.run_fold(
-                fold_num,
-                train_idx,
-                test_idx,
-                x_full_raw,  # Raw data
+            # Convert np.ndarray to list[int] to satisfy type hints
+            train_idx_list = (
+                train_idx.tolist() if hasattr(train_idx, "tolist") else list(train_idx)
+            )
+            test_idx_list = (
+                test_idx.tolist() if hasattr(test_idx, "tolist") else list(test_idx)
+            )
+
+            metrics = self._run_single_fold(
+                fold_idx,
+                train_idx_list,
+                test_idx_list,
+                x_full_raw,
                 y_full,
                 model_name,
                 hyperparams,
-                is_tuning=is_tuning,
+                is_tuning,
             )
             fold_metrics.append(metrics)
 
-        metrics_agg = {}
+        return self._aggregate_fold_metrics(fold_metrics)
+
+    def _run_single_fold(
+        self,
+        fold_idx: int,
+        train_idx: list[int],
+        test_idx: list[int],
+        x_full_raw: Any,
+        y_full: Any,
+        model_name: str,
+        hyperparams: dict[str, Any],
+        is_tuning: bool,
+    ) -> dict[str, float]:
+        """Run a single fold and return metrics dict."""
+        fold_num = fold_idx + 1
+        return self._fold_runner.run_fold(
+            fold_num,
+            train_idx,
+            test_idx,
+            x_full_raw,
+            y_full,
+            model_name,
+            hyperparams,
+            is_tuning=is_tuning,
+        )
+
+    def _aggregate_fold_metrics(
+        self, fold_metrics: list[dict[str, float]]
+    ) -> dict[str, float]:
+        """Compute mean and std for each metric across folds."""
+        if not fold_metrics:
+            return {}
+
+        agg: dict[str, float] = {}
         for key in fold_metrics[0].keys():
             values = [f[key] for f in fold_metrics]
-            metrics_agg[f"{key}_mean"] = sum(values) / len(values)
-            metrics_agg[f"{key}_std"] = np.std(values)
-
-        return metrics_agg
+            agg[f"{key}_mean"] = float(sum(values) / len(values))
+            agg[f"{key}_std"] = float(np.std(values))
+        return agg

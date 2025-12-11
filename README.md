@@ -182,8 +182,15 @@ python -m mlproject.src.pipeline.run_pipeline test --config mlproject/configs/ex
 
 Run Cross-Validation
 ```bash
-python -m mlproject.src.pipeline.run_pipeline cv \
-    --config mlproject/configs/experiments/etth2.yaml
+python -m mlproject.src.pipeline.run_pipeline cv --config mlproject/configs/experiments/etth2.yaml
+
+python -m  mlproject.src.run_cv --config mlproject/configs/experiments/etth2.yaml --n-splits 5  --test-size 24
+```
+
+Tuning
+```bash
+python -m mlproject.src.pipeline.run_pipeline tune --config mlproject/configs/experiments/etth3_tuning.yaml
+python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth3_tuning.yaml
 ```
 
 
