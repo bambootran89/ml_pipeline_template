@@ -12,8 +12,8 @@ from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.cv.cv_pipeline import CrossValidationPipeline
-from mlproject.src.cv.splitter import TimeSeriesSplitter
+from mlproject.src.datamodule.splitter import TimeSeriesSplitter
+from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.base_tuner import BaseTuner
 

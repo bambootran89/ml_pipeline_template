@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 from omegaconf import DictConfig
 
-from mlproject.src.cv.splitter import ExpandingWindowSplitter
+from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline

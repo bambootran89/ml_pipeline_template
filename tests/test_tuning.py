@@ -7,7 +7,7 @@ Run:
 
 import pytest
 
-from mlproject.src.cv.splitter import ExpandingWindowSplitter
+from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
