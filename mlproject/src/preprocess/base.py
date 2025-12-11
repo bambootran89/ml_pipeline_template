@@ -141,8 +141,7 @@ class PreprocessBase:
         cov = step.get("covariates", {})
 
         if "future" in cov and "day_of_week" in cov["future"]:
-            if not isinstance(df.index, pd.DatetimeIndex):
-                df.index = pd.to_datetime(df.index)
+            if isinstance(df.index, pd.DatetimeIndex):
                 df["day_of_week"] = df.index.dayofweek
         return df
 

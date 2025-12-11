@@ -55,6 +55,7 @@ def run_testing(cfg_path: str, input_path: str) -> None:
 
     raw_df = pd.read_csv(input_path)
     assert "date" in raw_df.columns, "Input CSV must contain a 'date' column."
+    raw_df.date = pd.to_datetime(raw_df.date)
     raw_df = raw_df.set_index("date")
 
     pipeline.run(raw_df)
