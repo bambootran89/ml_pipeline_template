@@ -8,8 +8,7 @@ class MLTrainer(BaseTrainer):
 
     def train(
         self,
-        train_data: Any,
-        val_data: Optional[Any] = None,
+        datamodule: Any,
         hyperparams: Optional[Dict] = None,
     ):
         """
@@ -20,12 +19,9 @@ class MLTrainer(BaseTrainer):
             val_data: Optional validation dataset
             hyperparams: Optional hyperparameters
         """
-        _ = val_data  # mark as intentionally unused
-        _ = hyperparams  # mark as intentionally unused
-        x_train, y_train = train_data
+        x_train, y_train, x_val, y_val, _, _ = datamodule.get_data()
         fit_kwargs = {}
-        if val_data is not None:
-            x_val, y_val = val_data
+        if x_val is not None and y_val is not None:
             fit_kwargs["x_val"] = x_val
             fit_kwargs["y_val"] = y_val
 

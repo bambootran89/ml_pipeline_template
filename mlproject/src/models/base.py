@@ -8,6 +8,8 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 from sklearn.base import BaseEstimator
 
+from mlproject.src.utils.shape_utils import flatten_timeseries
+
 
 class BaseModelWrapper(ABC):
     """
@@ -157,14 +159,9 @@ class MLModelWrapper(BaseModelWrapper):
     ):
         """Train model with sklearn-style estimator."""
         if self.model is None:
-            if x.ndim not in [2, 3]:
-                raise ValueError("Input features 'x' must be 2D or 3D numpy arrays.")
-            input_dim: int
-            if x.ndim == 2:
-                input_dim = x.shape[1]
-            else:  # x.ndim == 3
-                input_dim = x.shape[1] * x.shape[2]
-
+            x_sample = flatten_timeseries(x)
+            input_dim = x_sample.shape[1]
+            output_dim: int = y.shape[-1] if y.ndim > 1 else 1
             # Output dimension (1D -> 1, 2D -> features)
             output_dim: int = y.shape[-1] if y.ndim > 1 else 1
 
@@ -172,23 +169,15 @@ class MLModelWrapper(BaseModelWrapper):
 
         self.ensure_built()
 
-        x_reshaped = self._reshape_input_for_ml(x)
+        x_reshaped = flatten_timeseries(x)
 
         model = cast(BaseEstimator, self.model)
         model.fit(x_reshaped, y, sample_weight, **kwargs)
 
-    def _reshape_input_for_ml(self, arr: Any) -> np.ndarray:
-        arr = np.asarray(arr, dtype=np.float32)
-        shape = arr.shape
-        if len(shape) == 3:
-            # Flatten (batch, seq, feat) -> (batch, seq*feat)
-            return arr.reshape(-1, shape[1] * shape[2])
-        return arr
-
     def predict(self, x, **kwargs):
         """Predict with sklearn estimator."""
         self.ensure_built()
-        x_reshaped = self._reshape_input_for_ml(x)
+        x_reshaped = flatten_timeseries(x)
 
         return self.model.predict(x_reshaped, **kwargs)
 

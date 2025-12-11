@@ -96,6 +96,26 @@ class TSBaseDataModule:
 
         return np.stack(x_windows), np.stack(y_windows)
 
+    def get_data(
+        self,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Return all arrays in order: train, val, test."""
+        assert self.x_train is not None
+        assert self.y_train is not None
+        assert self.x_val is not None
+        assert self.y_val is not None
+        assert self.x_test is not None
+        assert self.y_test is not None
+
+        return (
+            self.x_train,
+            self.y_train,
+            self.x_val,
+            self.y_val,
+            self.x_test,
+            self.y_test,
+        )
+
     def summary(self) -> Tuple[int, int, int]:
         """
         summary ***

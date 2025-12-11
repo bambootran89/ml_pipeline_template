@@ -18,3 +18,10 @@ class BaseTrainer:
         """Save the model or wrapper."""
         os.makedirs(self.save_dir, exist_ok=True)
         self.wrapper.save(self.save_dir)
+
+    def train(self, datamodule: Any, hyperparams: dict[str, Any]) -> Any:
+        """
+        Abstract method to standardize training interface.
+        Must be implemented by subclasses.
+        """
+        raise NotImplementedError

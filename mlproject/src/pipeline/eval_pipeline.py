@@ -15,8 +15,6 @@ from mlflow.tracking import MlflowClient
 from omegaconf import DictConfig
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
-from mlproject.src.datamodule.tsdl import TSDLDataModule
-from mlproject.src.datamodule.tsml import TSMLDataModule
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
@@ -127,12 +125,11 @@ class EvalPipeline(BasePipeline):
         dm = DataModuleFactory.build(self.cfg, df)
         dm.setup()
 
-        if isinstance(dm, TSDLDataModule):
+        if hasattr(dm, "get_test_windows"):
             x_test, y_test = dm.get_test_windows()
-        elif isinstance(dm, TSMLDataModule):
-            _, _, _, _, x_test, y_test = dm.get_data()
+
         else:
-            raise NotImplementedError(f"Unsupported DataModule: {type(dm)}")
+            _, _, _, _, x_test, y_test = dm.get_data()
 
         x_test = np.asarray(x_test, dtype=np.float32)
 
