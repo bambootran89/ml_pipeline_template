@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 import pandas as pd
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from .engine import PreprocessEngine
 
@@ -35,10 +35,21 @@ def serve_preprocess_request(
 
     Args:
         df (DataFrame): DataFrame
+        cfg (DictConfig, optional): Preprocessing configuration.
 
     Returns:
-        dict: Processed numeric features ready for model inference.
+        pd.DataFrame: Processed numeric features ready for model inference.
     """
+    # Fix mypy error: Argument 1 to "instance" has incompatible type "DictConfig | None"
+    cfg_dict: Optional[Dict[Any, Any]] = None
+    if cfg is not None:
+        # Convert DictConfig to standard python dict
+        container = OmegaConf.to_container(cfg, resolve=True)
+        if isinstance(container, dict):
+            cfg_dict = container
+        else:
+            # Fallback for unlikely case where cfg is a ListConfig
+            cfg_dict = {}
 
-    engine = PreprocessEngine.instance(cfg)
+    engine = PreprocessEngine.instance(cfg_dict)
     return engine.online_transform(df)
