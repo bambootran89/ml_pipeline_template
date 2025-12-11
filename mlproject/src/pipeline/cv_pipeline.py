@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 import numpy as np
 from omegaconf import DictConfig
-
+from mlproject.src.utils.shape_utils import to_list_if_array
 from mlproject.src.datamodule.cv_data_prep import CVInitializer
 from mlproject.src.datamodule.splitter import TimeSeriesSplitter
 from mlproject.src.pipeline.base import BasePipeline
@@ -81,12 +81,8 @@ class CrossValidationPipeline(BasePipeline):
             self.splitter.split(x_full_raw, y_full)
         ):
             # Convert np.ndarray to list[int] to satisfy type hints
-            train_idx_list = (
-                train_idx.tolist() if hasattr(train_idx, "tolist") else list(train_idx)
-            )
-            test_idx_list = (
-                test_idx.tolist() if hasattr(test_idx, "tolist") else list(test_idx)
-            )
+            train_idx_list = to_list_if_array(train_idx)
+            test_idx_list = to_list_if_array(test_idx)
 
             metrics = self._run_single_fold(
                 fold_idx,

@@ -2,16 +2,17 @@ from typing import Any
 
 from mlproject.src.trainer.dl_trainer import DeepLearningTrainer
 from mlproject.src.trainer.ml_trainer import MLTrainer
-
-
-class TrainerFactory:
+from mlproject.src.utils.factory_base import DynamicFactoryBase
+from typing import Any, Dict, cast
+from mlproject.src.trainer.base_trainer import BaseTrainer
+class TrainerFactory(DynamicFactoryBase):
     """
     Factory that returns the correct Trainer (DL or ML)
     depending on the model type.
     """
 
-    DL_MODELS = {"tft", "nlinear", "lstm", "gru", "transformer"}
-    ML_MODELS = {"xgboost", "xgb", "lgbm", "lightgbm", "rf", "svm", "sklearn"}
+    # DL_MODELS = {"tft", "nlinear", "lstm", "gru", "transformer"}
+    # ML_MODELS = {"xgboost", "xgb", "lgbm", "lightgbm", "rf", "svm", "sklearn"}
 
     @classmethod
     def create(cls, model_name: str, wrapper: Any, save_dir: str):
@@ -28,9 +29,20 @@ class TrainerFactory:
         Raises:
             RuntimeError: If no trainer exists for the provided model name.
         """
-        if model_name in cls.DL_MODELS:
-            return DeepLearningTrainer(wrapper, save_dir=save_dir)
-        if model_name in cls.ML_MODELS:
-            return MLTrainer(wrapper, save_dir=save_dir)
+        # if model_name in cls.DL_MODELS:
+        #     return DeepLearningTrainer(wrapper, save_dir=save_dir)
+        # if model_name in cls.ML_MODELS:
+        #     return MLTrainer(wrapper, save_dir=save_dir)
 
-        raise RuntimeError(f"No trainer available for model {model_name}")
+        # raise RuntimeError(f"No trainer available for model {model_name}")
+        if model_name in ["xgboost"]: # ML Models
+            entry = {"module": "mlproject.src.trainer.ml_trainer", "class": "MLTrainer"}
+        elif model_name in ["nlinear", "tft"]: # DL Models
+            entry = {"module": "mlproject.src.trainer.dl_trainer", "class": "DeepLearningTrainer"}
+        else:
+             raise ValueError(f"Unknown model name: {model_name}")
+        trainer_class = cls._get_class_from_config(entry)
+        return cast(
+            BaseTrainer,
+            trainer_class(wrapper=wrapper, save_dir=save_dir),
+        )

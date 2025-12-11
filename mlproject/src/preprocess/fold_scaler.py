@@ -18,10 +18,13 @@ class FoldPreprocessor:
 
     def __init__(self, cfg):
         self.cfg = cfg
+        self.feature_names = cfg.get("data", {}).get("features", [])
+        if not self.feature_names:
+            raise ValueError("Feature names must be provided in config.")
 
     def _feature_names(self):
         """Return the feature names expected by the preprocessor."""
-        return ["HUFL", "MUFL", "mobility_inflow"]
+        return self.feature_names
 
     def fit(self, x_train: np.ndarray) -> Tuple[PreprocessBase, np.ndarray]:
         """
@@ -43,7 +46,6 @@ class FoldPreprocessor:
 
         n_samples, seq_len, n_feat = x_train.shape
         df = pd.DataFrame(x_train.reshape(-1, n_feat), columns=self._feature_names())
-
         df_scaled = preprocessor.fit(df)
         x_scaled = df_scaled.values.reshape(n_samples, seq_len, n_feat)
         return preprocessor, x_scaled

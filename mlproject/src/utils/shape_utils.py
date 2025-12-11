@@ -92,3 +92,9 @@ def infer_io_dims(x: Any, y: Any) -> Tuple[int, int]:
         output_dim = 1
 
     return input_dim, output_dim
+
+def to_list_if_array(arr: Any) -> list:
+    """Converts numpy array to list, handles other iterables."""
+    if hasattr(arr, "tolist"):
+        return arr.tolist()
+    return list(arr)

@@ -1,11 +1,11 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
 from mlproject.src.models.xgboost_wrapper import XGBWrapper
+from mlproject.src.utils.factory_base import DynamicFactoryBase
 
-
-class ModelFactory:
+class ModelFactory(DynamicFactoryBase):
     """
     Factory for creating and loading model wrappers.
 
@@ -21,7 +21,7 @@ class ModelFactory:
     }
 
     @classmethod
-    def create(cls, name: str, hp: Dict[str, Any]):
+    def create(cls, name: str, hp: Dict[str, Any], model_registry: Optional[Dict] = None,):
         """
         Create a model wrapper instance.
 
@@ -35,12 +35,23 @@ class ModelFactory:
         Raises:
             RuntimeError: If model name is not registered.
         """
-        name = name.lower()
-        if name not in cls.REGISTRY:
-            raise RuntimeError(
-                f"Unknown model '{name}'. Supported: {list(cls.REGISTRY)}"
-            )
-        return cls.REGISTRY[name](hp)
+
+        if model_registry is None: 
+            pass 
+        entry = model_registry.get(name)
+
+        if not entry:
+            raise ValueError(f"Model '{name}' not found in registry.")
+        
+        model_class = cls._get_class_from_config(entry)
+        return model_class(cfg=hp)
+    
+        # name = name.lower()
+        # if name not in cls.REGISTRY:
+        #     raise RuntimeError(
+        #         f"Unknown model '{name}'. Supported: {list(cls.REGISTRY)}"
+        #     )
+        # return cls.REGISTRY[name](hp)
 
     @classmethod
     def load(cls, name: str, hyperparams: Dict[str, Any], artifact_dir: str):
