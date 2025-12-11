@@ -1,4 +1,15 @@
+"""
+Minimal patch cho OfflinePreprocessor - chỉ thêm MLflow support.
+
+Thay đổi:
+1. __init__ nhận thêm mlflow_manager (optional)
+2. Thêm method _log_preprocessing_artifacts
+3. Gọi logging sau khi transform
+"""
+
 import os
+import tempfile
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -16,14 +27,16 @@ class OfflinePreprocessor:
     Args:
         cfg (dict, optional): Configuration dictionary specifying preprocessing steps
                               and artifact directory.
+        mlflow_manager (MLflowManager, optional): MLflow manager for artifact logging.
     """
 
-    def __init__(self, cfg=None):
+    def __init__(self, cfg=None, mlflow_manager: Optional = None):  # ✅ THÊM PARAMETER
         """
         Initialize OfflinePreprocessor.
 
         Args:
             cfg (dict, optional): Preprocessing configuration.
+            mlflow_manager (MLflowManager, optional): MLflow manager instance.
         """
         self.cfg = cfg or {}
         self.steps = self.cfg.get("preprocessing", {}).get("steps", [])
@@ -31,6 +44,7 @@ class OfflinePreprocessor:
             "artifacts_dir", ARTIFACT_DIR
         )
         self.engine = PreprocessEngine.instance(cfg)
+        self.mlflow_manager = mlflow_manager  # ✅ THÊM ATTRIBUTE
 
     def fit(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -55,7 +69,6 @@ class OfflinePreprocessor:
             pd.DataFrame: Transformed dataset.
         """
         df = self.engine.offline_transform(df)
-        # self._save_features(df)
         return df
 
     def run(self) -> pd.DataFrame:
@@ -65,6 +78,7 @@ class OfflinePreprocessor:
         - fit preprocessing
         - transform dataset
         - save features
+        - log to MLflow (if enabled)  # ✅ THÊM
 
         Returns:
             pd.DataFrame: Fully processed dataset.
@@ -72,7 +86,147 @@ class OfflinePreprocessor:
         df = self.load_raw_data()
         df = self.fit(df)
         df = self.transform(df)
+
+        # ✅ THÊM: Log artifacts vào MLflow
+        self._log_preprocessing_artifacts(df)
+
         return df
+
+    def _log_preprocessing_artifacts(self, df: pd.DataFrame):
+        """
+        Log preprocessing artifacts với detailed error handling.
+
+        Args:
+            df: Processed DataFrame
+        """
+        print("\n[Preprocessing] Starting artifact logging...")
+
+        # Check 1: MLflow manager exists
+        if not self.mlflow_manager:
+            print("[Preprocessing] ⚠️  No MLflowManager provided - skipping")
+            return
+
+        # Check 2: MLflow enabled
+        if not getattr(self.mlflow_manager, "enabled", False):
+            print("[Preprocessing] ⚠️  MLflow disabled in config - skipping")
+            return
+
+        # Check 3: Active run exists
+        try:
+            import mlflow
+
+            active_run = mlflow.active_run()
+
+            if not active_run:
+                print("[Preprocessing] ⚠️  No active MLflow run - skipping")
+                print("    Hint: Make sure preprocess() is called INSIDE a mlflow run")
+                return
+
+            run_id = active_run.info.run_id
+            print(f"[Preprocessing] ✅ Active run: {run_id}")
+
+        except Exception as e:
+            print(f"[Preprocessing] ❌ Error checking active run: {e}")
+            return
+
+        # Log artifacts
+        success_count = 0
+
+        try:
+            # 1. Log scaler
+            scaler_path = os.path.join(self.artifacts_dir, "scaler.pkl")
+
+            if not os.path.exists(scaler_path):
+                print(f"[Preprocessing] ⚠️  Scaler not found at: {scaler_path}")
+            else:
+                print(f"[Preprocessing] Logging scaler from: {scaler_path}")
+                self.mlflow_manager.log_artifact(
+                    scaler_path, artifact_path="preprocessing/scaler"
+                )
+                print("[Preprocessing] ✅ Scaler logged")
+                success_count += 1
+
+        except Exception as e:
+            print(f"[Preprocessing] ❌ Failed to log scaler: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+        try:
+            # 2. Log config
+            preprocess_config = {
+                "steps": self.steps,
+                "artifacts_dir": self.artifacts_dir,
+                "feature_names": df.columns.tolist(),
+                "n_samples": len(df),
+            }
+
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as f:
+                import yaml
+
+                yaml.dump(preprocess_config, f)
+                temp_path = f.name
+
+            self.mlflow_manager.log_artifact(
+                temp_path, artifact_path="preprocessing/config"
+            )
+            os.unlink(temp_path)
+            print("[Preprocessing] ✅ Config logged")
+            success_count += 1
+
+        except Exception as e:
+            print(f"[Preprocessing] ❌ Failed to log config: {e}")
+
+        try:
+            # 3. Log statistics
+            stats = {
+                "mean": {k: float(v) for k, v in df.mean().to_dict().items()},
+                "std": {k: float(v) for k, v in df.std().to_dict().items()},
+                "min": {k: float(v) for k, v in df.min().to_dict().items()},
+                "max": {k: float(v) for k, v in df.max().to_dict().items()},
+            }
+
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as f:
+                import json
+
+                json.dump(stats, f, indent=2)
+                temp_path = f.name
+
+            self.mlflow_manager.log_artifact(
+                temp_path, artifact_path="preprocessing/statistics"
+            )
+            os.unlink(temp_path)
+            print("[Preprocessing] ✅ Statistics logged")
+            success_count += 1
+
+        except Exception as e:
+            print(f"[Preprocessing] ❌ Failed to log statistics: {e}")
+
+        try:
+            # 4. Log params
+            self.mlflow_manager.log_params(
+                {
+                    "preprocessing.n_features": len(df.columns),
+                    "preprocessing.n_samples": len(df),
+                    "preprocessing.n_steps": len(self.steps),
+                }
+            )
+            print("[Preprocessing] ✅ Params logged")
+            success_count += 1
+
+        except Exception as e:
+            print(f"[Preprocessing] ❌ Failed to log params: {e}")
+
+        # Summary
+        print(f"\n[Preprocessing] Logged {success_count}/4 artifact groups")
+
+        if success_count == 0:
+            print("[Preprocessing] ⚠️  WARNING: NO artifacts were logged!")
+            print("    This will cause eval pipeline to use LOCAL scaler")
 
     def _save_features(self, df):
         """
@@ -138,5 +292,4 @@ class OfflinePreprocessor:
             index=idx,
         )
         df.index.name = index_col
-        # df.to_csv("sample_input.csv")
         return df

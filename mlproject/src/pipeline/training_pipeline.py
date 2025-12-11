@@ -47,10 +47,14 @@ class TrainingPipeline(BasePipeline):
         """
         Fit preprocessing pipeline and transform the dataset.
 
+        NOTE: Preprocessing artifacts được log trong run_approach(),
+        không log ở đây để tránh nested run conflict.
+
         Returns:
             pd.DataFrame: Fully transformed dataset ready for DataModule.
         """
-        preprocessor = OfflinePreprocessor(self.cfg)
+        # ✅ Pass mlflow_manager nhưng artifacts sẽ được log trong active run
+        preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
         return preprocessor.run()
 
     def _init_model(self, approach: Dict[str, Any]):
@@ -194,10 +198,11 @@ class TrainingPipeline(BasePipeline):
 
         MLflow workflow:
             1. Start experiment run
-            2. Train model
-            3. Log metrics
-            4. Log model artifacts
-            5. Register model (optional)
+            2. Preprocess + log artifacts (trong cùng run)
+            3. Train model
+            4. Log metrics
+            5. Log model artifacts
+            6. Register model (optional)
 
         Args:
             approach (dict):
@@ -230,7 +235,11 @@ class TrainingPipeline(BasePipeline):
                 self.cfg.get("mlflow", {}).get("registry", {}).get("model_name")
             )
 
+            # ✅ START RUN - preprocessing artifacts sẽ được log trong run này
             with self.mlflow_manager.start_run(run_name=run_name):
+                # Preprocessing artifacts đã được log trong preprocess()
+                # (do OfflinePreprocessor có mlflow_manager và check active_run)
+
                 metrics = self._execute_training(
                     trainer,
                     dm,
