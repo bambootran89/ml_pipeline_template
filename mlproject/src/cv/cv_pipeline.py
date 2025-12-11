@@ -56,16 +56,30 @@ class CrossValidationPipeline(BasePipeline):
         """Small wrapper to expose initializer output without many locals."""
         return self._initializer.initialize(approach, data)
 
-    def run_cv(self, approach: Dict[str, Any], data: Any) -> Dict[str, float]:
+    def run_cv(
+        self,
+        approach: Dict[str, Any],
+        data: Any,
+        is_tuning: bool = False,  # <--- NEW PARAM
+    ) -> Dict[str, float]:
         """
-        Run the full CV loop and return aggregated metrics.
+        Execute cross-validation for a given model approach and dataset.
 
         Args:
-            approach: Model configuration (name + hyperparams).
-            data: Preprocessed data (or raw; initializer will handle).
+            approach (Dict[str, Any]):
+                Dictionary specifying the model and hyperparameters.
+                Example: {"model": "TFT", "hyperparams": {...}}
+            data (Any):
+                Preprocessed dataset used for training and validation.
+            is_tuning (bool, optional):
+                If True, disables heavy logging and MLflow CV summary.
+                Used when called from a hyperparameter tuner. Defaults to False.
 
         Returns:
-            Aggregated metrics dictionary.
+            Dict[str, float]:
+                Aggregated metrics across all CV folds,
+                including mean, std, min, and max
+                for each metric.
         """
         x_full, y_full, model_name, hyperparams, _ = self._initialize_context(
             approach, data
@@ -86,14 +100,20 @@ class CrossValidationPipeline(BasePipeline):
                 y_full,
                 model_name,
                 hyperparams,
+                is_tuning=is_tuning,  # <--- Pass flag down
             )
             fold_metrics.append(metrics)
 
         aggregated = self._aggregator.aggregate(fold_metrics)
-
-        # Print + log summary
         self._printer.summary(aggregated)
-        if self.mlflow_manager and getattr(self.mlflow_manager, "enabled", False):
+
+        # If we are NOT tuning, we might want a CV summary run.
+        # If we ARE tuning, the Tuner handles the logging of aggregated metrics.
+        if (
+            not is_tuning
+            and self.mlflow_manager
+            and getattr(self.mlflow_manager, "enabled", False)
+        ):
             with self.mlflow_manager.start_run(run_name=f"{model_name}_cv_summary"):
                 self.mlflow_manager.log_metrics(aggregated)
 

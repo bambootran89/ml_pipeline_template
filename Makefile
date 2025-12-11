@@ -25,4 +25,4 @@ test:
 	${PYTHON} -m flake8 ./${MAIN_FOLDER}/
 	${PYTHON} -m mypy ./${MAIN_FOLDER}/
 	CUDA_VISIBLE_DEVICES=""  ${PYTHON} -m pytest -v -s --durations=0 --disable-warnings ${TEST_FOLDER}/
-	${PYTHON} -m pylint ./${MAIN_FOLDER}/ --fail-under=9
+	${PYTHON} -m pylint ./${MAIN_FOLDER}/

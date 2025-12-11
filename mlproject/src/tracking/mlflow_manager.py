@@ -48,31 +48,28 @@ class MLflowManager:
         self.mlflow_cfg = cfg.get("mlflow", {})
         self.enabled = self.mlflow_cfg.get("enabled", False)
 
-        if not self.enabled:
-            return
-
-        mlflow.set_tracking_uri(self.mlflow_cfg.get("tracking_uri", "mlruns"))
-
         self.experiment_manager = ExperimentManager(self.mlflow_cfg, self.enabled)
         self.run_manager = RunManager(self.mlflow_cfg, self.enabled)
         self.model_logger = ModelLogger(self.mlflow_cfg, self.enabled)
         self.registry_manager = RegistryManager(self.mlflow_cfg, self.enabled)
         self.config_logger = ConfigLogger()
-
+        if not self.enabled:
+            return
+        mlflow.set_tracking_uri(self.mlflow_cfg.get("tracking_uri", "mlruns"))
         self.experiment = self.experiment_manager.setup_experiment()
 
-    def start_run(self, run_name: Optional[str] = None):
+    def start_run(self, run_name: Optional[str] = None, nested: bool = False):
         """
         Start an MLflow run.
 
         Args:
             run_name (Optional[str]):
-            Name for the run. Defaults to a timestamped name if None.
-
+                Name for the run. Defaults to a timestamped name if None.
+            nested (bool): If True, start a nested run. Defaults to False.
         Returns:
             mlflow.ActiveRun: Context manager for the run.
         """
-        return self.run_manager.start_run(run_name)
+        return self.run_manager.start_run(run_name, nested=nested)
 
     def log_params(self, params: dict):
         """

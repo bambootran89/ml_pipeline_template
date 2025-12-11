@@ -130,11 +130,15 @@ class FoldRunner:
         test_idx: Any,
         metrics: Dict[str, float],
     ) -> None:
-        """Log parameters and metrics for a fold to MLflow if enabled."""
+        """Log parameters and metrics for a fold."""
+        # This method creates a run for EACH fold.
+        # We only call this if NOT tuning.
         if not (self.mlflow_manager and getattr(self.mlflow_manager, "enabled", False)):
             return
 
-        with self.mlflow_manager.start_run(run_name=f"{model_name}_fold_{fold_num}"):
+        with self.mlflow_manager.start_run(
+            run_name=f"{model_name}_fold_{fold_num}", nested=True
+        ):
             self.mlflow_manager.log_params(
                 {
                     "fold": fold_num,
@@ -144,6 +148,7 @@ class FoldRunner:
                 }
             )
             self.mlflow_manager.log_metrics(metrics)
+            # LOGIC: Could log model artifacts here if needed for debugging single runs
 
     def run_fold(
         self,
@@ -154,41 +159,43 @@ class FoldRunner:
         y_full: np.ndarray,
         model_name: str,
         hyperparams: Dict[str, Any],
+        is_tuning: bool = False,  # <--- NEW PARAM
     ) -> Dict[str, float]:
         """
-        Execute training + evaluation for a single fold.
+        Docstring for run_fold
 
-        Parameters
-        ----------
-        fold_num : int
-            Index of the current fold.
-        train_idx : Any
-            Indices for training samples.
-        test_idx : Any
-            Indices for test samples.
-        x_full : np.ndarray
-            Full feature dataset.
-        y_full : np.ndarray
-            Full target dataset.
-        model_name : str
-            Model identifier.
-        hyperparams : Dict[str, Any]
-            Hyperparameter configuration for this fold.
-
-        Returns
-        -------
-        Dict[str, float]
-            Metrics evaluated on the test set for this fold.
+        :param self: Description
+        :param fold_num: Description
+        :type fold_num: int
+        :param train_idx: Description
+        :type train_idx: Any
+        :param test_idx: Description
+        :type test_idx: Any
+        :param x_full: Description
+        :type x_full: np.ndarray
+        :param y_full: Description
+        :type y_full: np.ndarray
+        :param model_name: Description
+        :type model_name: str
+        :param hyperparams: Description
+        :type hyperparams: Dict[str, Any]
+        :param is_tuning: Description
+        :type is_tuning: bool
+        :return: Description
+        :rtype: Dict[str, float]
         """
-        # slice data
+        # 1. Slice data
         train_data, test_data = self._slice_fold_data(
             x_full, y_full, train_idx, test_idx
         )
 
-        # create model + trainer
+        # 2. Create model + trainer
         wrapper, trainer = self._create_model_and_trainer(model_name, hyperparams)
 
-        # train model
+        if is_tuning and hasattr(trainer, "artifacts_dir"):
+            trainer.artifacts_dir = None
+
+        # 3. Train
         if isinstance(trainer, DeepLearningTrainer):
             wrapper = self._train_dl(
                 trainer, wrapper, hyperparams, train_data, test_data
@@ -198,10 +205,15 @@ class FoldRunner:
                 trainer, wrapper, hyperparams, train_data, test_data
             )
 
-        # evaluate
+        # 4. Evaluate
         metrics = self._evaluate(wrapper, test_data)
 
-        # log metrics
-        self._log_fold(fold_num, model_name, hyperparams, train_idx, test_idx, metrics)
+        # 5. Log metrics (ONLY if NOT tuning)
+        # During tuning, we only care about the aggregated metric of the Trial,
+        # not the individual folds to keep MLflow UI clean.
+        if not is_tuning:
+            self._log_fold(
+                fold_num, model_name, hyperparams, train_idx, test_idx, metrics
+            )
 
         return metrics

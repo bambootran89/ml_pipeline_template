@@ -13,7 +13,6 @@ from typing import Any, Dict, Optional
 
 import optuna
 from omegaconf import DictConfig
-from optuna.integration.mlflow import MLflowCallback
 
 from mlproject.src.cv.cv_pipeline import CrossValidationPipeline
 from mlproject.src.cv.splitter import TimeSeriesSplitter
@@ -77,8 +76,6 @@ class OptunaTuner(BaseTuner):
     def objective(self, trial: optuna.Trial) -> float:
         """Objective evaluated for each trial."""
         model_name = self.cfg.experiment.model.lower()
-
-        # 1. Suggest hyperparameters
         hyperparams = self._suggest_params(trial, model_name)
 
         # Include fixed params
@@ -87,16 +84,27 @@ class OptunaTuner(BaseTuner):
             if key in fixed:
                 hyperparams[key] = fixed[key]
 
-        # 2. Build trial-specific config
+        # Config update
         trial_cfg = deepcopy(self.cfg)
         trial_cfg.experiment.hyperparams.update(hyperparams)
-
         self.cv_pipeline.cfg = trial_cfg
 
-        # 3. Run cross validation
-        approach = {"model": model_name, "hyperparams": hyperparams}
-        data = self.cv_pipeline.preprocess()
-        metrics = self.cv_pipeline.run_cv(approach, data)
+        # START CHILD RUN (Nested)
+        run_name = f"Trial_{trial.number:03d}"
+        assert self.mlflow_manager is not None
+        with self.mlflow_manager.start_run(run_name=run_name, nested=True):
+            # 1. Log Params immediately
+            self.mlflow_manager.log_params(hyperparams)
+
+            # 2. Run CV with tuning flag (NO artifacts, NO fold runs)
+            approach = {"model": model_name, "hyperparams": hyperparams}
+            data = self.cv_pipeline.preprocess()
+
+            # Pass is_tuning=True to disable heavy logging inside CV
+            metrics = self.cv_pipeline.run_cv(approach, data, is_tuning=True)
+
+            # 3. Log Aggregated Metrics to this Trial Run
+            self.mlflow_manager.log_metrics(metrics)
 
         return metrics[self.metric_name]
 
@@ -116,22 +124,11 @@ class OptunaTuner(BaseTuner):
             sampler=optuna.samplers.TPESampler(seed=42),
         )
 
-        callbacks = []
-        if self.mlflow_manager and getattr(self.mlflow_manager, "enabled", False):
-            mlflow_cb = MLflowCallback(
-                tracking_uri=self.mlflow_manager.mlflow_cfg.get(
-                    "tracking_uri", "mlruns"
-                ),
-                metric_name=self.metric_name,
-            )
-            callbacks.append(mlflow_cb)
-
         study.optimize(
             self.objective,
             n_trials=n_trials,
             timeout=timeout,
             n_jobs=n_jobs,
-            callbacks=callbacks or None,
             show_progress_bar=show_progress,
         )
 

@@ -71,59 +71,54 @@ class TuningPipeline(BasePipeline):
         raise NotImplementedError("Use run() for tuning workflow.")
 
     def run(self, data=None):
-        """
-        Execute the full tuning workflow.
-
-        Steps:
-            1. Preprocess data if not provided.
-            2. Run Optuna hyperparameter tuning with time-series CV.
-            3. Update configuration with best-found hyperparameters.
-            4. Retrain model on the full dataset using best parameters.
-            5. Register retrained model in MLflow.
-
-        Args:
-            data:
-                Optional preprocessed dataset. If None, preprocessing
-                will be executed automatically.
-
-        Returns:
-            Dict[str, Any]: Best hyperparameters found by the tuner.
-        """
         # Step 1: Preprocess
         if data is None:
             data = self.preprocess()
 
-        # Step 2: Initialize the tuner
-        tuner = OptunaTuner(
-            cfg=self.cfg,
-            splitter=self.splitter,
-            mlflow_manager=self.mlflow_manager,
-            metric_name=self.cfg.get("tuning", {}).get("optimize_metric", "mae_mean"),
-            direction="minimize",
-        )
+        # START PARENT RUN HERE
+        # Run name: Hparam_Tuning_Experiment
+        with self.mlflow_manager.start_run(run_name="Hparam_Tuning_Experiment"):
+            print(
+                "[MLflow] Started Parent Run: \
+                  Hparam_Tuning_Experiment"
+            )
 
-        # Step 3: Run tuning
-        n_trials = self.cfg.get("tuning", {}).get("n_trials", 20)
-        result = tuner.tune(n_trials=n_trials)
-        best_params = result["best_params"]
+            # Step 2: Initialize the tuner
+            tuner = OptunaTuner(
+                cfg=self.cfg,
+                splitter=self.splitter,
+                mlflow_manager=self.mlflow_manager,  # Pass manager to tuner
+                metric_name=self.cfg.get("tuning", {}).get(
+                    "optimize_metric", "mae_mean"
+                ),
+                direction="minimize",
+            )
+
+            # Step 3: Run tuning (Trials will be nested children)
+            n_trials = self.cfg.get("tuning", {}).get("n_trials", 20)
+
+            # Pass aggregated metrics of best trial to parent run (optional but good)
+            result = tuner.tune(n_trials=n_trials)
+            best_params = result["best_params"]
+
+            # Log best params to Parent Run for quick view
+            self.mlflow_manager.log_params(best_params)
 
         # Step 4: Update experiment hyperparameters
         self.cfg.experiment.hyperparams.update(best_params)
 
         # Step 5: Retrain model using best parameters
+        # This is OUTSIDE the tuning run, so it will create its own standalone run
+        # (or you can nest it if you prefer, but usually Retrain is a separate run)
         print(f"\n{'=' * 60}")
         print("  RETRAINING WITH BEST HYPERPARAMETERS")
         print(f"{'=' * 60}\n")
 
         training_pipeline = TrainingPipeline("")
-        training_pipeline.cfg = self.cfg  # inject updated config
+        training_pipeline.cfg = self.cfg
 
-        # Retrain + auto-log to MLflow Registry
+        # This will log the FINAL MODEL (artifacts enabled by default in
+        # TrainingPipeline)
         training_pipeline.run(data)
-
-        print(f"\n{'=' * 60}")
-        print("  TUNING PIPELINE COMPLETED")
-        print("  Best model registered to MLflow Registry")
-        print(f"{'=' * 60}\n")
 
         return best_params
