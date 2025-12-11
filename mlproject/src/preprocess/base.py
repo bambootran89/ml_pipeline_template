@@ -4,13 +4,17 @@ Base preprocessing cho offline training và online serving.
 Fixed:
 - Deprecated fillna(method=...) → ffill() + bfill()
 - Feature name warning với StandardScaler
+- Added: Logic download scaler từ MLflow nếu không tìm thấy local.
 """
 
 import os
 import pickle
+import shutil
+import tempfile
 
 import numpy as np
 import pandas as pd
+from mlflow.tracking import MlflowClient
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 ARTIFACT_DIR = os.path.join("mlproject", "artifacts", "preprocessing")
@@ -19,25 +23,11 @@ ARTIFACT_DIR = os.path.join("mlproject", "artifacts", "preprocessing")
 class PreprocessBase:
     """
     Base preprocessing logic used for BOTH offline training and online serving.
-
-    This class contains all shared logic to ensure consistency between
-    model training and model inference (online API).
-
-    It implements:
-    - Missing value imputation
-    - Covariate generation
-    - Scaler fit + save
-    - Scaler load + transform
     """
 
     def __init__(self, cfg=None):
         """
         Initialize the preprocessing base object.
-
-        Args:
-            cfg (dict, optional):
-                Configuration dictionary containing
-                preprocessing steps and artifact path.
         """
         self.cfg = cfg or {}
 
@@ -50,41 +40,14 @@ class PreprocessBase:
         self.scaler_columns = None
 
     def fit(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Fit preprocessing steps on the DataFrame.
-
-        Steps include:
-        - fill_missing
-        - generate_covariates
-        - fit scaler (normalize step)
-
-        Args:
-            df (pd.DataFrame): Input raw DataFrame.
-
-        Returns:
-            pd.DataFrame: DataFrame after preprocessing steps (scaler fitted).
-        """
+        """Fit preprocessing steps on the DataFrame."""
         df = self._apply_fill_missing(df)
         df = self._apply_generate_covariates(df)
         df = self._apply_fit_scaler(df)
         return df
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Apply preprocessing transformations to the DataFrame.
-
-        Steps include:
-        - fill_missing
-        - generate_covariates
-        - load scaler (if needed)
-        - apply scaling
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
-        Returns:
-            pd.DataFrame: Transformed output.
-        """
+        """Apply preprocessing transformations to the DataFrame."""
         df = self._apply_fill_missing(df)
         df = self._apply_generate_covariates(df)
         if self.scaler is None:
@@ -93,19 +56,7 @@ class PreprocessBase:
         return df
 
     def _apply_fill_missing(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Apply missing value imputation according to config.
-
-        Supported:
-        - ffill (forward fill)
-        - mean
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
-        Returns:
-            pd.DataFrame: DataFrame with missing values imputed.
-        """
+        """Apply missing value imputation according to config."""
         step = self._get_step("fill_missing")
         if not step:
             return df
@@ -113,7 +64,6 @@ class PreprocessBase:
         method = step.get("method", "ffill")
 
         if method == "ffill":
-            # <<< FIX >>> Use ffill() + bfill() to avoid deprecated fillna(method=...)
             return df.ffill().bfill()
 
         if method == "mean":
@@ -122,18 +72,7 @@ class PreprocessBase:
         raise ValueError(f"Unknown fill_missing method: {method}")
 
     def _apply_generate_covariates(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Generate additional covariates based on config.
-
-        Currently supports:
-        - day_of_week: requires DatetimeIndex
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
-        Returns:
-            pd.DataFrame: DataFrame with generated covariates.
-        """
+        """Generate additional covariates based on config."""
         step = self._get_step("gen_covariates")
         if not step:
             return df
@@ -146,17 +85,7 @@ class PreprocessBase:
         return df
 
     def _apply_fit_scaler(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Fit scaler (StandardScaler or MinMaxScaler) based on config.
-
-        Saves fitted scaler to artifacts_dir/scaler.pkl.
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
-        Returns:
-            pd.DataFrame: DataFrame unchanged (scaler fitted separately).
-        """
+        """Fit scaler and save to artifacts."""
         step = self._get_step("normalize")
         if not step:
             return df
@@ -167,12 +96,9 @@ class PreprocessBase:
         if method == "zscore":
             scaler = StandardScaler()
             scaler.fit(df[cols].values)
-            # set attribute expected by sklearn for feature name checks
             try:
                 scaler.feature_names_in_ = np.array(cols)
             except Exception:
-                # defensive: older sklearn versions may not accept setting this; ignore
-                # if fails
                 pass
         elif method == "minmax":
             scaler = MinMaxScaler()
@@ -192,34 +118,20 @@ class PreprocessBase:
         return df
 
     def _apply_scaling(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Apply previously fitted scaler to the DataFrame.
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-
-        Returns:
-            pd.DataFrame: Scaled DataFrame.
-        """
+        """Apply previously fitted scaler."""
         if self.scaler is None:
             return df
 
-        # <<< FIX >>> Ensure all expected columns exist to avoid transform errors
+        # Ensure all expected columns exist
         for c in self.scaler_columns:
             if c not in df.columns:
                 df[c] = 0.0
 
-        # Select columns in the order recorded
         df[self.scaler_columns] = self.scaler.transform(df[self.scaler_columns])
         return df
 
     def save_scaler(self):
-        """
-        Save scaler + column list to artifact directory.
-
-        Creates file:
-            artifacts/preprocessing/scaler.pkl
-        """
+        """Save scaler + column list to artifact directory."""
         os.makedirs(self.artifacts_dir, exist_ok=True)
         with open(os.path.join(self.artifacts_dir, "scaler.pkl"), "wb") as f:
             pickle.dump(
@@ -229,39 +141,111 @@ class PreprocessBase:
 
     def load_scaler(self):
         """
-        Load scaler + column list from artifact directory if not loaded.
+        Load scaler from artifact directory.
+        If local file is missing, attempts to download from MLflow.
         """
         path = os.path.join(self.artifacts_dir, "scaler.pkl")
+
+        # 1. Nếu không thấy local, thử download từ MLflow
         if not os.path.exists(path):
+            print(
+                f"[PreprocessBase] Local scaler not found at {path}. Checking MLflow..."
+            )
+            self._download_scaler_from_mlflow()
+
+        # 2. Load nếu file tồn tại
+        if not os.path.exists(path):
+            print(
+                "[PreprocessBase] Scaler artifact not found (Local or MLflow).\
+                      Skipping scaling."
+            )
             return
-        with open(path, "rb") as f:
-            obj = pickle.load(f)
-        self.scaler = obj["scaler"]
-        self.scaler_columns = obj["columns"]
+
+        try:
+            with open(path, "rb") as f:
+                obj = pickle.load(f)
+            self.scaler = obj["scaler"]
+            self.scaler_columns = obj["columns"]
+            print(f"[PreprocessBase] Scaler loaded successfully from {path}")
+        except Exception as e:
+            print(f"[PreprocessBase] Error loading pickle file: {e}")
+
+    def _download_scaler_from_mlflow(self):
+        """
+        Attempt to download scaler artifact from MLflow (Run or Registry).
+        """
+        mlflow_cfg = self.cfg.get("mlflow", {})
+        if not mlflow_cfg.get("enabled", False):
+            return
+
+        try:
+            client = MlflowClient()
+            run_id = mlflow_cfg.get("run_id")
+
+            # Nếu không có run_id, thử tìm từ Model Registry
+            if not run_id:
+                registry_conf = mlflow_cfg.get("registry", {})
+                model_name = registry_conf.get("model_name")
+                if model_name:
+                    print(
+                        f"""[PreprocessBase] Looking up latest
+                        run for model '{model_name}'..."""
+                    )
+                    versions = client.get_latest_versions(
+                        model_name, stages=["None", "Staging", "Production"]
+                    )
+                    if versions:
+                        # Lấy version mới nhất (thường là cuối list)
+                        latest_version = sorted(versions, key=lambda x: int(x.version))[
+                            -1
+                        ]
+                        run_id = latest_version.run_id
+                        print(
+                            f"""[PreprocessBase] Found latest version {
+                                latest_version.version} (Run ID: {run_id})"""
+                        )
+
+            if not run_id:
+                print(
+                    "[PreprocessBase] No run_id or registered model found. \
+                        Cannot download scaler."
+                )
+                return
+
+            # Artifact path trên MLflow: preprocessing/scaler/scaler.pkl
+            artifact_rel_path = "preprocessing/scaler/scaler.pkl"
+
+            print(
+                f"""[PreprocessBase] Downloading \
+                  artifact '{artifact_rel_path}' from run {run_id}..."""
+            )
+
+            # Download vào thư mục tạm, sau đó copy về artifacts_dir
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                local_path = client.download_artifacts(
+                    run_id=run_id, path=artifact_rel_path, dst_path=tmp_dir
+                )
+
+                os.makedirs(self.artifacts_dir, exist_ok=True)
+                final_path = os.path.join(self.artifacts_dir, "scaler.pkl")
+                if os.path.exists(local_path):
+                    shutil.copy2(local_path, final_path)
+                    print(f"[PreprocessBase] Scaler downloaded to {final_path}")
+                else:
+                    print(
+                        f"""[PreprocessBase] Artifact downloaded
+                        but file not found at {local_path}"""
+                    )
+
+        except Exception as e:
+            print(f"[PreprocessBase] Error downloading from MLflow: {e}")
 
     def _get_step(self, name: str):
-        """
-        Retrieve a preprocessing step by name.
-
-        Args:
-            name (str): Step name.
-
-        Returns:
-            dict or None: Step config or None if not found.
-        """
+        """Retrieve a preprocessing step by name."""
         return next((s for s in self.steps if s.get("name") == name), None)
 
     def _get_numeric_columns(self, df, step):
-        """
-        Get numeric columns to scale.
-
-        Args:
-            df (pd.DataFrame): Input DataFrame.
-            step (dict): normalize step config.
-
-        Returns:
-            list[str]: Numeric column names.
-        """
+        """Get numeric columns to scale."""
         cols = step.get("columns")
         if cols:
             return cols

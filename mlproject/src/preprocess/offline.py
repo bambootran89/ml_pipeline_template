@@ -76,10 +76,6 @@ class OfflinePreprocessor:
 
         Returns:
             Transformed DataFrame.
-
-        Note:
-            This does not log artifacts to MLflow immediately; logging
-            should be handled separately.
         """
         df = self.load_raw_data()
         df = self.fit(df)
@@ -117,11 +113,16 @@ class OfflinePreprocessor:
         scaler_path = os.path.join(self.artifacts_dir, "scaler.pkl")
         if os.path.exists(scaler_path):
             try:
+                # Log artifact into a subdirectory 'preprocessing/scaler'
                 self.mlflow_manager.log_artifact(
                     scaler_path, artifact_path="preprocessing/scaler"
                 )
-            except Exception:
-                pass
+                print(
+                    "[OfflinePreprocessor] Logged scaler to MLflow: \
+                        preprocessing/scaler/scaler.pkl"
+                )
+            except Exception as e:
+                print(f"[OfflinePreprocessor] Failed to log scaler: {e}")
 
     def _log_config(self, df: Optional[pd.DataFrame] = None):
         """Log preprocessing configuration to MLflow."""
@@ -212,29 +213,12 @@ class OfflinePreprocessor:
         return self._load_csv(path, index_col)
 
     def _load_csv(self, path: str, index_col: str) -> pd.DataFrame:
-        """
-        Load CSV dataset.
-
-        Args:
-            path: Path to CSV file.
-            index_col: Column name to set as index.
-
-        Returns:
-            DataFrame indexed by index_col.
-        """
+        """Load CSV dataset."""
         df = pd.read_csv(path, parse_dates=[index_col])
         return df.set_index(index_col)
 
     def _load_synthetic(self, index_col: str) -> pd.DataFrame:
-        """
-        Generate synthetic dataset for testing.
-
-        Args:
-            index_col: Name of the datetime index column.
-
-        Returns:
-            Synthetic DataFrame.
-        """
+        """Generate synthetic dataset."""
         idx = pd.date_range("2020-01-01", periods=200, freq="H")
         df = pd.DataFrame(
             {

@@ -20,25 +20,10 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 class ModelsService:
     """
     Unified service for loading models and serving predictions.
-
-    Responsibilities:
-    - Load model from MLflow Registry when enabled.
-    - Fall back to local artifacts when registry access fails.
-    - Preprocess incoming data for serving.
-    - Build model input windows and run inference.
     """
 
     def __init__(self, cfg_path: str = ""):
-        """
-        Initialize service using a config path.
-
-        Loads configuration, instantiates MLflow manager,
-        and attempts to load the model on initialization.
-
-        Args:
-            cfg_path: Path to configuration file or empty to
-                use default loader behavior.
-        """
+        """Initialize service using a config path."""
         self.cfg = ConfigLoader.load(cfg_path)
         self.model = None
         self.mlflow_manager = MLflowManager(self.cfg)
@@ -52,12 +37,33 @@ class ModelsService:
             try:
                 registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
                 model_name = registry_conf.get("model_name", "ts_forecast_model")
+                # Bạn có thể đổi 'latest' thành version cụ thể nếu muốn production
+                # strict hơn
                 version = "latest"
                 model_uri = f"models:/{model_name}/{version}"
                 print(
                     f"[ModelsService] Loading model from MLflow Registry: {model_uri}"
                 )
                 self.model = mlflow.pyfunc.load_model(model_uri)
+
+                # <<< FIX START: Inject Run ID into config for Preprocessor >>>
+                try:
+                    # Trích xuất run_id từ metadata của model vừa load
+                    run_id = self.model.metadata.run_id
+                    if run_id:
+                        print(f"[ModelsService] Model loaded from Run ID: {run_id}")
+                        # Cập nhật vào config để PreprocessBase biết tải scaler ở đâu
+                        if "mlflow" not in self.cfg:
+                            self.cfg["mlflow"] = {}
+                        self.cfg.mlflow["run_id"] = run_id
+                        self.cfg.mlflow["enabled"] = True
+                except Exception as e:
+                    print(
+                        f"""[ModelsService] Warning: \
+                        Could not extract run_id from model metadata: {e}"""
+                    )
+                # <<< FIX END >>>
+
                 return
             except Exception as e:
                 print(
@@ -68,7 +74,6 @@ class ModelsService:
         # Fallback to local artifacts
         print("[ModelsService] Loading model from Local Artifacts...")
 
-        # FIX: Check if 'approaches' exists in config before accessing
         if not self.cfg.get("approaches"):
             print(
                 "[ModelsService] Warning: 'approaches' key missing in config. "
@@ -87,7 +92,6 @@ class ModelsService:
 
     def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
         """Build model input window from preprocessed DataFrame."""
-        # FIX: Provide default if approaches is missing
         input_chunk_length = 24
         if self.cfg.get("approaches"):
             input_chunk_length = self.cfg.approaches[0].hyperparams.get(
@@ -109,6 +113,8 @@ class ModelsService:
 
         try:
             data = pd.DataFrame(request.data)
+            # serve_preprocess_request sẽ khởi tạo PreprocessEngine với self.cfg
+            # Vì self.cfg đã có run_id (từ load_model), engine sẽ tải đúng scaler.
             df_transformed = serve_preprocess_request(data, self.cfg)
             x_input = self._prepare_input_window(df_transformed)
             preds = self.model.predict(x_input)
