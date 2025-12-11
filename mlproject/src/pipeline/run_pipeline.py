@@ -1,70 +1,129 @@
+"""
+Extended command-line interface (CLI) supporting Training, Evaluation,
+Testing, Cross-Validation (CV), and Hyperparameter Tuning.
+
+Usage examples:
+    # Standard modes
+    python -m mlproject.src.pipeline.run_pipeline train --config path.yaml
+    python -m mlproject.src.pipeline.run_pipeline eval --config path.yaml
+    python -m mlproject.src.pipeline.run_pipeline test --config path.yaml \
+        --input file.csv
+
+    # Additional modes
+    python -m mlproject.src.pipeline.run_pipeline cv --config path.yaml
+    python -m mlproject.src.pipeline.run_pipeline tune --config path.yaml
+"""
+
 import argparse
 
 import pandas as pd
 
+from mlproject.src.cv.cv_pipeline import CrossValidationPipeline
+from mlproject.src.cv.splitter import ExpandingWindowSplitter
+from mlproject.src.pipeline.config_loader import ConfigLoader
+
+# === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
+from mlproject.src.pipeline.tuning_pipeline import TuningPipeline
+from mlproject.src.tracking.mlflow_manager import MLflowManager
+
+# ====================================================
 
 
 def run_training(cfg_path: str) -> None:
-    """Run the full training pipeline."""
+    """Execute the full training workflow."""
     pipeline = TrainingPipeline(cfg_path)
-    pipeline.run()  # executes preprocessing and training
+    pipeline.run()
 
 
 def run_evaluation(cfg_path: str) -> None:
-    """Run the evaluation-only pipeline."""
+    """Execute evaluation-only workflow."""
     pipeline = EvalPipeline(cfg_path)
-    pipeline.run()  # executes evaluation
+    pipeline.run()
 
 
 def run_testing(cfg_path: str, input_path: str) -> None:
-    """Run inference pipeline on a CSV file."""
+    """
+    Execute serving-time inference on a provided CSV file.
+    """
     if not input_path:
         raise ValueError("Test mode requires --input <file.csv>")
 
     pipeline = TestPipeline(cfg_path)
+
     raw_df = pd.read_csv(input_path)
-    assert "date" in raw_df.columns
+    assert "date" in raw_df.columns, "Input CSV must contain a 'date' column."
     raw_df = raw_df.set_index("date")
 
-    # run pipeline without assigning return
     pipeline.run(raw_df)
 
 
+def run_cross_validation(cfg_path: str) -> None:
+    """
+    Execute time-series cross-validation using ExpandingWindowSplitter.
+    """
+    cfg = ConfigLoader.load(cfg_path)
+    mlflow_manager = MLflowManager(cfg)
+
+    splitter = ExpandingWindowSplitter(
+        n_splits=cfg.get("tuning", {}).get("n_splits", 3),
+        test_size=cfg.get("tuning", {}).get("test_size", 20),
+    )
+
+    cv_pipeline = CrossValidationPipeline(cfg, splitter, mlflow_manager)
+
+    approach = {
+        "model": cfg.experiment.model,
+        "hyperparams": dict(cfg.experiment.hyperparams),
+    }
+
+    data = cv_pipeline.preprocess()
+    cv_pipeline.run_cv(approach, data)
+
+
+def run_tuning(cfg_path: str) -> None:
+    """
+    Execute hyperparameter tuning workflow.
+    """
+    tuning_pipeline = TuningPipeline(cfg_path)
+    tuning_pipeline.run()
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
-    """Build the argument parser for CLI."""
+    """Build unified CLI parser."""
     parser = argparse.ArgumentParser(
-        description="Unified entrypoint for Training / Evaluation / Testing pipelines."
+        description=(
+            "Unified entrypoint for Training, Evaluation, Testing, "
+            "Cross-Validation, and Hyperparameter Tuning."
+        )
     )
 
     parser.add_argument(
         "mode",
         type=str,
-        choices=["train", "eval", "test"],
-        help="Which pipeline to run.",
+        choices=["train", "eval", "test", "cv", "tune"],
+        help="Which workflow pipeline to execute.",
     )
-
     parser.add_argument(
         "--config",
         type=str,
         default="",
-        help="Path to config YAML. If omitted, default experiment config is used.",
+        help="Path to YAML config file.",
     )
-
     parser.add_argument(
         "--input",
         type=str,
         default="",
-        help="CSV file path for test inference mode.",
+        help="CSV path to use only for test mode.",
     )
 
     return parser
 
 
 def main() -> None:
-    """CLI entrypoint for running train/eval/test pipelines."""
+    """CLI entrypoint."""
     parser = build_arg_parser()
     args = parser.parse_args()
 
@@ -74,27 +133,28 @@ def main() -> None:
         run_evaluation(args.config)
     elif args.mode == "test":
         run_testing(args.config, args.input)
+    elif args.mode == "cv":
+        run_cross_validation(args.config)
+    elif args.mode == "tune":
+        run_tuning(args.config)
     else:
-        raise ValueError(f"Unknown mode {args.mode}")
+        raise ValueError(f"Unknown mode '{args.mode}'.")
 
 
 def main_run(mode: str, cfg_path: str = "", input_path: str = "") -> None:
-    """
-    Programmatic entrypoint for running pipelines.
-
-    Args:
-        mode (str): "train", "eval", or "test"
-        cfg_path (str): path to config YAML
-        input_path (str): path to CSV for test mode
-    """
+    """Programmatic entrypoint."""
     if mode == "train":
         run_training(cfg_path)
     elif mode == "eval":
         run_evaluation(cfg_path)
     elif mode == "test":
         run_testing(cfg_path, input_path)
+    elif mode == "cv":
+        run_cross_validation(cfg_path)
+    elif mode == "tune":
+        run_tuning(cfg_path)
     else:
-        raise ValueError(f"Unknown mode {mode}")
+        raise ValueError(f"Unknown mode '{mode}'.")
 
 
 if __name__ == "__main__":

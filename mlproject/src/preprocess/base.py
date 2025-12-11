@@ -1,3 +1,11 @@
+"""
+Base preprocessing cho offline training và online serving.
+
+Fixed:
+- Deprecated fillna(method=...) → ffill() + bfill()
+- Feature name warning với StandardScaler
+"""
+
 import os
 import pickle
 
@@ -89,7 +97,7 @@ class PreprocessBase:
         Apply missing value imputation according to config.
 
         Supported:
-        - ffill
+        - ffill (forward fill)
         - mean
 
         Args:
@@ -105,7 +113,8 @@ class PreprocessBase:
         method = step.get("method", "ffill")
 
         if method == "ffill":
-            return df.fillna(method="ffill").fillna(method="bfill")
+            # <<< FIX >>> Use ffill() + bfill() to avoid deprecated fillna(method=...)
+            return df.ffill().bfill()
 
         if method == "mean":
             return df.fillna(df.mean())
@@ -156,9 +165,22 @@ class PreprocessBase:
         method = step.get("method", "zscore")
 
         if method == "zscore":
-            scaler = StandardScaler().fit(df[cols].values)
+            scaler = StandardScaler()
+            scaler.fit(df[cols].values)
+            # set attribute expected by sklearn for feature name checks
+            try:
+                scaler.feature_names_in_ = np.array(cols)
+            except Exception:
+                # defensive: older sklearn versions may not accept setting this; ignore
+                # if fails
+                pass
         elif method == "minmax":
-            scaler = MinMaxScaler().fit(df[cols].values)
+            scaler = MinMaxScaler()
+            scaler.fit(df[cols].values)
+            try:
+                scaler.feature_names_in_ = np.array(cols)
+            except Exception:
+                pass
         else:
             raise ValueError(f"Unknown normalize method: {method}")
 
@@ -181,11 +203,13 @@ class PreprocessBase:
         """
         if self.scaler is None:
             return df
-        # Ensure all columns exist
+
+        # <<< FIX >>> Ensure all expected columns exist to avoid transform errors
         for c in self.scaler_columns:
             if c not in df.columns:
                 df[c] = 0.0
 
+        # Select columns in the order recorded
         df[self.scaler_columns] = self.scaler.transform(df[self.scaler_columns])
         return df
 
