@@ -8,7 +8,6 @@ Usage:
 import argparse
 
 from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
-from mlproject.src.eval.cv_reporter import CVEvaluator
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
@@ -62,7 +61,6 @@ def main() -> None:
     metrics = cv_pipeline.run_cv(approach, data)
 
     # Summary output
-    CVEvaluator()
     print("\n" + "=" * 70)
     print("CROSS-VALIDATION RESULTS")
     print("=" * 70)

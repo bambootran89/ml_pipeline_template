@@ -13,7 +13,6 @@ from omegaconf import DictConfig
 
 from mlproject.src.datamodule.cv_data_prep import CVInitializer
 from mlproject.src.datamodule.splitter import TimeSeriesSplitter
-from mlproject.src.eval.aggregator import CVAggregator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.engines.cv_fold_runner import FoldRunner
 from mlproject.src.pipeline.utils.printers import CVPrinter
@@ -44,7 +43,6 @@ class CrossValidationPipeline(BasePipeline):
         self.splitter = splitter
         self.mlflow_manager = mlflow_manager
         self._printer = CVPrinter()
-        self._aggregator = CVAggregator()
         self._initializer = CVInitializer(cfg, splitter)
         self._fold_runner = FoldRunner(cfg, mlflow_manager)
 
@@ -66,25 +64,6 @@ class CrossValidationPipeline(BasePipeline):
             NotImplementedError: Cross-validation uses run_cv().
         """
         raise NotImplementedError("Use run_cv() for cross-validation")
-
-    # def _initialize_context(
-    #     self, approach: Dict[str, Any], data: Any = None
-    # ) -> Tuple[Any, Any, str, Dict[str, Any], int]:
-    #     """
-    #     Prepare raw data and model info for CV.
-
-    #     Args:
-    #         approach: Model configuration dictionary.
-    #         data: Not used (kept for API compatibility).
-
-    #     Returns:
-    #         x_full_raw: Raw input windows.
-    #         y_full: Target windows.
-    #         model_name: Model name string.
-    #         hyperparams: Model hyperparameters.
-    #         total_folds: Number of CV folds.
-    #     """
-    #     return self._initializer.initialize(approach)
 
     def run_cv(
         self, approach: Dict[str, Any], data: Any = None, is_tuning=False
