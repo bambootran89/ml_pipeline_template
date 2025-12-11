@@ -167,6 +167,11 @@ This includes:
 
 
 ## 4. Commands — run & serve
+
+Run mlflow server
+```bash
+mlflow ui --port 5000
+```
 Run training pipeline
 
 ```bash
@@ -174,6 +179,14 @@ python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/e
 python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth1.yaml
 python -m mlproject.src.pipeline.run_pipeline test --config mlproject/configs/experiments/etth1.yaml --input sample_input.csv
 ```
+
+Run Cross-Validation
+```bash
+python -m mlproject.src.pipeline.run_pipeline cv \
+    --config mlproject/configs/experiments/etth2.yaml
+```
+
+
 Start FastAPI API
 ```bash
 uvicorn mlproject.serve.api:app --reload

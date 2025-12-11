@@ -9,15 +9,16 @@ venv:
 	${PYTHON} -m venv ${VENV_NAME} && \
 	source ${VENV_NAME}/bin/activate && \
 	${PYTHON} -m pip install pip setuptools wheel && \
+	${PYTHON} -m pip install pip autoflake autopep8 isort flake8 mypy && \
 	${PYTHON} -m pip install -e .[dev] && \
 	pre-commit install
 
 # Style
 style:
-	black ./${MAIN_FOLDER}/
+	black ./${MAIN_FOLDER}/ --line-length 88
 	${PYTHON} -m isort -rc ./${MAIN_FOLDER}/
-	autoflake --in-place --remove-unused-variables --remove-all-unused-imports -r mlproject/
-	autopep8 -i -a -a -r mlproject/
+	${PYTHON} -m  autoflake --in-place --remove-unused-variables --remove-all-unused-imports -r mlproject/
+	${PYTHON} -m  autopep8 --in-place --aggressive --aggressive --aggressive -r mlproject/
 	flake8 ./${MAIN_FOLDER}/
 
 test:

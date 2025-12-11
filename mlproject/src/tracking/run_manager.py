@@ -43,7 +43,7 @@ class RunManager:
 
     @contextlib.contextmanager
     def start_run(
-        self, run_name: Optional[str] = None
+        self, run_name: Optional[str] = None, nested: bool = False
     ) -> Generator[Optional[mlflow.ActiveRun], None, None]:
         """
         Start an MLflow run within a context manager.
@@ -54,7 +54,7 @@ class RunManager:
         Args:
             run_name (Optional[str]):
                 Display name for the run. Defaults to a timestamped name.
-
+            nested (bool): Whether to create a nested run.
         Yields:
             Optional[mlflow.ActiveRun]: Active MLflow run if enabled, else None.
         """
@@ -67,7 +67,7 @@ class RunManager:
             timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
             run_name = f"{prefix}_{timestamp}"
 
-        with mlflow.start_run(run_name=run_name) as run:
+        with mlflow.start_run(run_name=run_name, nested=nested) as run:
             self._log_environment_info()
             yield run
 
