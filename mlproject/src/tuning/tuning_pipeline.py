@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional, Union
 
 from omegaconf import DictConfig
 
-from mlproject.src.cv.splitter import (
+from mlproject.src.datamodule.splitter import (
     ExpandingWindowSplitter,
     SlidingWindowSplitter,
     TimeSeriesSplitter,

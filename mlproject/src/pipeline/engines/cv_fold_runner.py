@@ -1,11 +1,11 @@
 from typing import Any
 
+from ...eval.fold_evaluator import FoldEvaluator
+from ...preprocess.fold_scaler import FoldPreprocessor
+from ...tracking.cv_logger import FoldLogger
+from ...trainer.dispatcher import FoldTrainer
+from ...trainer.setup_helper import FoldModelBuilder
 from .fold_context import FoldContext
-from .fold_evaluator import FoldEvaluator
-from .fold_logger import FoldLogger
-from .fold_model_setup import FoldModelBuilder
-from .fold_preprocessor import FoldPreprocessor
-from .fold_trainer import FoldTrainer
 
 
 class FoldRunner:

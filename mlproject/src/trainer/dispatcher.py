@@ -1,6 +1,6 @@
 from mlproject.src.trainer.dl_trainer import DeepLearningTrainer
 
-from .fold_dataloader import FoldDataLoaderBuilder
+from ..datamodule.loader_factory import FoldDataLoaderBuilder
 
 
 class FoldTrainer:

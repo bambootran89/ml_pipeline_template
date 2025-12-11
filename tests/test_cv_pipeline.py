@@ -7,9 +7,9 @@ Run:
 
 import pytest
 
-from mlproject.src.cv.cv_pipeline import CrossValidationPipeline
-from mlproject.src.cv.splitter import ExpandingWindowSplitter
+from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
+from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 

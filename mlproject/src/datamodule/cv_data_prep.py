@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.cv.splitter import TimeSeriesSplitter
+from mlproject.src.datamodule.splitter import TimeSeriesSplitter
 
 
 class CVInitializer:

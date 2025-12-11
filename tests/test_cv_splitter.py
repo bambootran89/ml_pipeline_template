@@ -8,7 +8,10 @@ Run:
 import numpy as np
 import pytest
 
-from mlproject.src.cv.splitter import ExpandingWindowSplitter, SlidingWindowSplitter
+from mlproject.src.datamodule.splitter import (
+    ExpandingWindowSplitter,
+    SlidingWindowSplitter,
+)
 
 
 class TestExpandingWindowSplitter:

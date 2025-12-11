@@ -11,12 +11,12 @@ from typing import Any, Dict
 import numpy as np
 from omegaconf import DictConfig
 
-from mlproject.src.cv.cv_aggregator import CVAggregator
-from mlproject.src.cv.cv_initializer import CVInitializer
-from mlproject.src.cv.fold_runner import FoldRunner
-from mlproject.src.cv.printers import CVPrinter
-from mlproject.src.cv.splitter import TimeSeriesSplitter
+from mlproject.src.datamodule.cv_data_prep import CVInitializer
+from mlproject.src.datamodule.splitter import TimeSeriesSplitter
+from mlproject.src.eval.aggregator import CVAggregator
 from mlproject.src.pipeline.base import BasePipeline
+from mlproject.src.pipeline.engines.cv_fold_runner import FoldRunner
+from mlproject.src.pipeline.utils.printers import CVPrinter
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
