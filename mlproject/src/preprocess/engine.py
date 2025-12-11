@@ -20,6 +20,7 @@ class PreprocessEngine:
         Args:
             cfg (dict, optional): Preprocessing configuration.
         """
+        print(cfg.mlflow)
         self.base = PreprocessBase(cfg)
         self._loaded = False
 

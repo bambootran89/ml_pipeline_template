@@ -147,6 +147,9 @@ class TestPipeline(BasePipeline):
         Returns:
             Numpy array of predictions.
         """
+        if isinstance(approach, DictConfig):
+            approach = OmegaConf.to_container(approach, resolve=True)
+
         if not isinstance(approach, dict):
             raise TypeError(f"Expected approach to be dict, got {type(approach)}")
 
