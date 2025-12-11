@@ -60,6 +60,7 @@ def test_cv_metrics_format(cv_pipeline):
     }
 
     metrics = cv_pipeline.run_cv(approach, data)
+    print(metrics)
 
     # Should have mean, std, min, max cho mỗi metric
     for base_metric in ["mae", "mse", "rmse"]:

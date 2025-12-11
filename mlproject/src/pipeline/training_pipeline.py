@@ -16,41 +16,30 @@ from mlproject.src.trainer.trainer_factory import TrainerFactory
 
 class TrainingPipeline(BasePipeline):
     """
-    End-to-end training pipeline supporting both deep learning (DL) and
+    End-to-end training pipeline supporting deep learning (DL) and
     traditional machine learning (ML) forecasting models.
 
     Responsibilities:
-        • Preprocess raw data using `OfflinePreprocessor`
-        • Build the correct DataModule dynamically (DL or ML)
-        • Initialize model wrapper through `ModelFactory`
-        • Train using `TrainerFactory` (DL trainers or ML trainers)
-        • Evaluate predictions via `TimeSeriesEvaluator`
-        • Log metrics and register models to MLflow Model Registry
-
-    This pipeline is designed for modularity, reproducibility,
-    and MLOps-aligned experiment tracking.
+    - Preprocess dataset and save artifacts.
+    - Initialize models and trainers.
+    - Train models and evaluate on test sets.
+    - Log metrics and models to MLflow when enabled.
     """
 
     def __init__(self, cfg_path: str = ""):
-        """
-        Initialize training pipeline and load configuration.
-
-        Args:
-            cfg_path (str): Path to YAML config file.
-        """
+        """Initialize training pipeline and load configuration."""
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
-
         self.mlflow_manager = MLflowManager(self.cfg)
 
-    def preprocess(self):
+    def preprocess(self) -> Any:
         """
-        Fit preprocessing pipeline and transform the dataset.
+        Fit preprocessing pipeline and transform dataset.
 
         Returns:
-            pd.DataFrame: Fully transformed dataset ready for DataModule.
+            Preprocessed dataset object.
         """
-        preprocessor = OfflinePreprocessor(self.cfg)
+        preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
         return preprocessor.run()
 
     def _init_model(self, approach: Dict[str, Any]):
@@ -58,108 +47,57 @@ class TrainingPipeline(BasePipeline):
         Initialize model wrapper using ModelFactory.
 
         Args:
-            approach (dict): Model configuration containing:
-                - model: model name key
-                - hyperparams: hyperparameter dictionary
+            approach: Dictionary containing model name and hyperparameters.
 
         Returns:
-            ModelWrapper: The initialized model.
+            Initialized model wrapper.
         """
         name = approach["model"].lower()
         hp = approach.get("hyperparams", {})
-
         if isinstance(hp, DictConfig):
             hp = OmegaConf.to_container(hp, resolve=True)
-
         return ModelFactory.create(name, hp)
 
     def _run_dl(
-        self,
-        trainer,
-        dm: TSDLDataModule,
-        wrapper,
-        hyperparams: Dict[str, Any],
+        self, trainer, dm: TSDLDataModule, wrapper, hyperparams: Dict[str, Any]
     ):
         """
         Train and evaluate a deep learning model.
 
-        Args:
-            trainer: DL trainer instance.
-            dm (TSDLDataModule): Data module providing PyTorch dataloaders.
-            wrapper: Model wrapper instance.
-            hyperparams (dict): Training hyperparameters.
-
         Returns:
-            tuple(np.ndarray, np.ndarray):
-                - y_test: Ground truth test labels.
-                - preds: Model predictions.
+            Tuple of (y_test, predictions)
         """
         train_loader, val_loader, _, _ = dm.get_loaders()
-
         wrapper = trainer.train(train_loader, val_loader, hyperparams)
-
         x_test, y_test = dm.get_test_windows()
         preds = wrapper.predict(x_test)
-
         return y_test, preds
 
     def _run_ml(
-        self,
-        trainer,
-        dm: TSMLDataModule,
-        wrapper,
-        hyperparams: Dict[str, Any],
+        self, trainer, dm: TSMLDataModule, wrapper, hyperparams: Dict[str, Any]
     ):
         """
-        Train and evaluate a traditional ML model (XGBoost / LightGBM / sklearn).
-
-        Args:
-            trainer: ML trainer instance.
-            dm (TSMLDataModule): ML dataset container.
-            wrapper: ML model wrapper.
-            hyperparams (dict): Model hyperparameters.
+        Train and evaluate a traditional ML model.
 
         Returns:
-            tuple(np.ndarray, np.ndarray):
-                - y_test: Ground truth values.
-                - preds: Predictions from ML model.
+            Tuple of (y_test, predictions)
         """
         x_train, y_train, x_val, y_val, x_test, y_test = dm.get_data()
-
-        wrapper = trainer.train(
-            (x_train, y_train),
-            (x_val, y_val),
-            hyperparams,
-        )
-
+        wrapper = trainer.train((x_train, y_train), (x_val, y_val), hyperparams)
         preds = wrapper.predict(x_test)
         return y_test, preds
 
-    def _execute_training(
-        self,
-        trainer,
-        dm,
-        wrapper,
-        hyperparams: Dict[str, Any],
-    ):
+    def _execute_training(self, trainer, dm, wrapper, hyperparams: Dict[str, Any]):
         """
-        Execute training + evaluation, independent of MLflow context.
-
-        Args:
-            trainer: Trainer class (DL or ML).
-            dm: Corresponding DataModule (TSDL or TSML).
-            wrapper: Model wrapper.
-            hyperparams (dict): Hyperparameters for training.
+        Execute training and evaluation, independent of MLflow.
 
         Returns:
-            dict: Computed evaluation metrics.
+            Evaluation metrics dictionary.
         """
         if isinstance(dm, TSDLDataModule):
             y_test, preds = self._run_dl(trainer, dm, wrapper, hyperparams)
-
         elif isinstance(dm, TSMLDataModule):
             y_test, preds = self._run_ml(trainer, dm, wrapper, hyperparams)
-
         else:
             raise NotImplementedError(f"Unsupported DataModule type: {type(dm)}")
 
@@ -169,45 +107,35 @@ class TrainingPipeline(BasePipeline):
 
     def _get_sample_input(self, dm):
         """
-        Retrieve a small input example from DataModule
-        to construct MLflow model signatures.
-
-        Args:
-            dm: DataModule instance.
+        Retrieve a small sample input for model logging.
 
         Returns:
-            np.ndarray | None: A small sample batch.
+            Numpy array with first few test inputs.
         """
         if isinstance(dm, TSDLDataModule):
             x_test, _ = dm.get_test_windows()
             return x_test[:5]
-
         if isinstance(dm, TSMLDataModule):
             _, _, _, _, x_test, _ = dm.get_data()
             return x_test[:5]
-
         return None
 
-    def run_approach(self, approach: Dict[str, Any], data):
+    def run_approach(self, approach: Dict[str, Any], data: Any):
         """
-        Execute one full training approach (model + hyperparameters).
+        Execute a full training approach with optional MLflow logging.
 
-        MLflow workflow:
-            1. Start experiment run
-            2. Train model
-            3. Log metrics
-            4. Log model artifacts
-            5. Register model (optional)
+        Steps:
+        1. Preprocess dataset and save artifacts.
+        2. Initialize model and trainer.
+        3. Train and evaluate model.
+        4. Log metrics and model to MLflow if enabled.
 
         Args:
-            approach (dict):
-                Model configuration block containing:
-                    - model
-                    - hyperparams
-            data (pd.DataFrame): Preprocessed dataset.
+            approach: Dictionary containing model name and hyperparameters.
+            data: Raw dataset to train on.
 
         Returns:
-            dict: Evaluation metrics.
+            Metrics dictionary.
         """
         df = data
         model_name = approach["model"].lower()
@@ -218,32 +146,24 @@ class TrainingPipeline(BasePipeline):
         dm.setup()
 
         trainer = TrainerFactory.create(
-            model_name,
-            wrapper,
-            self.cfg.training.artifacts_dir,
+            model_name, wrapper, self.cfg.training.artifacts_dir
         )
 
         if self.mlflow_manager:
             run_name = f"{model_name}_run"
-
             registry_name = (
                 self.cfg.get("mlflow", {}).get("registry", {}).get("model_name")
             )
 
             with self.mlflow_manager.start_run(run_name=run_name):
-                metrics = self._execute_training(
-                    trainer,
-                    dm,
-                    wrapper,
-                    hyperparams,
-                )
+                preprocessor_logger = OfflinePreprocessor(self.cfg, self.mlflow_manager)
+                preprocessor_logger.log_artifacts_to_mlflow(df=df)
 
-                print(f"[MLflow] Logging metrics for {run_name}...")
+                metrics = self._execute_training(trainer, dm, wrapper, hyperparams)
                 self.mlflow_manager.log_metrics(metrics)
 
                 sample_input = self._get_sample_input(dm)
 
-                print(f"[MLflow] Logging & Registering model for {run_name}...")
                 self.mlflow_manager.log_model(
                     model_wrapper=wrapper,
                     artifact_path="model",
@@ -259,10 +179,4 @@ class TrainingPipeline(BasePipeline):
 
                 return metrics
 
-        # Fallback: Run without MLflow
-        return self._execute_training(
-            trainer,
-            dm,
-            wrapper,
-            hyperparams,
-        )
+        return self._execute_training(trainer, dm, wrapper, hyperparams)

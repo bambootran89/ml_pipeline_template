@@ -121,12 +121,6 @@ class RayTuner(BaseTuner):
     def objective(self, trial: Dict[str, Any]) -> float:
         """
         Objective executed for each Ray Tune trial.
-
-        Args:
-            trial: Hyperparameters sampled by Ray Tune.
-
-        Returns:
-            float: Optimization metric value.
         """
         mlflow_mgr = self.mlflow_manager or DummyMLflowManager()
         model_name = self.cfg.experiment.model.lower()
@@ -142,11 +136,18 @@ class RayTuner(BaseTuner):
 
         approach = {"model": model_name, "hyperparams": trial}
 
+        # Preprocess data
         data = cv_pipeline.preprocess()
-        metrics = cv_pipeline.run_cv(approach, data)
 
-        tune.report(**metrics)
-        return float(metrics[self.metric_name])
+        # Run CV: returns list of dicts
+        fold_metrics: Dict[str, Any] = cv_pipeline.run_cv(approach, data)
+
+        # Compute average metric across folds
+        avg_metric: float = float(fold_metrics[self.metric_name])
+
+        # Report to Ray Tune
+        tune.report(**{self.metric_name: avg_metric})
+        return float(avg_metric)
 
     def _format_best_result(
         self, metric_value: float, best_params: Dict[str, Any]

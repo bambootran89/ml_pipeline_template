@@ -1,8 +1,11 @@
 """
-TestPipeline module.
+TestPipeline: Simple inference pipeline for online serving.
 
-Provides a simple inference pipeline for online serving.
-Does not use DataModule, dataset splits, or batching logic.
+Responsibilities:
+- Load trained models from MLflow Registry or local artifacts.
+- Preprocess raw input data for serving.
+- Build input windows for time series models.
+- Run forward prediction and return outputs.
 """
 
 from typing import Any, Dict
@@ -21,25 +24,17 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 class TestPipeline(BasePipeline):
     """
-    Inference pipeline used for online evaluation.
+    Inference pipeline for online evaluation.
 
-    Responsibilities:
-    - Load trained models from MLflow or local storage.
-    - Preprocess raw input for serving.
-    - Build input windows for time series models.
-    - Run forward prediction and return model output.
+    This pipeline does not use DataModule, dataset splits, or batching logic.
     """
 
     def __init__(self, cfg_path: str = "") -> None:
         """
         Initialize pipeline and load configuration.
 
-        Creates MLflowManager when MLflow is enabled in
-        configuration. Also initializes BasePipeline.
-
         Args:
-            cfg_path: Path to configuration file. If empty,
-                default loader rules apply.
+            cfg_path: Path to configuration file. If empty, default rules apply.
         """
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
@@ -47,9 +42,13 @@ class TestPipeline(BasePipeline):
 
     def preprocess(self, data: Any = None) -> Any:
         """
-        Override abstract BasePipeline.preprocess.
+        Preprocess input data for serving.
 
-        Accepts optional data for serving-time preprocessing.
+        Args:
+            data: Optional raw input DataFrame.
+
+        Returns:
+            Preprocessed DataFrame or None if no data provided.
         """
         if data is None:
             return None
@@ -60,13 +59,13 @@ class TestPipeline(BasePipeline):
         Apply serving-time preprocessing to raw input.
 
         Args:
-            data: Raw DataFrame containing historical input.
+            data: Raw DataFrame.
 
         Returns:
-            pd.DataFrame: Transformed DataFrame ready for model inference.
+            Transformed DataFrame ready for inference.
 
         Raises:
-            ValueError: When no input data is provided.
+            ValueError: If input data is None.
         """
         if data is None:
             raise ValueError("Test mode requires input data")
@@ -74,17 +73,17 @@ class TestPipeline(BasePipeline):
 
     def _load_model(self, approach: Dict[str, Any]) -> Any:
         """
-        Load a trained model based on configuration.
+        Load a trained model for inference.
 
         Priority:
-        1. MLflow Registry (when enabled).
-        2. Local artifacts directory (fallback).
+        1. MLflow Registry if enabled.
+        2. Local artifacts directory as fallback.
 
         Args:
-            approach: Dict specifying model name and hyperparameters.
+            approach: Dictionary specifying model name and hyperparameters.
 
         Returns:
-            Loaded model object (PyFunc or custom wrapper).
+            Loaded model object.
         """
         approach_cfg: DictConfig = DictConfig(approach)
 
@@ -93,75 +92,68 @@ class TestPipeline(BasePipeline):
                 registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
                 model_name: str = registry_conf.get("model_name", approach_cfg.model)
                 version = "latest"
-
                 model_uri = f"models:/{model_name}/{version}"
                 print(f"[TestPipeline] Loading model from MLflow Registry: {model_uri}")
                 return mlflow.pyfunc.load_model(model_uri)
-
             except Exception as e:
                 print(
-                    f"[TestPipeline] Warning: Could not load from MLflow ({e}). "
+                    f"[TestPipeline] Warning: MLflow load failed ({e}). "
                     "Falling back to local artifacts."
                 )
 
         print("[TestPipeline] Loading model from Local Artifacts...")
-
         name: str = approach_cfg.model.lower()
         hp: Dict[str, Any] = approach_cfg.get("hyperparams", {})
-
         if isinstance(hp, DictConfig):
             hp = OmegaConf.to_container(hp, resolve=True)
-
         return ModelFactory.load(name, hp, self.cfg.training.artifacts_dir)
 
     def _prepare_input_window(
         self, df: pd.DataFrame, input_chunk_length: int
     ) -> np.ndarray:
         """
-        Build the final model input window.
-
-        Extracts the last rows equal to the configured sequence length.
-        Adds a batch dimension and converts to float32.
+        Build model input window for prediction.
 
         Args:
-            df: Transformed DataFrame.
-            input_chunk_length: Required sequence length.
+            df: Preprocessed DataFrame.
+            input_chunk_length: Sequence length required by model.
 
         Returns:
-            np.ndarray: Model input with shape [1, seq_len, n_features].
+            Model input array with shape [1, seq_len, n_features].
 
         Raises:
-            ValueError: When df does not contain enough rows.
+            ValueError: If input has fewer rows than input_chunk_length.
         """
         seq_len: int = input_chunk_length
-
         if len(df) < seq_len:
             raise ValueError(f"Input data has {len(df)} rows, need at least {seq_len}")
-
         window: np.ndarray = df.iloc[-seq_len:].values
         return window[np.newaxis, :].astype(np.float32)
 
     def run_approach(self, approach: Dict[str, Any], data: pd.DataFrame) -> np.ndarray:
         """
-        Execute inference for the given approach.
+        Execute model inference for a given approach.
 
         Steps:
         1. Preprocess raw data.
         2. Build input window.
-        3. Load model from MLflow or artifacts.
+        3. Load model from MLflow or local artifacts.
         4. Run forward prediction.
 
         Args:
-            approach: Dict containing model name and hyperparameters.
+            approach: Dictionary containing model name and hyperparameters.
             data: Raw historical DataFrame.
 
         Returns:
-            np.ndarray: Model prediction output.
+            Numpy array of predictions.
         """
+        if isinstance(approach, DictConfig):
+            approach = OmegaConf.to_container(approach, resolve=True)
+
         if not isinstance(approach, dict):
             raise TypeError(f"Expected approach to be dict, got {type(approach)}")
 
-        df_transformed: pd.DataFrame = data
+        df_transformed: pd.DataFrame = self._preprocess_input(data)
         input_chunk_length: int = approach.get("hyperparams", {}).get(
             "input_chunk_length", 24
         )
@@ -169,10 +161,10 @@ class TestPipeline(BasePipeline):
             df_transformed, input_chunk_length
         )
 
-        wrapper: Any = self._load_model(approach)
-        preds: np.ndarray = wrapper.predict(x_input)
+        model_wrapper: Any = self._load_model(approach)
+        preds: np.ndarray = model_wrapper.predict(x_input)
 
         print(f"[INFERENCE] Input shape: {x_input.shape}, Output shape: {preds.shape}")
-        print(f"[INFERENCE] Predictions: {preds.flatten()[:10]}...")
+        print(f"[INFERENCE] Predictions (first 10): {preds.flatten()[:10]}...")
 
         return preds

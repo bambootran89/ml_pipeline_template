@@ -1,10 +1,3 @@
-"""
-Model logging utilities for MLflow.
-
-Provides ModelLogger to handle logging and loading PyFunc models,
-including automatic signature inference and optional registry registration.
-"""
-
 from typing import Any, Optional
 
 import mlflow
@@ -18,7 +11,13 @@ from .pyfunc_wrapper import MLflowModelWrapper
 
 class ModelLogger:
     """
-    Handles logging and loading MLflow PyFunc models.
+    Utility class to handle logging and loading of MLflow PyFunc models.
+
+    Responsibilities:
+    - Convert model wrappers to PyFunc models
+    - Infer model signature automatically from example input
+    - Log models to MLflow with optional registry registration
+    - Load PyFunc models from MLflow
 
     Attributes:
         mlflow_cfg (dict): MLflow-specific configuration block.
@@ -30,7 +29,7 @@ class ModelLogger:
         Initialize ModelLogger.
 
         Args:
-            mlflow_cfg (dict): MLflow configuration.
+            mlflow_cfg (dict): MLflow configuration block.
             enabled (bool): Whether MLflow tracking is enabled.
         """
         self.mlflow_cfg = mlflow_cfg
@@ -45,22 +44,22 @@ class ModelLogger:
         registered_model_name: Optional[str] = None,
     ) -> None:
         """
-        Log a wrapped model as an MLflow PyFunc model.
+        Log a model as an MLflow PyFunc model.
 
-        Converts the model_wrapper into a PyFunc model, infers the signature
-        from the input_example if not provided, and logs the model to MLflow.
-        Optionally registers the model in the MLflow Registry.
+        Converts the provided model_wrapper into a PyFunc model,
+        infers the signature if not provided, and logs to MLflow.
+        Optionally registers the model in MLflow Registry.
 
         Args:
-            model_wrapper (Any): Model object implementing predict().
+            model_wrapper (Any): Model implementing predict().
             artifact_path (str, optional):
-                Path within the MLflow run to log the model. Defaults to "model".
+                Path in MLflow run to save the model. Default is "model".
             input_example (Optional[Any], optional):
-                 Example input for schema inference. Defaults to None.
+                Example input for signature inference. Default is None.
             signature (Optional[Any], optional):
-                MLflow signature object. Defaults to None.
+                MLflow signature object. Default is None.
             registered_model_name (Optional[str], optional):
-                 Name to register the model in MLflow Registry. Defaults to None.
+                Name for registry registration. Default is None.
 
         Returns:
             None
@@ -71,9 +70,11 @@ class ModelLogger:
         if not self.mlflow_cfg.get("artifacts", {}).get("log_model", True):
             return
 
+        # Ensure input_example is numpy array
         if input_example is not None and not hasattr(input_example, "values"):
             input_example = np.asarray(input_example, dtype=np.float32)
 
+        # Infer signature if needed
         if signature is None and input_example is not None:
             try:
                 preds = model_wrapper.predict(input_example)

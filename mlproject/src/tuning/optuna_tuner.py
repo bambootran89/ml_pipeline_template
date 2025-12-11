@@ -1,13 +1,3 @@
-"""
-Optuna-based hyperparameter tuning for time-series cross-validation.
-
-This tuner supports:
-- Automatic search-space loading via SearchSpaceRegistry
-- MLflow integration for experiment tracking
-- Pruning support
-- Parallel optimization execution
-"""
-
 from copy import deepcopy
 from typing import Any, Dict, Optional
 
@@ -21,7 +11,14 @@ from mlproject.src.tuning.base_tuner import BaseTuner
 
 
 class OptunaTuner(BaseTuner):
-    """Optuna tuner for time-series forecasting models."""
+    """
+    Hyperparameter tuner using Optuna for time-series forecasting models.
+
+    Supports:
+    - Automatic search-space suggestion via SearchSpaceRegistry
+    - MLflow integration for tracking parameters, metrics, and nested runs
+    - Nested cross-validation evaluation
+    """
 
     def __init__(
         self,
@@ -31,21 +28,41 @@ class OptunaTuner(BaseTuner):
         metric_name: str = "mae_mean",
         direction: str = "minimize",
     ):
-        """Initialize the Optuna tuner."""
+        """
+        Initialize the OptunaTuner.
+
+        Args:
+            cfg (DictConfig): Full experiment configuration.
+            splitter (TimeSeriesSplitter): CV splitter for time series data.
+            mlflow_manager (Optional[MLflowManager]): MLflow manager instance.
+            metric_name (str): Metric to optimize. Defaults to "mae_mean".
+            direction (str):
+                Optimization direction, "minimize"
+                or "maximize". Defaults to "minimize".
+        """
         super().__init__(cfg, splitter, mlflow_manager, metric_name, direction)
 
-        # Guarantee MLflowManager instance for mypy
+        # Ensure MLflowManager instance
         if mlflow_manager is None:
             self.mlflow_manager = MLflowManager(cfg)
             self.mlflow_manager.enabled = False
         else:
             self.mlflow_manager = mlflow_manager
 
-        # CV pipeline used inside the objective function
+        # CV pipeline used inside objective function
         self.cv_pipeline = CrossValidationPipeline(cfg, splitter, self.mlflow_manager)
 
     def _suggest_params(self, trial: optuna.Trial, model_name: str) -> Dict[str, Any]:
-        """Suggest hyperparameters from the search space."""
+        """
+        Suggest hyperparameters for a given trial using the registered search space.
+
+        Args:
+            trial (optuna.Trial): Optuna trial object.
+            model_name (str): Name of the model to tune.
+
+        Returns:
+            Dict[str, Any]: Suggested hyperparameters.
+        """
         search_space = self.get_search_space(model_name)
         params: Dict[str, Any] = {}
 
@@ -74,39 +91,43 @@ class OptunaTuner(BaseTuner):
         return params
 
     def objective(self, trial: optuna.Trial) -> float:
-        """Objective evaluated for each trial."""
+        """
+        Objective function evaluated for each Optuna trial.
+        """
         model_name = self.cfg.experiment.model.lower()
         hyperparams = self._suggest_params(trial, model_name)
 
-        # Include fixed params
+        # Include fixed hyperparameters
         fixed = dict(self.cfg.experiment.hyperparams)
         for key in ["input_chunk_length", "output_chunk_length"]:
             if key in fixed:
                 hyperparams[key] = fixed[key]
 
-        # Config update
+        # Update config for this trial
         trial_cfg = deepcopy(self.cfg)
         trial_cfg.experiment.hyperparams.update(hyperparams)
         self.cv_pipeline.cfg = trial_cfg
 
-        # START CHILD RUN (Nested)
         run_name = f"Trial_{trial.number:03d}"
         assert self.mlflow_manager is not None
         with self.mlflow_manager.start_run(run_name=run_name, nested=True):
-            # 1. Log Params immediately
+            # Log parameters
             self.mlflow_manager.log_params(hyperparams)
 
-            # 2. Run CV with tuning flag (NO artifacts, NO fold runs)
+            # Preprocess data
             approach = {"model": model_name, "hyperparams": hyperparams}
             data = self.cv_pipeline.preprocess()
 
-            # Pass is_tuning=True to disable heavy logging inside CV
-            metrics = self.cv_pipeline.run_cv(approach, data, is_tuning=True)
+            # Run cross-validation
+            agg_metrics: Dict[str, Any] = self.cv_pipeline.run_cv(
+                approach, data, is_tuning=True
+            )
 
-            # 3. Log Aggregated Metrics to this Trial Run
-            self.mlflow_manager.log_metrics(metrics)
+            # Log aggregated metrics
+            self.mlflow_manager.log_metrics(agg_metrics)
 
-        return metrics[self.metric_name]
+            # Return averaged metric for Optuna
+            return float(agg_metrics.get(self.metric_name, 0.0))
 
     def tune(
         self,
@@ -114,7 +135,18 @@ class OptunaTuner(BaseTuner):
         timeout: Optional[int] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        """Run the Optuna hyperparameter search."""
+        """
+        Run the Optuna hyperparameter optimization.
+
+        Args:
+            n_trials (int): Maximum number of trials.
+            timeout (Optional[int]): Timeout in seconds. Defaults to None.
+            **kwargs: Additional options, e.g., n_jobs, show_progress.
+
+        Returns:
+            Dict[str, Any]:
+                Dictionary containing best parameters, value, and study object.
+        """
         n_jobs = kwargs.get("n_jobs", 1)
         show_progress = kwargs.get("show_progress", True)
 

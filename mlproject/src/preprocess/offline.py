@@ -1,7 +1,14 @@
+import json
 import os
+import tempfile
+from typing import Any, Optional
 
+import mlflow
 import numpy as np
 import pandas as pd
+import yaml
+
+from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 from .base import ARTIFACT_DIR
 from .engine import PreprocessEngine
@@ -9,21 +16,22 @@ from .engine import PreprocessEngine
 
 class OfflinePreprocessor:
     """
-    Offline data preprocessor for time series data.
+    Offline preprocessor for time series data.
 
-    Handles missing value imputation, feature generation, scaling, and saving artifacts.
-
-    Args:
-        cfg (dict, optional): Configuration dictionary specifying preprocessing steps
-                              and artifact directory.
+    Handles missing value imputation, feature generation, scaling,
+    and saving preprocessing artifacts. Designed for offline batch
+    preprocessing, separate from MLflow logging.
     """
 
-    def __init__(self, cfg=None):
+    def __init__(
+        self, cfg: Optional[Any] = None, mlflow_manager: Optional[MLflowManager] = None
+    ):
         """
         Initialize OfflinePreprocessor.
 
         Args:
-            cfg (dict, optional): Preprocessing configuration.
+            cfg (dict or DictConfig, optional): Preprocessing configuration.
+            mlflow_manager (MLflowManager, optional): MLflow manager instance.
         """
         self.cfg = cfg or {}
         self.steps = self.cfg.get("preprocessing", {}).get("steps", [])
@@ -31,67 +39,170 @@ class OfflinePreprocessor:
             "artifacts_dir", ARTIFACT_DIR
         )
         self.engine = PreprocessEngine.instance(cfg)
+        self.mlflow_manager = mlflow_manager
 
     def fit(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Fit preprocessing pipeline on the DataFrame.
+        Fit preprocessing pipeline on the dataset.
 
         Args:
-            df (pd.DataFrame): Raw time series dataset.
+            df: Raw DataFrame.
 
         Returns:
-            pd.DataFrame: Dataset after applying fitting steps.
+            DataFrame after fitting preprocessing transformations.
         """
         return self.engine.offline_fit(df)
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Transform DataFrame using fitted preprocessing.
+        Transform dataset using fitted preprocessing pipeline.
 
         Args:
-            df (pd.DataFrame): Input dataset.
+            df: DataFrame to transform.
 
         Returns:
-            pd.DataFrame: Transformed dataset.
+            Transformed DataFrame.
         """
-        df = self.engine.offline_transform(df)
-        # self._save_features(df)
-        return df
+        return self.engine.offline_transform(df)
 
     def run(self) -> pd.DataFrame:
         """
-        Execute full offline preprocessing pipeline:
-        - load raw dataset
-        - fit preprocessing
-        - transform dataset
-        - save features
+        Execute full offline preprocessing pipeline.
+
+        Steps:
+        1. Load raw data.
+        2. Fit preprocessing transformations.
+        3. Transform dataset.
 
         Returns:
-            pd.DataFrame: Fully processed dataset.
+            Transformed DataFrame.
         """
         df = self.load_raw_data()
         df = self.fit(df)
         df = self.transform(df)
         return df
 
-    def _save_features(self, df):
+    def log_artifacts_to_mlflow(self, df: Optional[pd.DataFrame] = None):
         """
-        Save transformed features to artifacts directory as Parquet.
+        Log preprocessing artifacts to an active MLflow run.
 
         Args:
-            df (pd.DataFrame): Processed dataset.
-        """
-        os.makedirs(self.artifacts_dir, exist_ok=True)
-        df.to_parquet(os.path.join(self.artifacts_dir, "features.parquet"))
+            df: Optional transformed DataFrame used for logging statistics.
 
-    def load_raw_data(self):
+        Note:
+            Must be called inside a 'with mlflow.start_run():' block.
         """
-        Load raw dataset from CSV path provided in cfg.
+        if not self.mlflow_manager or not getattr(
+            self.mlflow_manager, "enabled", False
+        ):
+            return
 
-        If the CSV is missing, generate synthetic time series.
+        if not mlflow.active_run():
+            return
+
+        self._log_scaler()
+        self._log_config(df)
+        self._log_statistics(df)
+        self._log_params(df)
+
+    def _log_scaler(self):
+        """Log the fitted scaler artifact."""
+        if not self.mlflow_manager or not self.mlflow_manager.enabled:
+            return
+
+        scaler_path = os.path.join(self.artifacts_dir, "scaler.pkl")
+        if os.path.exists(scaler_path):
+            try:
+                # Log artifact into a subdirectory 'preprocessing/scaler'
+                self.mlflow_manager.log_artifact(
+                    scaler_path, artifact_path="preprocessing/scaler"
+                )
+                print(
+                    "[OfflinePreprocessor] Logged scaler to MLflow: \
+                        preprocessing/scaler/scaler.pkl"
+                )
+            except Exception as e:
+                print(f"[OfflinePreprocessor] Failed to log scaler: {e}")
+
+    def _log_config(self, df: Optional[pd.DataFrame] = None):
+        """Log preprocessing configuration to MLflow."""
+        if not self.mlflow_manager or not self.mlflow_manager.enabled:
+            return
+
+        preprocess_config = {
+            "steps": self.steps,
+            "artifacts_dir": self.artifacts_dir,
+        }
+        if df is not None:
+            preprocess_config["feature_names"] = df.columns.tolist()
+            preprocess_config["n_samples"] = len(df)
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".yaml", delete=False
+            ) as f:
+                yaml.dump(preprocess_config, f)
+                temp_path = f.name
+
+            self.mlflow_manager.log_artifact(
+                temp_path, artifact_path="preprocessing/config"
+            )
+            os.unlink(temp_path)
+        except Exception:
+            pass
+
+    def _log_statistics(self, df: Optional[pd.DataFrame] = None):
+        """Log statistics of the DataFrame if provided."""
+        if not self.mlflow_manager or not self.mlflow_manager.enabled:
+            return
+        if df is None:
+            return
+
+        stats = {
+            "mean": df.mean().to_dict(),
+            "std": df.std().to_dict(),
+            "min": df.min().to_dict(),
+            "max": df.max().to_dict(),
+        }
+
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as f:
+                json.dump(stats, f, indent=2)
+                temp_path = f.name
+
+            self.mlflow_manager.log_artifact(
+                temp_path, artifact_path="preprocessing/statistics"
+            )
+            os.unlink(temp_path)
+        except Exception:
+            pass
+
+    def _log_params(self, df: Optional[pd.DataFrame] = None):
+        """Log preprocessing parameters to MLflow."""
+        if not self.mlflow_manager or not self.mlflow_manager.enabled:
+            return
+
+        try:
+            params = {"preprocessing.n_steps": len(self.steps)}
+            if df is not None:
+                params.update(
+                    {
+                        "preprocessing.n_features": len(df.columns),
+                        "preprocessing.n_samples": len(df),
+                    }
+                )
+            self.mlflow_manager.log_params(params)
+        except Exception:
+            pass
+
+    def load_raw_data(self) -> pd.DataFrame:
+        """
+        Load raw dataset from CSV or generate synthetic data.
 
         Returns:
-            pd.DataFrame: Raw dataset.
+            Raw DataFrame with datetime index.
         """
         data_cfg = self.cfg.get("data", {})
         path = data_cfg.get("path")
@@ -99,33 +210,15 @@ class OfflinePreprocessor:
 
         if not path or not os.path.exists(path):
             return self._load_synthetic(index_col)
-
         return self._load_csv(path, index_col)
 
-    def _load_csv(self, path, index_col):
-        """
-        Load CSV file into DataFrame.
-
-        Args:
-            path (str): Path to CSV file.
-            index_col (str): Column to treat as datetime index.
-
-        Returns:
-            pd.DataFrame: Loaded DataFrame.
-        """
+    def _load_csv(self, path: str, index_col: str) -> pd.DataFrame:
+        """Load CSV dataset."""
         df = pd.read_csv(path, parse_dates=[index_col])
         return df.set_index(index_col)
 
-    def _load_synthetic(self, index_col):
-        """
-        Generate synthetic data when raw CSV is unavailable.
-
-        Args:
-            index_col (str): Name of index column.
-
-        Returns:
-            pd.DataFrame: Synthetic dataset.
-        """
+    def _load_synthetic(self, index_col: str) -> pd.DataFrame:
+        """Generate synthetic dataset."""
         idx = pd.date_range("2020-01-01", periods=200, freq="H")
         df = pd.DataFrame(
             {
@@ -138,5 +231,4 @@ class OfflinePreprocessor:
             index=idx,
         )
         df.index.name = index_col
-        # df.to_csv("sample_input.csv")
         return df
