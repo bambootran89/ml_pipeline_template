@@ -1,10 +1,10 @@
 """
-Fixed CVInitializer: Trả về RAW data thay vì preprocessed data.
+CVInitializer: Prepare raw data for cross-validation without preprocessing leakage.
 
-Key changes:
+Key points:
 1. Load raw CSV data
-2. Chỉ apply windowing (không normalize)
-3. Mỗi fold tự fit scaler riêng
+2. Apply windowing only (no normalization)
+3. Each fold fits its own scaler independently
 """
 
 from typing import Any, Dict, Tuple
@@ -17,9 +17,18 @@ from mlproject.src.cv.splitter import TimeSeriesSplitter
 
 
 class CVInitializer:
-    """Prepare CV context with RAW data (no preprocessing leakage)."""
+    """
+    Prepare cross-validation context using raw data (no preprocessing applied).
+    """
 
     def __init__(self, cfg: DictConfig, splitter: TimeSeriesSplitter) -> None:
+        """
+        Initialize CVInitializer with configuration and a time series splitter.
+
+        Args:
+            cfg: Configuration object containing data paths and parameters.
+            splitter: TimeSeriesSplitter instance defining CV splits.
+        """
         self.cfg = cfg
         self.splitter = splitter
 
@@ -28,7 +37,7 @@ class CVInitializer:
         Load raw CSV data without any preprocessing.
 
         Returns:
-            df: Raw DataFrame with datetime index
+            DataFrame: Raw data with datetime index.
         """
         data_cfg = self.cfg.get("data", {})
         path = data_cfg.get("path")
@@ -39,36 +48,31 @@ class CVInitializer:
 
         df = pd.read_csv(path, parse_dates=[index_col])
         df = df.set_index(index_col)
-
         return df
 
     def _create_windows_raw(
         self, df: pd.DataFrame, input_chunk: int, output_chunk: int
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Create windowed data WITHOUT normalization.
+        Create windowed data from raw DataFrame without normalization.
 
         Args:
-            df: Raw DataFrame
-            input_chunk: Input sequence length
-            output_chunk: Output sequence length
+            df: Raw DataFrame.
+            input_chunk: Number of input time steps.
+            output_chunk: Number of output time steps.
 
         Returns:
-            x_windows: Raw input windows (n_samples, seq_len, n_features)
-            y_windows: Target windows (n_samples, horizon)
+            x_windows: Input windows (n_samples, input_chunk, n_features).
+            y_windows: Target windows (n_samples, output_chunk).
         """
         target_col = self.cfg.data.get("target_columns", ["HUFL"])[0]
-
         n = len(df)
         x_windows, y_windows = [], []
 
         for end_idx in range(input_chunk, n - output_chunk + 1):
             start_idx = end_idx - input_chunk
-
-            # ✅ RAW values (không normalize)
             x_window = df.iloc[start_idx:end_idx].values
             y_window = df.iloc[end_idx : end_idx + output_chunk][target_col].values
-
             x_windows.append(x_window)
             y_windows.append(y_window)
 
@@ -79,32 +83,36 @@ class CVInitializer:
         return np.stack(x_windows), np.stack(y_windows)
 
     def _get_total_folds(self) -> int:
-        """Get number of CV folds."""
+        """
+        Get the total number of cross-validation folds.
+
+        Returns:
+            int: Number of folds or -1 if not defined in splitter.
+        """
         return getattr(self.splitter, "n_splits", -1)
 
     def initialize(
         self, approach: Dict[str, Any]
     ) -> Tuple[np.ndarray, np.ndarray, str, Dict[str, Any], int]:
         """
-        Prepare RAW data for CV (no preprocessing leakage).
+        Prepare raw input/output windows and model info for cross-validation.
 
         Args:
-            approach: Model configuration
+            approach: Dictionary with model configuration and hyperparameters.
 
         Returns:
-            x_full_raw: RAW input windows (chưa normalize)
-            y_full: Target windows
-            model_name: Model name string
-            hyperparams: Model hyperparameters
-            total_folds: Number of folds
+            x_full_raw: Raw input windows (not normalized).
+            y_full: Target windows.
+            model_name: Name of the model.
+            hyperparams: Model hyperparameters.
+            total_folds: Number of CV folds.
         """
-        # 1. Load RAW data
+        # 1. Load raw data
         df_raw = self._load_raw_data()
 
-        # 2. Create windows from RAW data (no normalization)
+        # 2. Create windows from raw data
         input_chunk = approach.get("hyperparams", {}).get("input_chunk_length", 24)
         output_chunk = approach.get("hyperparams", {}).get("output_chunk_length", 6)
-
         x_full_raw, y_full = self._create_windows_raw(df_raw, input_chunk, output_chunk)
 
         # 3. Extract model info
@@ -112,9 +120,7 @@ class CVInitializer:
         hyperparams = approach.get("hyperparams", {})
         total_folds = self._get_total_folds()
 
-        print(f"[CVInitializer] Loaded RAW data: {x_full_raw.shape}")
-        print(
-            f"[CVInitializer] ⚠️  Data is NOT normalized - each fold will fit its own scaler"
-        )
+        print(f"[CVInitializer] Loaded raw data shape: {x_full_raw.shape}")
+        print("[CVInitializer] Data is NOT normalized; each fold fits its own scaler")
 
         return x_full_raw, y_full, model_name, hyperparams, total_folds

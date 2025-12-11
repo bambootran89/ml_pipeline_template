@@ -1,14 +1,3 @@
-"""
-High-level MLflowManager orchestrator.
-
-Provides a unified interface to manage MLflow operations:
-- Experiment setup and restoration
-- Run lifecycle management
-- Logging parameters, metrics, artifacts, and configuration
-- Model logging and loading via PyFunc
-- Model registration in MLflow Registry
-"""
-
 import os
 from typing import Any, Optional
 
@@ -24,6 +13,13 @@ from .run_manager import RunManager
 class MLflowManager:
     """
     High-level controller for MLflow operations.
+
+    Provides a unified interface to manage:
+    - Experiment setup and restoration
+    - Run lifecycle management
+    - Logging of parameters, metrics, artifacts, and configuration
+    - Model logging and loading via PyFunc
+    - Model registration in MLflow Registry
 
     Attributes:
         cfg (Any): Full project configuration object.
@@ -53,8 +49,11 @@ class MLflowManager:
         self.model_logger = ModelLogger(self.mlflow_cfg, self.enabled)
         self.registry_manager = RegistryManager(self.mlflow_cfg, self.enabled)
         self.config_logger = ConfigLogger()
+
         if not self.enabled:
+            self.experiment = None
             return
+
         mlflow.set_tracking_uri(self.mlflow_cfg.get("tracking_uri", "mlruns"))
         self.experiment = self.experiment_manager.setup_experiment()
 
@@ -63,9 +62,9 @@ class MLflowManager:
         Start an MLflow run.
 
         Args:
-            run_name (Optional[str]):
-                Name for the run. Defaults to a timestamped name if None.
+            run_name (Optional[str]): Name for the run. Defaults to timestamped if None.
             nested (bool): If True, start a nested run. Defaults to False.
+
         Returns:
             mlflow.ActiveRun: Context manager for the run.
         """
@@ -76,7 +75,7 @@ class MLflowManager:
         Log parameters to MLflow.
 
         Args:
-            params (dict): Parameters to log.
+            params (dict): Dictionary of parameters to log.
         """
         if not self.enabled:
             return
@@ -87,7 +86,7 @@ class MLflowManager:
         Log metrics to MLflow.
 
         Args:
-            metrics (dict): Metrics to log.
+            metrics (dict): Dictionary of metric names and values.
             step (Optional[int]): Step number (e.g., epoch). Defaults to None.
         """
         if not self.enabled:
@@ -96,11 +95,11 @@ class MLflowManager:
 
     def log_artifact(self, local_path: str, artifact_path: Optional[str] = None):
         """
-        Log an artifact to the current MLflow run.
+        Log a file or artifact to the current MLflow run.
 
         Args:
-            local_path (str): Path to the local file.
-            artifact_path (Optional[str]): Destination path within the MLflow run.
+            local_path (str): Path to the local file to log.
+            artifact_path (Optional[str]): Destination path inside the MLflow run.
         """
         if not self.enabled:
             return
@@ -121,6 +120,9 @@ class MLflowManager:
 
         Args:
             *args, **kwargs: Forwarded to ModelLogger.log_model.
+
+        Returns:
+            Logged model reference.
         """
         return self.model_logger.log_model(*args, **kwargs)
 
@@ -132,7 +134,7 @@ class MLflowManager:
             model_uri (str): MLflow model URI.
 
         Returns:
-            mlflow.pyfunc.PyFuncModel: Loaded PyFunc model.
+            mlflow.pyfunc.PyFuncModel: Loaded model.
         """
         return self.model_logger.load_model(model_uri)
 

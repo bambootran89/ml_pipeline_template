@@ -1,16 +1,17 @@
 """
-Fixed FoldRunner với preprocessing đúng cho mỗi fold.
+FoldRunner: Run a single cross-validation fold with isolated preprocessing.
 
 Key changes:
-1. Mỗi fold fit scaler riêng trên train data
-2. Transform validation/test bằng scaler của fold đó
-3. Log scaler artifact vào MLflow nếu cần
+1. Each fold fits its own scaler on train data.
+2. Validation/test data is transformed using the fold's scaler.
+3. Scaler artifacts can be logged to MLflow.
 """
 
 import tempfile
 from typing import Any, Dict, Tuple
 
 import numpy as np
+import pandas as pd
 from torch.utils.data import DataLoader
 
 from mlproject.src.datamodule.dataset import NumpyWindowDataset
@@ -23,84 +24,72 @@ from mlproject.src.trainer.trainer_factory import TrainerFactory
 
 
 class FoldRunner:
-    """Run a single CV fold với preprocessing isolation."""
+    """
+    Run a single fold for cross-validation
+    using raw data and fold-specific preprocessing.
+    """
 
     def __init__(self, cfg: Any, mlflow_manager: MLflowManager) -> None:
+        """
+        Initialize FoldRunner.
+
+        Args:
+            cfg: Configuration object.
+            mlflow_manager: MLflow manager instance.
+        """
         self.cfg = cfg
         self.mlflow_manager = mlflow_manager
         self.evaluator = TimeSeriesEvaluator()
+
+    def _get_feature_names(self) -> list[str]:
+        """Return list of feature names (from config or default)."""
+        return ["HUFL", "MUFL", "mobility_inflow"]
 
     def _fit_fold_scaler(
         self, x_train: np.ndarray, fold_num: int
     ) -> Tuple[PreprocessBase, np.ndarray]:
         """
-        Fit scaler chỉ trên train data của fold này.
+        Fit scaler only on train data of this fold.
 
         Args:
-            x_train: Raw train data (chưa normalize)
-            fold_num: Fold index
+            x_train: Raw train data (n_samples, seq_len, n_features).
+            fold_num: Fold index.
 
         Returns:
-            preprocessor: Fitted preprocessor
-            x_train_scaled: Scaled train data
+            preprocessor: Fitted PreprocessBase instance.
+            x_train_scaled: Scaled train data.
         """
-        # Tạo temporary preprocessor cho fold này
         preprocessor = PreprocessBase(self.cfg)
-
-        # Convert window array về DataFrame để fit scaler
-        # Shape: (n_samples, seq_len, n_features)
         n_samples, seq_len, n_features = x_train.shape
-        x_flat = x_train.reshape(-1, n_features)  # (n_samples * seq_len, n_features)
-
-        # Giả sử có feature names từ config
-        feature_names = self._get_feature_names()
-        import pandas as pd
-
-        df_train = pd.DataFrame(x_flat, columns=feature_names)
-
-        # Fit scaler chỉ trên train data
+        x_flat = x_train.reshape(-1, n_features)
+        df_train = pd.DataFrame(x_flat, columns=self._get_feature_names())
         df_train_scaled = preprocessor.fit(df_train)
-
-        # Transform và reshape về dạng window
         x_train_scaled = df_train_scaled.values.reshape(n_samples, seq_len, n_features)
-
         return preprocessor, x_train_scaled
 
     def _transform_with_scaler(
         self, x: np.ndarray, preprocessor: PreprocessBase
     ) -> np.ndarray:
         """
-        Transform data bằng fitted scaler.
+        Transform data using a fitted scaler.
 
         Args:
-            x: Raw data
-            preprocessor: Fitted preprocessor
+            x: Raw input data.
+            preprocessor: Fitted PreprocessBase.
 
         Returns:
-            x_scaled: Scaled data
+            Scaled data array.
         """
         n_samples, seq_len, n_features = x.shape
         x_flat = x.reshape(-1, n_features)
-
-        feature_names = self._get_feature_names()
-        import pandas as pd
-
-        df = pd.DataFrame(x_flat, columns=feature_names)
-
+        df = pd.DataFrame(x_flat, columns=self._get_feature_names())
         df_scaled = preprocessor.transform(df)
-        x_scaled = df_scaled.values.reshape(n_samples, seq_len, n_features)
-
-        return x_scaled
-
-    def _get_feature_names(self):
-        """Get feature names từ config."""
-        # Ví dụ: ["HUFL", "MUFL", "mobility_inflow"]
-        return ["HUFL", "MUFL", "mobility_inflow"]
+        return df_scaled.values.reshape(n_samples, seq_len, n_features)
 
     def _slice_fold_data(
         self, x_full: np.ndarray, y_full: np.ndarray, train_idx: Any, test_idx: Any
     ) -> Tuple[Tuple[np.ndarray, np.ndarray], Tuple[np.ndarray, np.ndarray]]:
-        """Slice RAW data (chưa scale) cho fold."""
+        """Slice raw data for a fold."""
         x_train, y_train = x_full[train_idx], y_full[train_idx]
         x_test, y_test = x_full[test_idx], y_full[test_idx]
         return (x_train, y_train), (x_test, y_test)
@@ -113,7 +102,7 @@ class FoldRunner:
         y_val: np.ndarray,
         batch_size: int,
     ) -> Tuple[DataLoader, DataLoader]:
-        """Return train and validation DataLoader."""
+        """Return train and validation DataLoaders."""
         train_loader = DataLoader(
             NumpyWindowDataset(x_train, y_train), batch_size=batch_size, shuffle=True
         )
@@ -125,7 +114,7 @@ class FoldRunner:
     def _create_model_and_trainer(
         self, model_name: str, hyperparams: Dict[str, Any]
     ) -> Tuple[Any, Any]:
-        """Create model wrapper and trainer."""
+        """Create model wrapper and trainer instance."""
         wrapper = ModelFactory.create(model_name, hyperparams)
         trainer = TrainerFactory.create(
             model_name, wrapper, self.cfg.training.artifacts_dir
@@ -140,13 +129,12 @@ class FoldRunner:
         train_data: Tuple[np.ndarray, np.ndarray],
         test_data: Tuple[np.ndarray, np.ndarray],
     ) -> Any:
-        """Train deep learning model."""
+        """Train a deep learning model."""
         x_train, y_train = train_data
         x_test, y_test = test_data
         input_dim = x_train.shape[1] * x_train.shape[2]
         output_dim = y_train.shape[1]
         wrapper.build(input_dim, output_dim)
-
         batch_size = int(hyperparams.get("batch_size", 16))
         train_loader, val_loader = self._prepare_dataloaders(
             x_train, y_train, x_test, y_test, batch_size
@@ -161,7 +149,7 @@ class FoldRunner:
         train_data: Tuple[np.ndarray, np.ndarray],
         test_data: Tuple[np.ndarray, np.ndarray],
     ) -> Any:
-        """Train classical ML model."""
+        """Train a classical machine learning model."""
         x_train, y_train = train_data
         x_test, y_test = test_data
         return trainer.train((x_train, y_train), (x_test, y_test), hyperparams)
@@ -169,7 +157,7 @@ class FoldRunner:
     def _evaluate(
         self, wrapper: Any, test_data: Tuple[np.ndarray, np.ndarray]
     ) -> Dict[str, float]:
-        """Run prediction + evaluation."""
+        """Run prediction and compute evaluation metrics."""
         x_test, y_test = test_data
         preds = wrapper.predict(x_test)
         raw_metrics = self.evaluator.evaluate(y_test, preds)
@@ -185,7 +173,7 @@ class FoldRunner:
         metrics: Dict[str, float],
         preprocessor: PreprocessBase,
     ) -> None:
-        """Log fold metrics và scaler artifact."""
+        """Log fold metrics and scaler artifact to MLflow."""
         if not (self.mlflow_manager and getattr(self.mlflow_manager, "enabled", False)):
             return
 
@@ -202,9 +190,9 @@ class FoldRunner:
             )
             self.mlflow_manager.log_metrics(metrics)
 
-            # ✅ LOG SCALER ARTIFACT CHO FOLD NÀY
-            with tempfile.TemporaryDirectory() as tmpdir:
-                preprocessor._save_scaler()  # Save to default location
+            # Log scaler artifact
+            with tempfile.TemporaryDirectory() as _:
+                preprocessor._save_scaler()
                 scaler_path = preprocessor.artifacts_dir + "/scaler.pkl"
                 self.mlflow_manager.log_artifact(
                     scaler_path, artifact_path=f"fold_{fold_num}/scaler"
@@ -215,37 +203,41 @@ class FoldRunner:
         fold_num: int,
         train_idx: Any,
         test_idx: Any,
-        x_full_raw: np.ndarray,  # ✅ RAW data (chưa scale)
+        x_full_raw: np.ndarray,
         y_full: np.ndarray,
         model_name: str,
         hyperparams: Dict[str, Any],
         is_tuning: bool = False,
     ) -> Dict[str, float]:
         """
-        Run a single fold với preprocessing isolation.
+        Run a single fold with isolated preprocessing.
 
-        Key change: x_full_raw là RAW data, chưa được normalize.
+        Args:
+            fold_num: Fold index.
+            train_idx: Training indices.
+            test_idx: Testing indices.
+            x_full_raw: Raw input windows (not normalized).
+            y_full: Target windows.
+            model_name: Name of the model.
+            hyperparams: Model hyperparameters.
+            is_tuning: Skip MLflow logging if True.
+
+        Returns:
+            Dictionary of evaluation metrics for the fold.
         """
-        # 1. Slice RAW data
         train_data_raw, test_data_raw = self._slice_fold_data(
             x_full_raw, y_full, train_idx, test_idx
         )
         x_train_raw, y_train = train_data_raw
         x_test_raw, y_test = test_data_raw
 
-        # 2. ✅ FIT SCALER CHỈ TRÊN TRAIN DATA CỦA FOLD NÀY
         preprocessor, x_train_scaled = self._fit_fold_scaler(x_train_raw, fold_num)
-
-        # 3. ✅ TRANSFORM TEST DATA BẰNG SCALER CỦA FOLD
         x_test_scaled = self._transform_with_scaler(x_test_raw, preprocessor)
 
-        # 4. Create model + trainer
         wrapper, trainer = self._create_model_and_trainer(model_name, hyperparams)
-
         if is_tuning and hasattr(trainer, "artifacts_dir"):
             trainer.artifacts_dir = None
 
-        # 5. Train
         if isinstance(trainer, DeepLearningTrainer):
             wrapper = self._train_dl(
                 trainer,
@@ -263,10 +255,8 @@ class FoldRunner:
                 (x_test_scaled, y_test),
             )
 
-        # 6. Evaluate
         metrics = self._evaluate(wrapper, (x_test_scaled, y_test))
 
-        # 7. Log (with scaler artifact)
         if not is_tuning:
             self._log_fold(
                 fold_num,
