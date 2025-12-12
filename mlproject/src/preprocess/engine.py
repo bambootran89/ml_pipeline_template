@@ -1,6 +1,7 @@
 from typing import Optional
 
 from .base import PreprocessBase
+import threading
 
 
 class PreprocessEngine:
@@ -15,6 +16,7 @@ class PreprocessEngine:
     """
 
     _instance = None
+    _lock = threading.Lock()
 
     def __init__(self, cfg=None):
         """
@@ -50,7 +52,9 @@ class PreprocessEngine:
             The global singleton instance.
         """
         if cls._instance is None:
-            cls._instance = PreprocessEngine(cfg)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = PreprocessEngine(cfg)
         elif cfg is not None:
             cls._instance.update_config_if_needed(cfg)
 
