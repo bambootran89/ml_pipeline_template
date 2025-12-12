@@ -5,6 +5,7 @@ from sklearn.base import BaseEstimator
 from xgboost import XGBRegressor
 
 from mlproject.src.models.base import MLModelWrapper
+from mlproject.src.utils.shape_utils import flatten_timeseries
 
 
 class XGBWrapper(MLModelWrapper):
@@ -55,12 +56,12 @@ class XGBWrapper(MLModelWrapper):
 
         self.ensure_built()
 
-        x_reshaped = self._reshape_input_for_ml(x)
+        x_reshaped = flatten_timeseries(x)
 
         # Tạo eval_set nếu có validation data
         fit_params = kwargs.copy()
         if x_val is not None and y_val is not None:
-            x_val_reshaped = self._reshape_input_for_ml(x_val)
+            x_val_reshaped = flatten_timeseries(x_val)
             fit_params["eval_set"] = [(x_val_reshaped, y_val)]
             fit_params["verbose"] = False
         model = cast(BaseEstimator, self.model)

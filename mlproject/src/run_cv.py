@@ -6,16 +6,27 @@ Usage:
 """
 
 import argparse
+from typing import Any, Dict
 
-from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
-from mlproject.src.eval.cv_reporter import CVEvaluator
+from omegaconf import DictConfig, OmegaConf
+
+from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 
 def main() -> None:
-    """Execute the cross-validation pipeline."""
+    """Execute the cross-validation pipeline.
+
+    This script loads experiment configuration, initializes the time-series
+    fold splitter, MLflow tracking manager, and cross-validation pipeline,
+    and then executes cross-validation using predefined hyperparameters.
+
+    Raises:
+        FileNotFoundError: If the configuration file does not exist.
+        ValueError: If configuration values are missing or invalid.
+    """
     parser = argparse.ArgumentParser(description="Run Cross-Validation")
     parser.add_argument(
         "--config",
@@ -35,34 +46,36 @@ def main() -> None:
         default=20,
         help="Test set size for each fold.",
     )
+
     args = parser.parse_args()
 
-    # Load configuration
-    cfg = ConfigLoader.load(args.config)
+    # Load configuration as DictConfig
+    cfg: DictConfig = ConfigLoader.load(args.config)
+
+    # Convert DictConfig → dict for components requiring plain dict (mypy-safe)
+    cfg_dict: Dict[str, Any] = OmegaConf.to_container(
+        cfg, resolve=True
+    )  # type: ignore[assignment]
 
     # Initialize components
-    splitter = ExpandingWindowSplitter(
+    splitter = TimeSeriesFoldSplitter(
+        cfg_dict,  # <-- FIX: mypy now recognizes correct type
         n_splits=args.n_splits,
-        test_size=args.test_size,
     )
+
     mlflow_manager = MLflowManager(cfg)
     cv_pipeline = CrossValidationPipeline(cfg, splitter, mlflow_manager)
 
-    # Preprocess dataset
-    print("Preprocessing data...")
-    data = cv_pipeline.preprocess()
-
     # Run cross-validation
     print(f"\nRunning {args.n_splits}-fold cross-validation...")
-    approach = {
+    approach: Dict[str, Any] = {
         "model": cfg.experiment.model,
         "hyperparams": dict(cfg.experiment.hyperparams),
     }
 
-    metrics = cv_pipeline.run_cv(approach, data)
+    metrics = cv_pipeline.run_cv(approach)
 
     # Summary output
-    CVEvaluator()
     print("\n" + "=" * 70)
     print("CROSS-VALIDATION RESULTS")
     print("=" * 70)

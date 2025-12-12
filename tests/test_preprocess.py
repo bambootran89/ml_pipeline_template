@@ -1,7 +1,5 @@
 from unittest.mock import patch
 
-import numpy as np
-import pandas as pd
 
 from mlproject.src.preprocess.engine import PreprocessEngine
 from mlproject.src.preprocess.offline import OfflinePreprocessor

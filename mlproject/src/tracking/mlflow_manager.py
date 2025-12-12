@@ -1,5 +1,6 @@
 import os
-from typing import Any, Optional
+from contextlib import contextmanager
+from typing import Any, ContextManager, Dict, Iterator, Optional
 
 import mlflow
 
@@ -11,38 +12,23 @@ from .run_manager import RunManager
 
 
 class MLflowManager:
-    """
-    High-level controller for MLflow operations.
+    """High-level MLflow controller.
 
-    Provides a unified interface to manage:
-    - Experiment setup and restoration
-    - Run lifecycle management
-    - Logging of parameters, metrics, artifacts, and configuration
-    - Model logging and loading via PyFunc
-    - Model registration in MLflow Registry
+    Wraps all MLflow operations via sub-managers:
+    ExperimentManager, RunManager, ModelLogger, RegistryManager, ConfigLogger.
 
-    Attributes:
-        cfg (Any): Full project configuration object.
-        mlflow_cfg (dict): MLflow-specific configuration extracted from cfg.
-        enabled (bool): Indicates if MLflow tracking is enabled.
-        experiment (Optional[mlflow.entities.Experiment]): Active MLflow experiment.
-        run_manager (RunManager): Manages MLflow runs.
-        experiment_manager (ExperimentManager): Manages experiments.
-        model_logger (ModelLogger): Handles model logging/loading.
-        registry_manager (RegistryManager): Handles registry operations.
-        config_logger (ConfigLogger): Handles params, metrics, and config logging.
+    Safe: when MLflow is disabled, all methods become silent no-ops.
     """
 
-    def __init__(self, cfg: Any):
-        """
-        Initialize MLflowManager and set up the experiment.
+    def __init__(self, cfg: Any) -> None:
+        """Initialize MLflowManager.
 
         Args:
-            cfg (Any): Full project configuration containing an optional 'mlflow' block.
+            cfg: Global configuration object (dict or DictConfig).
         """
         self.cfg = cfg
-        self.mlflow_cfg = cfg.get("mlflow", {})
-        self.enabled = self.mlflow_cfg.get("enabled", False)
+        self.mlflow_cfg: Dict[str, Any] = cfg.get("mlflow", {}) if cfg else {}
+        self.enabled: bool = bool(self.mlflow_cfg.get("enabled", False))
 
         self.experiment_manager = ExperimentManager(self.mlflow_cfg, self.enabled)
         self.run_manager = RunManager(self.mlflow_cfg, self.enabled)
@@ -57,95 +43,125 @@ class MLflowManager:
         mlflow.set_tracking_uri(self.mlflow_cfg.get("tracking_uri", "mlruns"))
         self.experiment = self.experiment_manager.setup_experiment()
 
-    def start_run(self, run_name: Optional[str] = None, nested: bool = False):
-        """
-        Start an MLflow run.
+    def _run_context(
+        self, run_name: Optional[str], nested: bool
+    ) -> ContextManager[Optional[Any]]:
+        """Return context manager for MLflow run (real or dummy).
 
         Args:
-            run_name (Optional[str]): Name for the run. Defaults to timestamped if None.
-            nested (bool): If True, start a nested run. Defaults to False.
+            run_name: Run name or None.
+            nested: Whether the run is nested.
 
         Returns:
-            mlflow.ActiveRun: Context manager for the run.
+            ContextManager yielding mlflow.ActiveRun or None.
         """
+        if not self.enabled:
+
+            @contextmanager
+            def _dummy() -> Iterator[Optional[Any]]:
+                yield None
+
+            return _dummy()
+
+        # Clean up previously active run for safety
+        if not nested and mlflow.active_run() is not None:
+            try:
+                mlflow.end_run()
+            except Exception:
+                pass
+
         return self.run_manager.start_run(run_name, nested=nested)
 
-    def log_params(self, params: dict):
-        """
-        Log parameters to MLflow.
+    @contextmanager
+    def start_run(
+        self, run_name: Optional[str] = None, nested: bool = False
+    ) -> Iterator[Optional[Any]]:
+        """Safely start/close an MLflow run.
 
         Args:
-            params (dict): Dictionary of parameters to log.
+            run_name: Optional descriptive run name.
+            nested: Whether nested runs are allowed.
+
+        Yields:
+            Active mlflow run object, or None if MLflow disabled.
         """
+        active_run: Optional[Any] = None
+        try:
+            with self._run_context(run_name, nested) as active_run:
+                yield active_run
+        except Exception as exc:
+            # Best-effort exception logging
+            if active_run is not None:
+                try:
+                    mlflow.log_param("error", str(exc))
+                    mlflow.set_tag("status", "failed")
+                except Exception:
+                    pass
+            raise
+
+    def log_params(self, params: Dict[str, Any]) -> None:
+        """Log parameters (safe no-op if disabled)."""
         if not self.enabled:
             return
-        self.config_logger.log_params(params)
+        try:
+            self.config_logger.log_params(params)
+        except Exception as exc:
+            print(f"[MLflowManager] Failed to log params: {exc}")
 
-    def log_metrics(self, metrics: dict, step: Optional[int] = None):
-        """
-        Log metrics to MLflow.
-
-        Args:
-            metrics (dict): Dictionary of metric names and values.
-            step (Optional[int]): Step number (e.g., epoch). Defaults to None.
-        """
+    def log_metrics(
+        self, metrics: Dict[str, float], step: Optional[int] = None
+    ) -> None:
+        """Log metrics (safe no-op if disabled)."""
         if not self.enabled:
             return
-        self.config_logger.log_metrics(metrics, step)
+        try:
+            self.config_logger.log_metrics(metrics, step)
+        except Exception as exc:
+            print(f"[MLflowManager] Failed to log metrics: {exc}")
 
-    def log_artifact(self, local_path: str, artifact_path: Optional[str] = None):
-        """
-        Log a file or artifact to the current MLflow run.
-
-        Args:
-            local_path (str): Path to the local file to log.
-            artifact_path (Optional[str]): Destination path inside the MLflow run.
-        """
+    def log_artifact(
+        self, local_path: str, artifact_path: Optional[str] = None
+    ) -> None:
+        """Log local file as artifact."""
         if not self.enabled:
             return
-        if os.path.exists(local_path):
+        if not os.path.exists(local_path):
+            print(f"[MLflowManager] Artifact not found: {local_path}")
+            return
+        try:
             mlflow.log_artifact(local_path, artifact_path)
+        except Exception as exc:
+            print(f"[MLflowManager] Failed to log artifact: {exc}")
 
-    def log_config(self):
-        """
-        Log the full project configuration to MLflow.
-        """
+    def log_config(self) -> None:
+        """Persist configuration into MLflow."""
         if not self.enabled:
             return
-        self.config_logger.log_config(self.cfg)
+        try:
+            self.config_logger.log_config(self.cfg)
+        except Exception as exc:
+            print(f"[MLflowManager] Failed to log config: {exc}")
 
-    def log_model(self, *args, **kwargs):
-        """
-        Log a model using the ModelLogger.
+    def log_model(self, *args: Any, **kwargs: Any) -> None:
+        """Log a model using ModelLogger (always returns None)."""
+        if not self.enabled:
+            return None
+        try:
+            self.model_logger.log_model(*args, **kwargs)
+        except Exception as exc:
+            print(f"[MLflowManager] Failed to log model: {exc}")
+        return None
 
-        Args:
-            *args, **kwargs: Forwarded to ModelLogger.log_model.
-
-        Returns:
-            Logged model reference.
-        """
-        return self.model_logger.log_model(*args, **kwargs)
-
-    def load_model(self, model_uri: str):
-        """
-        Load a model from MLflow.
-
-        Args:
-            model_uri (str): MLflow model URI.
-
-        Returns:
-            mlflow.pyfunc.PyFuncModel: Loaded model.
-        """
+    def load_model(self, model_uri: str) -> Any:
+        """Load model from MLflow."""
         return self.model_logger.load_model(model_uri)
 
-    def register_model(self, *args, **kwargs):
-        """
-        Register a model in MLflow Model Registry.
-
-        Args:
-            *args, **kwargs: Forwarded to RegistryManager.register_model.
-
-        Returns:
-            mlflow.entities.ModelVersion: Registered model version.
-        """
-        return self.registry_manager.register_model(*args, **kwargs)
+    def register_model(self, *args: Any, **kwargs: Any) -> Optional[Any]:
+        """Register model in MLflow registry."""
+        if not self.enabled:
+            return None
+        try:
+            return self.registry_manager.register_model(*args, **kwargs)
+        except Exception as exc:
+            print(f"[MLflowManager] Failed to register model: {exc}")
+            return None

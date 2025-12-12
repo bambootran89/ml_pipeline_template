@@ -7,7 +7,7 @@ Run:
 
 import pytest
 
-from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
+from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
@@ -79,7 +79,10 @@ def test_optuna_tuner_smoke():
     # Fast test settings
     cfg.experiment.hyperparams.n_epochs = 1
 
-    splitter = ExpandingWindowSplitter(n_splits=2, test_size=10)
+    splitter = TimeSeriesFoldSplitter(
+        cfg,
+        n_splits=2,
+    )
     mlflow_manager = MLflowManager(cfg)
 
     tuner = OptunaTuner(

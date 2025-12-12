@@ -9,15 +9,14 @@ Workflow overview:
     4. Register the retrained model into MLflow Model Registry.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, cast
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
+from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
-from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
 
@@ -43,11 +42,11 @@ class TuningPipeline(BasePipeline):
         super().__init__(self.cfg)
 
         self.mlflow_manager = MLflowManager(self.cfg)
-
+        cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(self.cfg, resolve=True))
         # Build CV splitter. Parameters may be overridden in YAML config.
-        self.splitter = ExpandingWindowSplitter(
+        self.splitter = TimeSeriesFoldSplitter(
+            cfg_dict,
             n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
-            test_size=self.cfg.get("tuning", {}).get("test_size", 20),
         )
 
     def preprocess(self):
@@ -57,8 +56,6 @@ class TuningPipeline(BasePipeline):
         Returns:
             Processed dataset produced by offline preprocessing workflow.
         """
-        preprocessor = OfflinePreprocessor(self.cfg)
-        return preprocessor.run()
 
     def run_approach(self, approach: Dict[str, Any], data):
         """
@@ -71,10 +68,6 @@ class TuningPipeline(BasePipeline):
         raise NotImplementedError("Use run() for tuning workflow.")
 
     def run(self, data=None):
-        # Step 1: Preprocess
-        if data is None:
-            data = self.preprocess()
-
         # START PARENT RUN HERE
         # Run name: Hparam_Tuning_Experiment
         with self.mlflow_manager.start_run(run_name="Hparam_Tuning_Experiment"):

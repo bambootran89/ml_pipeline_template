@@ -13,15 +13,15 @@ Usage examples:
     python -m mlproject.src.pipeline.run_pipeline cv --config path.yaml
     python -m mlproject.src.pipeline.run_pipeline tune --config path.yaml
 """
-
 import argparse
+from typing import Any, Dict, cast
 
 import pandas as pd
+from omegaconf import OmegaConf
 
-from mlproject.src.datamodule.splitter import ExpandingWindowSplitter
+from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
-
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
@@ -68,9 +68,10 @@ def run_cross_validation(cfg_path: str) -> None:
     cfg = ConfigLoader.load(cfg_path)
     mlflow_manager = MLflowManager(cfg)
 
-    splitter = ExpandingWindowSplitter(
+    cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
+    splitter = TimeSeriesFoldSplitter(
+        cfg_dict,
         n_splits=cfg.get("tuning", {}).get("n_splits", 3),
-        test_size=cfg.get("tuning", {}).get("test_size", 20),
     )
 
     cv_pipeline = CrossValidationPipeline(cfg, splitter, mlflow_manager)
@@ -80,8 +81,7 @@ def run_cross_validation(cfg_path: str) -> None:
         "hyperparams": dict(cfg.experiment.hyperparams),
     }
 
-    data = cv_pipeline.preprocess()
-    cv_pipeline.run_cv(approach, data)
+    cv_pipeline.run_cv(approach)
 
 
 def run_tuning(cfg_path: str) -> None:

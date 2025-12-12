@@ -41,31 +41,7 @@ class OfflinePreprocessor:
         self.engine = PreprocessEngine.instance(cfg)
         self.mlflow_manager = mlflow_manager
 
-    def fit(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Fit preprocessing pipeline on the dataset.
-
-        Args:
-            df: Raw DataFrame.
-
-        Returns:
-            DataFrame after fitting preprocessing transformations.
-        """
-        return self.engine.offline_fit(df)
-
-    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Transform dataset using fitted preprocessing pipeline.
-
-        Args:
-            df: DataFrame to transform.
-
-        Returns:
-            Transformed DataFrame.
-        """
-        return self.engine.offline_transform(df)
-
-    def run(self) -> pd.DataFrame:
+    def run(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
         """
         Execute full offline preprocessing pipeline.
 
@@ -77,9 +53,10 @@ class OfflinePreprocessor:
         Returns:
             Transformed DataFrame.
         """
-        df = self.load_raw_data()
-        df = self.fit(df)
-        df = self.transform(df)
+        if df is None:
+            df = self.load_raw_data()
+        df = self.engine.offline_fit(df)
+        df = self.engine.offline_transform(df)
         return df
 
     def log_artifacts_to_mlflow(self, df: Optional[pd.DataFrame] = None):

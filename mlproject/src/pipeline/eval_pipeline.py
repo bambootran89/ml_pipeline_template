@@ -15,13 +15,12 @@ from mlflow.tracking import MlflowClient
 from omegaconf import DictConfig
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
-from mlproject.src.datamodule.tsdl import TSDLDataModule
-from mlproject.src.datamodule.tsml import TSMLDataModule
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.utils.shape_utils import flatten_metrics_for_mlflow
 
 
 class EvalPipeline(BasePipeline):
@@ -110,7 +109,7 @@ class EvalPipeline(BasePipeline):
         """
         preprocessor = OfflinePreprocessor(self.cfg)
         df = preprocessor.load_raw_data()
-        df = preprocessor.transform(df)
+        df = preprocessor.engine.offline_transform(df)
         return df
 
     def run_approach(self, approach: Any, data: pd.DataFrame):
@@ -127,12 +126,11 @@ class EvalPipeline(BasePipeline):
         dm = DataModuleFactory.build(self.cfg, df)
         dm.setup()
 
-        if isinstance(dm, TSDLDataModule):
+        if hasattr(dm, "get_test_windows"):
             x_test, y_test = dm.get_test_windows()
-        elif isinstance(dm, TSMLDataModule):
-            _, _, _, _, x_test, y_test = dm.get_data()
+
         else:
-            raise NotImplementedError(f"Unsupported DataModule: {type(dm)}")
+            _, _, _, _, x_test, y_test = dm.get_data()
 
         x_test = np.asarray(x_test, dtype=np.float32)
 
@@ -141,6 +139,7 @@ class EvalPipeline(BasePipeline):
             preds = self.model.predict(x_test)
             evaluator = TimeSeriesEvaluator()
             metrics = evaluator.evaluate(y_test, preds)
-            self.mlflow_manager.log_metrics(metrics)
-        print(metrics)
+            safe_metrics = flatten_metrics_for_mlflow(metrics)
+            self.mlflow_manager.log_metrics(safe_metrics)
+        print(safe_metrics)
         return metrics

@@ -4,6 +4,40 @@ from typing import Any, Dict, Union, cast
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 
+class ConfigValidator:
+    """Validate the structure of an experiment configuration.
+
+    This class ensures that required sections and keys exist in the
+    configuration. It does not validate value types or allowed ranges.
+    """
+
+    REQUIRED_KEYS = {
+        "experiment": ["name", "type", "model"],
+        "data": ["path", "target_columns"],
+        "preprocessing": ["steps"],
+    }
+
+    @staticmethod
+    def validate(cfg: DictConfig) -> None:
+        """Validate that required config sections and keys exist.
+
+        Args:
+            cfg (DictConfig): The configuration object to validate.
+
+        Raises:
+            ValueError: If required sections or keys are missing.
+        """
+        for section, keys in ConfigValidator.REQUIRED_KEYS.items():
+            if section not in cfg:
+                raise ValueError(f"Missing required section: {section}")
+
+            for key in keys:
+                if key not in cfg[section]:
+                    raise ValueError(
+                        f"Missing required key '{key}' in section '{section}'"
+                    )
+
+
 class ConfigLoader:
     """
     Class-based configuration loader using OmegaConf.
@@ -84,6 +118,7 @@ class ConfigLoader:
         # If no defaults: return raw config directly
         defaults = cfg.get("defaults")  # type: ignore[assignment]
         if defaults is None:
+            ConfigValidator.validate(cfg)
             return cfg
 
         base_dir = os.path.dirname(cfg_path)
@@ -96,5 +131,5 @@ class ConfigLoader:
 
         # Merge main config last (highest priority)
         final_cfg = cast(DictConfig, OmegaConf.merge(merged, cfg))
-
+        ConfigValidator.validate(final_cfg)
         return final_cfg

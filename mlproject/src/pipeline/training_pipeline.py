@@ -3,8 +3,6 @@ from typing import Any, Dict
 from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
-from mlproject.src.datamodule.tsdl import TSDLDataModule
-from mlproject.src.datamodule.tsml import TSMLDataModule
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
@@ -31,6 +29,7 @@ class TrainingPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
         self.mlflow_manager = MLflowManager(self.cfg)
+        self.preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
 
     def preprocess(self) -> Any:
         """
@@ -39,8 +38,7 @@ class TrainingPipeline(BasePipeline):
         Returns:
             Preprocessed dataset object.
         """
-        preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
-        return preprocessor.run()
+        return self.preprocessor.run()
 
     def _init_model(self, approach: Dict[str, Any]):
         """
@@ -58,35 +56,6 @@ class TrainingPipeline(BasePipeline):
             hp = OmegaConf.to_container(hp, resolve=True)
         return ModelFactory.create(name, hp)
 
-    def _run_dl(
-        self, trainer, dm: TSDLDataModule, wrapper, hyperparams: Dict[str, Any]
-    ):
-        """
-        Train and evaluate a deep learning model.
-
-        Returns:
-            Tuple of (y_test, predictions)
-        """
-        train_loader, val_loader, _, _ = dm.get_loaders()
-        wrapper = trainer.train(train_loader, val_loader, hyperparams)
-        x_test, y_test = dm.get_test_windows()
-        preds = wrapper.predict(x_test)
-        return y_test, preds
-
-    def _run_ml(
-        self, trainer, dm: TSMLDataModule, wrapper, hyperparams: Dict[str, Any]
-    ):
-        """
-        Train and evaluate a traditional ML model.
-
-        Returns:
-            Tuple of (y_test, predictions)
-        """
-        x_train, y_train, x_val, y_val, x_test, y_test = dm.get_data()
-        wrapper = trainer.train((x_train, y_train), (x_val, y_val), hyperparams)
-        preds = wrapper.predict(x_test)
-        return y_test, preds
-
     def _execute_training(self, trainer, dm, wrapper, hyperparams: Dict[str, Any]):
         """
         Execute training and evaluation, independent of MLflow.
@@ -94,13 +63,16 @@ class TrainingPipeline(BasePipeline):
         Returns:
             Evaluation metrics dictionary.
         """
-        if isinstance(dm, TSDLDataModule):
-            y_test, preds = self._run_dl(trainer, dm, wrapper, hyperparams)
-        elif isinstance(dm, TSMLDataModule):
-            y_test, preds = self._run_ml(trainer, dm, wrapper, hyperparams)
-        else:
-            raise NotImplementedError(f"Unsupported DataModule type: {type(dm)}")
 
+        wrapper = trainer.train(dm, hyperparams)
+        if hasattr(dm, "get_test_windows"):
+            x_test, y_test = dm.get_test_windows()  # TSDLDataModule
+        elif hasattr(dm, "get_data"):
+            _, _, _, _, x_test, y_test = dm.get_data()  # TSMLDataModule
+        else:
+            raise AttributeError("DataModule must support retrieving test data")
+
+        preds = wrapper.predict(x_test)
         metrics = TimeSeriesEvaluator().evaluate(y_test, preds)
         print(metrics)
         return metrics
@@ -112,13 +84,12 @@ class TrainingPipeline(BasePipeline):
         Returns:
             Numpy array with first few test inputs.
         """
-        if isinstance(dm, TSDLDataModule):
+        if hasattr(dm, "get_test_windows"):
             x_test, _ = dm.get_test_windows()
             return x_test[:5]
-        if isinstance(dm, TSMLDataModule):
+        else:
             _, _, _, _, x_test, _ = dm.get_data()
             return x_test[:5]
-        return None
 
     def run_approach(self, approach: Dict[str, Any], data: Any):
         """
@@ -146,7 +117,9 @@ class TrainingPipeline(BasePipeline):
         dm.setup()
 
         trainer = TrainerFactory.create(
-            model_name, wrapper, self.cfg.training.artifacts_dir
+            model_name=model_name,
+            wrapper=wrapper,
+            save_dir=self.cfg.training.artifacts_dir,
         )
 
         if self.mlflow_manager:
@@ -156,8 +129,7 @@ class TrainingPipeline(BasePipeline):
             )
 
             with self.mlflow_manager.start_run(run_name=run_name):
-                preprocessor_logger = OfflinePreprocessor(self.cfg, self.mlflow_manager)
-                preprocessor_logger.log_artifacts_to_mlflow(df=df)
+                self.preprocessor.log_artifacts_to_mlflow()
 
                 metrics = self._execute_training(trainer, dm, wrapper, hyperparams)
                 self.mlflow_manager.log_metrics(metrics)
