@@ -80,12 +80,13 @@ class CrossValidationPipeline(BasePipeline):
 
         fold_metrics: List[Dict[str, float]] = []
 
-        for _, df_fold in enumerate(folds):
+        for i, df_fold in enumerate(folds):
             metrics = self._fold_runner.run_fold(
                 df_fold=df_fold,
                 model_name=model_name,
                 hyperparams=hyperparams,
                 is_tuning=is_tuning,
+                fold_index=i,
             )
             fold_metrics.append(metrics)
 

@@ -166,6 +166,7 @@ class FoldRunner:
         x_sample: Any,
         metrics: dict,
         preprocessor: Any,
+        fold_index: int = 0,
     ):
         """
         Log metrics, artifacts, and model to MLflow.
@@ -186,16 +187,22 @@ class FoldRunner:
         if not self.mlflow_manager:
             return
 
-        run_name = f"{model_name}_run"
+        run_suffix = f"_fold_{fold_index}" if fold_index is not None else "_run"
+        run_name = f"{model_name}{run_suffix}"
+
         with self.mlflow_manager.start_run(run_name=run_name, nested=True):
             self.mlflow_manager.log_metrics(metrics)
-            preprocessor.log_artifacts_to_mlflow()
+            _ = model_trained
+            _ = x_sample
+            _ = preprocessor
+            # It takes time to log, now I skip this log
+            # preprocessor.log_artifacts_to_mlflow()
 
-            self.mlflow_manager.log_model(
-                model_wrapper=model_trained,
-                artifact_path="model",
-                input_example=x_sample,
-            )
+            # self.mlflow_manager.log_model(
+            #     model_wrapper=model_trained,
+            #     artifact_path="model",
+            #     input_example=x_sample,
+            # )
 
     def run_fold(
         self,
@@ -203,6 +210,7 @@ class FoldRunner:
         model_name: str,
         hyperparams: dict,
         is_tuning: bool = False,
+        fold_index: int = 0,
     ) -> dict:
         """
         Run a complete CV fold:
@@ -248,6 +256,7 @@ class FoldRunner:
             x_sample=x_sample,
             metrics=metrics,
             preprocessor=preprocessor,
+            fold_index=fold_index,
         )
 
         return metrics

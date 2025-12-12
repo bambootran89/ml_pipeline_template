@@ -64,7 +64,7 @@ class MLflowManager:
             return _dummy()
 
         # Clean up previously active run for safety
-        if mlflow.active_run() is not None:
+        if not nested and mlflow.active_run() is not None:
             try:
                 mlflow.end_run()
             except Exception:

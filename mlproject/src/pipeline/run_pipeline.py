@@ -22,7 +22,6 @@ from omegaconf import OmegaConf
 from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
-
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
