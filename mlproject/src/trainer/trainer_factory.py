@@ -1,46 +1,71 @@
-from typing import Any
-
-from mlproject.src.trainer.dl_trainer import DeepLearningTrainer
-from mlproject.src.trainer.ml_trainer import MLTrainer
-from mlproject.src.utils.factory_base import DynamicFactoryBase
 from typing import Any, Dict, cast
+
 from mlproject.src.trainer.base_trainer import BaseTrainer
+from mlproject.src.utils.factory_base import DynamicFactoryBase
+
+
 class TrainerFactory(DynamicFactoryBase):
     """
-    Factory that returns the correct Trainer (DL or ML)
-    depending on the model type.
+    Factory for building Trainer instances dynamically based on model type.
     """
 
-    # DL_MODELS = {"tft", "nlinear", "lstm", "gru", "transformer"}
-    # ML_MODELS = {"xgboost", "xgb", "lgbm", "lightgbm", "rf", "svm", "sklearn"}
+    TRAINER_REGISTRY: Dict[str, Dict[str, str]] = {
+        "dl": {
+            "module": "mlproject.src.trainer.dl_trainer",
+            "class": "DeepLearningTrainer",
+        },
+        "ml": {
+            "module": "mlproject.src.trainer.ml_trainer",
+            "class": "MLTrainer",
+        },
+    }
 
     @classmethod
-    def create(cls, model_name: str, wrapper: Any, save_dir: str):
+    def create(cls, *args: Any, **kwargs: Any) -> BaseTrainer:
         """
-        Create and return a Trainer instance for the given model type.
+        Create a Trainer instance.
 
-        Args:
-            model_name (str): Name of model (e.g., 'tft', 'xgboost').
-            wrapper: The model wrapper instance.
+        This method keeps the same signature as DynamicFactoryBase.create
+        to avoid pylint W0221.
 
-        Returns:
-            DeepLearningTrainer | MLTrainer: Trainer suitable for the model.
+        Expected keyword arguments
+        --------------------------
+        model_name : str
+        wrapper : Any
+        save_dir : str
 
-        Raises:
-            RuntimeError: If no trainer exists for the provided model name.
+        Returns
+        -------
+        BaseTrainer
+            Loaded Trainer instance.
+
+        Raises
+        ------
+        ValueError
+            Missing or invalid required arguments.
         """
-        # if model_name in cls.DL_MODELS:
-        #     return DeepLearningTrainer(wrapper, save_dir=save_dir)
-        # if model_name in cls.ML_MODELS:
-        #     return MLTrainer(wrapper, save_dir=save_dir)
 
-        # raise RuntimeError(f"No trainer available for model {model_name}")
-        if model_name in ["xgboost"]: # ML Models
+        # Extract required arguments
+        model_name = kwargs.get("model_name")
+        wrapper = kwargs.get("wrapper")
+        save_dir = kwargs.get("save_dir")
+
+        if not isinstance(model_name, str):
+            raise ValueError("TrainerFactory.create requires 'model_name' (str).")
+        if wrapper is None:
+            raise ValueError("TrainerFactory.create requires 'wrapper'.")
+        if not isinstance(save_dir, str):
+            raise ValueError("TrainerFactory.create requires 'save_dir' (str).")
+
+        if model_name in ["xgboost"]:  # ML Models
             entry = {"module": "mlproject.src.trainer.ml_trainer", "class": "MLTrainer"}
-        elif model_name in ["nlinear", "tft"]: # DL Models
-            entry = {"module": "mlproject.src.trainer.dl_trainer", "class": "DeepLearningTrainer"}
+        elif model_name in ["nlinear", "tft"]:  # DL Models
+            entry = {
+                "module": "mlproject.src.trainer.dl_trainer",
+                "class": "DeepLearningTrainer",
+            }
         else:
-             raise ValueError(f"Unknown model name: {model_name}")
+            raise ValueError(f"Unknown model name: {model_name}")
         trainer_class = cls._get_class_from_config(entry)
         return cast(
             BaseTrainer,

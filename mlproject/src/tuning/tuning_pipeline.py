@@ -9,22 +9,17 @@ Workflow:
     4. Register the final model in MLflow Model Registry.
 """
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.splitter import (
-    ExpandingWindowSplitter,
-    SlidingWindowSplitter,
-    TimeSeriesSplitter,
-)
+from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
-from mlproject.src.tuning.ray_tuner import RayTuner
 
 
 class TuningPipeline(BasePipeline):
@@ -49,7 +44,7 @@ class TuningPipeline(BasePipeline):
         self.mlflow_manager = MLflowManager(self.cfg)
 
         # Use common base class type for splitter to satisfy MyPy
-        self.splitter: TimeSeriesSplitter
+        self.splitter: TimeSeriesFoldSplitter
 
         tuning_cfg = self.cfg.get("tuning", {})
         cv_strategy = tuning_cfg.get("cv_strategy", "expanding")
@@ -57,10 +52,7 @@ class TuningPipeline(BasePipeline):
         test_size = tuning_cfg.get("test_size", 20)
 
         if cv_strategy == "expanding":
-            self.splitter = ExpandingWindowSplitter(n_splits, test_size)
-        elif cv_strategy == "sliding":
-            train_size = tuning_cfg.get("train_size", 60)
-            self.splitter = SlidingWindowSplitter(n_splits, train_size, test_size)
+            self.splitter = TimeSeriesFoldSplitter(n_splits, test_size)
         else:
             raise ValueError(f"Unknown cv_strategy: {cv_strategy}")
 
@@ -78,7 +70,7 @@ class TuningPipeline(BasePipeline):
         """Not applicable in tuning pipeline."""
         raise NotImplementedError("Use run() for tuning workflow.")
 
-    def _load_tuner(self, tuner_type: str) -> Union[OptunaTuner, RayTuner]:
+    def _load_tuner(self, tuner_type: str) -> OptunaTuner:
         """
         Lazily load tuner class without violating import placement rules.
 
@@ -93,15 +85,6 @@ class TuningPipeline(BasePipeline):
 
         if tuner_type == "optuna":
             return OptunaTuner(
-                cfg=self.cfg,
-                splitter=self.splitter,
-                mlflow_manager=self.mlflow_manager,
-                metric_name=metric_name,
-                direction=direction,
-            )
-
-        if tuner_type == "ray":
-            return RayTuner(
                 cfg=self.cfg,
                 splitter=self.splitter,
                 mlflow_manager=self.mlflow_manager,

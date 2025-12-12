@@ -161,18 +161,18 @@ class MLModelWrapper(BaseModelWrapper):
         if self.model is None:
             x_sample = flatten_timeseries(x)
             input_dim = x_sample.shape[1]
-            output_dim: int = y.shape[-1] if y.ndim > 1 else 1
-            # Output dimension (1D -> 1, 2D -> features)
-            output_dim: int = y.shape[-1] if y.ndim > 1 else 1
 
-            self.build(input_dim, output_dim)  # Dùng giá trị int đã tính toán
+            # Determine output dimension (1 if y is 1D)
+            output_dim = y.shape[-1] if y.ndim > 1 else 1
+
+            self.build(input_dim, output_dim)
 
         self.ensure_built()
 
         x_reshaped = flatten_timeseries(x)
 
         model = cast(BaseEstimator, self.model)
-        model.fit(x_reshaped, y, sample_weight, **kwargs)
+        model.fit(x_reshaped, y, sample_weight=sample_weight, **kwargs)
 
     def predict(self, x, **kwargs):
         """Predict with sklearn estimator."""

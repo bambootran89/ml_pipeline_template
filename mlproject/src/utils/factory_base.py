@@ -3,6 +3,7 @@ import importlib
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Type
 
+
 class DynamicFactoryBase(ABC):
     """
     Base class for factories that dynamically load classes from config.

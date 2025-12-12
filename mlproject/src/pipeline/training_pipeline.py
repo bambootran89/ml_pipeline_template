@@ -29,6 +29,7 @@ class TrainingPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
         self.mlflow_manager = MLflowManager(self.cfg)
+        self.preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
 
     def preprocess(self) -> Any:
         """
@@ -37,8 +38,7 @@ class TrainingPipeline(BasePipeline):
         Returns:
             Preprocessed dataset object.
         """
-        preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
-        return preprocessor.run()
+        return self.preprocessor.run()
 
     def _init_model(self, approach: Dict[str, Any]):
         """
@@ -88,7 +88,7 @@ class TrainingPipeline(BasePipeline):
             x_test, _ = dm.get_test_windows()
             return x_test[:5]
         else:
-            _, _, _, x_test, _ = dm.get_data()
+            _, _, _, _, x_test, _ = dm.get_data()
             return x_test[:5]
 
     def run_approach(self, approach: Dict[str, Any], data: Any):
@@ -117,7 +117,9 @@ class TrainingPipeline(BasePipeline):
         dm.setup()
 
         trainer = TrainerFactory.create(
-            model_name, wrapper, self.cfg.training.artifacts_dir
+            model_name=model_name,
+            wrapper=wrapper,
+            save_dir=self.cfg.training.artifacts_dir,
         )
 
         if self.mlflow_manager:
@@ -127,8 +129,7 @@ class TrainingPipeline(BasePipeline):
             )
 
             with self.mlflow_manager.start_run(run_name=run_name):
-                preprocessor_logger = OfflinePreprocessor(self.cfg, self.mlflow_manager)
-                preprocessor_logger.log_artifacts_to_mlflow(df=df)
+                self.preprocessor.log_artifacts_to_mlflow()
 
                 metrics = self._execute_training(trainer, dm, wrapper, hyperparams)
                 self.mlflow_manager.log_metrics(metrics)

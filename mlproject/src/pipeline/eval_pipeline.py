@@ -20,6 +20,7 @@ from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.utils.shape_utils import flatten_metrics_for_mlflow
 
 
 class EvalPipeline(BasePipeline):
@@ -108,7 +109,7 @@ class EvalPipeline(BasePipeline):
         """
         preprocessor = OfflinePreprocessor(self.cfg)
         df = preprocessor.load_raw_data()
-        df = preprocessor.transform(df)
+        df = preprocessor.engine.offline_transform(df)
         return df
 
     def run_approach(self, approach: Any, data: pd.DataFrame):
@@ -138,6 +139,7 @@ class EvalPipeline(BasePipeline):
             preds = self.model.predict(x_test)
             evaluator = TimeSeriesEvaluator()
             metrics = evaluator.evaluate(y_test, preds)
-            self.mlflow_manager.log_metrics(metrics)
-        print(metrics)
+            safe_metrics = flatten_metrics_for_mlflow(metrics)
+            self.mlflow_manager.log_metrics(safe_metrics)
+        print(safe_metrics)
         return metrics

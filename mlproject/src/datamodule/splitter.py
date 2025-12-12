@@ -1,159 +1,120 @@
-"""
-Time-series cross-validation splitters.
+from typing import Any, Dict, List
 
-Ensures chronological integrity and prevents data leakage
-from future to past.
-"""
-
-from typing import Iterator, Tuple
-
-import numpy as np
+import pandas as pd
 
 
-class TimeSeriesSplitter:
+class TimeSeriesFoldSplitter:
     """
-    Base class for time-series cross-validation.
+    Split a time-series DataFrame into contiguous folds while respecting
+    model input/output window lengths.
 
-    Core principle:
-        - Training data must come strictly from the past.
-        - Test data must be strictly in the future relative to train.
+    This splitter is useful for expanding-window or rolling-origin
+    cross-validation where each fold must contain at least:
 
-    Subclasses must implement `split()`.
+    - `input_chunk_length` samples for model input
+    - `output_chunk_length` samples reserved for forecasting target
+
+    Attributes:
+        cfg: Full experiment configuration as a plain dictionary.
+        df_cfg: Sub-config for dataset loading (path, index column, etc.).
+        experiment_cfg: Sub-config for experiment hyperparameters.
+        input_len: Required history size for model input.
+        output_len: Required forecast length.
+        n_splits: Number of desired folds.
+        df: Loaded DataFrame (after parsing and sorting).
+        n_samples: Total number of rows in the time series.
     """
 
-    def split(
-        self, x: np.ndarray, y: np.ndarray
-    ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
-        """Generate chronological train/test splits.
+    def __init__(self, cfg: Dict[str, Any], n_splits: int) -> None:
+        """
+        Initialize the splitter from configuration and number of folds.
 
         Args:
-            x: Array of input features with shape (N, seq_len, feat_dim).
-            y: Array of target values with shape (N, horizon_dim).
+            cfg: Dictionary-like configuration object.
+            n_splits: Number of folds to generate.
+        """
+        self.cfg = cfg
+        self.df_cfg = cfg.get("data", {})
+        self.experiment_cfg = cfg.get("experiment", {})
 
-        Yields:
-            Tuple[np.ndarray, np.ndarray]: Train indices and test indices.
+        hp_cfg = self.experiment_cfg.get("hyperparams", {})
+        self.input_len = int(hp_cfg.get("input_chunk_length", 24))
+        self.output_len = int(hp_cfg.get("output_chunk_length", 6))
+
+        self.n_splits = int(n_splits)
+
+        self.df: pd.DataFrame | None = None
+        self.n_samples = 0
+
+        self._load_data()
+
+    def _load_data(self) -> pd.DataFrame:
+        """
+        Load the DataFrame from disk, parse datetime index, and sort.
+
+        Returns:
+            The loaded and indexed DataFrame.
 
         Raises:
-            NotImplementedError: If subclass does not override this method.
+            FileNotFoundError: If the CSV file path is invalid.
+            ValueError: If index column is missing.
         """
-        raise NotImplementedError("Subclasses must implement the split() method.")
+        path = self.df_cfg.get("path")
+        index_col = self.df_cfg.get("index_col")
 
+        if path is None:
+            raise ValueError("Dataset config missing required field: 'path'.")
+        if index_col is None:
+            raise ValueError("Dataset config missing required field: 'index_col'.")
 
-class ExpandingWindowSplitter(TimeSeriesSplitter):
-    """
-    Expanding-window time-series CV.
+        df = pd.read_csv(path, parse_dates=[index_col])
+        df = df.set_index(index_col).sort_index()
 
-    Train window grows with each fold while test window remains fixed.
+        self.df = df
+        self.n_samples = len(df)
+        return df
 
-    Example:
-        n = 100, n_splits = 3, test_size = 20
-
-        Fold 1: train = [0:40],  test = [40:60]
-        Fold 2: train = [0:60],  test = [60:80]
-        Fold 3: train = [0:80],  test = [80:100]
-    """
-
-    def __init__(self, n_splits: int = 3, test_size: int = 20):
-        """Initialize the splitter.
-
-        Args:
-            n_splits: Number of CV folds.
-            test_size: Size of the test window for each fold.
+    def generate_folds(self) -> List[pd.DataFrame]:
         """
-        self.n_splits = n_splits
-        self.test_size = test_size
+        Generate contiguous DataFrame folds for time-series CV.
 
-    def split(
-        self, x: np.ndarray, y: np.ndarray
-    ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
-        """Generate expanding-window splits.
+        Each fold expands the training window (expanding-window style)
+        and guarantees at least ``input_len`` samples and room for an
+        ``output_len``-sized forecast horizon.
 
-        Args:
-            x: Input feature array.
-            y: Target array (unused, included for interface consistency).
-
-        Yields:
-            (train_indices, test_indices)
+        Returns:
+            A list of DataFrames, each representing one fold.
 
         Raises:
-            ValueError: If dataset is too small for the requested split config.
+            RuntimeError: If data is not loaded before folding.
         """
-        n = len(x)
-        total_test = self.n_splits * self.test_size
-        min_train = n - total_test
+        if self.df is None:
+            raise RuntimeError("Data not loaded. Call `_load_data()` first.")
 
-        if min_train < self.test_size:
+        min_train_size = self.input_len
+        max_train_end = self.n_samples - self.output_len
+
+        if max_train_end <= min_train_size:
             raise ValueError(
-                "Insufficient data for expanding-window CV. "
-                f"Need ≥ {total_test + self.test_size}, got {n}."
+                "Dataset too small for given input/output lengths "
+                f"(input={self.input_len}, output={self.output_len})."
             )
 
-        for i in range(self.n_splits):
-            test_start = min_train + i * self.test_size
-            test_end = test_start + self.test_size
-            train_idx = np.arange(0, test_start)
-            test_idx = np.arange(test_start, test_end)
-            yield train_idx, test_idx
+        step = max(1, (max_train_end - min_train_size) // self.n_splits)
 
-
-class SlidingWindowSplitter(TimeSeriesSplitter):
-    """
-    Sliding-window time-series CV.
-
-    Train window size is fixed and slides forward with each fold.
-
-    Example:
-        n = 100, train_size = 40, test_size = 20, n_splits = 3
-
-        Fold 1: train=[0:40],   test=[40:60]
-        Fold 2: train=[20:60],  test=[60:80]
-        Fold 3: train=[40:80],  test=[80:100]
-    """
-
-    def __init__(
-        self,
-        n_splits: int = 3,
-        train_size: int = 40,
-        test_size: int = 20,
-    ):
-        """Initialize sliding-window splitter.
-
-        Args:
-            n_splits: Number of folds.
-            train_size: Fixed size of the train window.
-            test_size: Size of the test window per fold.
-        """
-        self.n_splits = n_splits
-        self.train_size = train_size
-        self.test_size = test_size
-
-    def split(
-        self, x: np.ndarray, y: np.ndarray
-    ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
-        """Generate sliding-window splits.
-
-        Args:
-            x: Feature array.
-            y: Target array (unused).
-
-        Yields:
-            (train_indices, test_indices)
-
-        Raises:
-            ValueError: If train/test overlap or indices invalid.
-        """
-        n = len(x)
+        folds: List[pd.DataFrame] = []
 
         for i in range(self.n_splits):
-            remaining = (self.n_splits - i - 1) * self.test_size
-            test_end = n - remaining
-            test_start = test_end - self.test_size
-            train_start = max(0, test_start - self.train_size)
+            fold_start = 0
+            fold_end = min_train_size + step * (i + 1)
 
-            if train_start == test_start:
-                raise ValueError(f"Invalid fold {i}: train and test overlap.")
+            # Pylint R1730: use `min(...)`
+            fold_end = min(fold_end, self.n_samples)
 
-            train_idx = np.arange(train_start, test_start)
-            test_idx = np.arange(test_start, test_end)
+            fold_df = self.df.iloc[fold_start:fold_end].copy()
+            folds.append(fold_df)
 
-            yield train_idx, test_idx
+            if fold_end == self.n_samples:
+                break
+
+        return folds

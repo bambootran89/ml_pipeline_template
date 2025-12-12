@@ -93,8 +93,62 @@ def infer_io_dims(x: Any, y: Any) -> Tuple[int, int]:
 
     return input_dim, output_dim
 
+
 def to_list_if_array(arr: Any) -> list:
     """Converts numpy array to list, handles other iterables."""
     if hasattr(arr, "tolist"):
         return arr.tolist()
     return list(arr)
+
+
+def flatten_metrics_for_mlflow(metrics: dict[str, Any]) -> dict[str, float]:
+    """
+    Flatten a metrics dictionary into an MLflow-compatible format.
+
+    MLflow only accepts scalar float values for logging. However, many
+    time-series metrics may return vector outputs (e.g., multivariate or
+    multi-horizon forecasts). This utility converts any `np.ndarray`
+    metric values into multiple scalar metrics using the pattern:
+
+        <metric_name>_<index> = float_value
+
+    Example:
+        Input:
+            {
+                "mae": np.array([0.12, 0.20, 0.31]),
+                "rmse": 0.55,
+            }
+
+        Output:
+            {
+                "mae_0": 0.12,
+                "mae_1": 0.20,
+                "mae_2": 0.31,
+                "rmse": 0.55,
+            }
+
+    Args:
+        metrics (dict[str, Any]):
+            Dictionary of metrics returned by the evaluator. Values may be
+            scalars, numpy arrays, or unsupported types (ignored).
+
+    Returns:
+        dict[str, float]:
+            A flattened metrics dictionary containing only scalar floats,
+            safe for logging with MLflow.
+
+    Notes:
+        - Unsupported types are silently skipped.
+        - Vector metrics preserve ordering (index corresponds to output dimension).
+    """
+    result: dict[str, float] = {}
+    for key, val in metrics.items():
+        if isinstance(val, np.ndarray):
+            for i, v in enumerate(val):
+                result[f"{key}_{i}"] = float(v)
+        elif isinstance(val, (np.floating, float, int)):
+            result[key] = float(val)
+        else:
+            # Skip unsupported types
+            continue
+    return result

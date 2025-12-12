@@ -41,7 +41,7 @@ class OfflinePreprocessor:
         self.engine = PreprocessEngine.instance(cfg)
         self.mlflow_manager = mlflow_manager
 
-    def run(self) -> pd.DataFrame:
+    def run(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
         """
         Execute full offline preprocessing pipeline.
 
@@ -53,7 +53,8 @@ class OfflinePreprocessor:
         Returns:
             Transformed DataFrame.
         """
-        df = self.load_raw_data()
+        if df is None:
+            df = self.load_raw_data()
         df = self.engine.offline_fit(df)
         df = self.engine.offline_transform(df)
         return df

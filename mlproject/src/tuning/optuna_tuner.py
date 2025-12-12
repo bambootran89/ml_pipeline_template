@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 import optuna
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.splitter import TimeSeriesSplitter
+from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.base_tuner import BaseTuner
@@ -23,7 +23,7 @@ class OptunaTuner(BaseTuner):
     def __init__(
         self,
         cfg: DictConfig,
-        splitter: TimeSeriesSplitter,
+        splitter: TimeSeriesFoldSplitter,
         mlflow_manager: Optional[MLflowManager] = None,
         metric_name: str = "mae_mean",
         direction: str = "minimize",
@@ -116,11 +116,10 @@ class OptunaTuner(BaseTuner):
 
             # Preprocess data
             approach = {"model": model_name, "hyperparams": hyperparams}
-            data = self.cv_pipeline.preprocess()
 
             # Run cross-validation
             agg_metrics: Dict[str, Any] = self.cv_pipeline.run_cv(
-                approach, data, is_tuning=True
+                approach, is_tuning=True
             )
 
             # Log aggregated metrics
