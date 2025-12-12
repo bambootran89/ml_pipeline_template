@@ -1,7 +1,7 @@
+import threading
 from typing import Optional
 
 from .base import PreprocessBase
-import threading
 
 
 class PreprocessEngine:

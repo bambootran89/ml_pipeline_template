@@ -16,3 +16,4 @@ httpx
 mlflow
 optuna>=3.0.0
 optuna-integration[mlflow]>=3.0.0
+psutil

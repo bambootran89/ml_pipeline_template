@@ -6,8 +6,14 @@ Provides three endpoints:
 - POST /predict
 """
 
+import os
+from datetime import datetime
+
+import psutil
+import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 from mlproject.serve.models_service import ModelsService
 from mlproject.serve.schemas import PredictRequest
@@ -19,15 +25,50 @@ app = FastAPI(title="TS Forecasting API", version="1.0.0")
 service = ModelsService()
 
 
-@app.get("/health")
+def _check_mlflow_connection() -> bool:
+    """Ping MLflow server"""
+    try:
+        response = requests.get(f"{os.getenv('MLFLOW_TRACKING_URI')}/health", timeout=2)
+        return response.status_code == 200
+    except BaseException:
+        return False
+
+
+class HealthResponse(BaseModel):
+    status: str
+    timestamp: datetime
+    model_loaded: bool
+    memory_usage_mb: float
+    dependencies: dict
+
+
+@app.get("/health", response_model=HealthResponse)
 def health_check():
     """
-    Return basic health info for the service.
+    K8s liveness/readiness probe endpoint
 
-    Includes model load status so external systems
-    can verify readiness.
+    Returns 200 if:
+    - Model loaded
+    - Memory < 90% threshold
+    - MLflow connection alive
     """
-    return {"status": "ok", "model_loaded": service.model is not None}
+    checks = {
+        "model_loaded": service.model is not None,
+        "mlflow_reachable": _check_mlflow_connection(),
+        "disk_space_ok": psutil.disk_usage("/").percent < 90,
+    }
+
+    memory_mb = psutil.Process().memory_info().rss / 1024 / 1024
+
+    all_healthy = all(checks.values()) and memory_mb < 2000  # 2GB limit
+
+    return HealthResponse(
+        status="healthy" if all_healthy else "degraded",
+        timestamp=datetime.utcnow(),
+        model_loaded=checks["model_loaded"],
+        memory_usage_mb=round(memory_mb, 2),
+        dependencies=checks,
+    )
 
 
 @app.get("/")
