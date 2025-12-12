@@ -1,208 +1,197 @@
-# Project Structure Overview
+# Production-Grade Time-Series ML Pipeline
 
-This project adopts a production-oriented machine learning architecture with strict boundaries between training, feature preprocessing, and serving/inference.
-While a full online/offline feature store is not implemented, the layout is deliberately structured to remain feature-store–ready, enabling seamless integration of systems like Feast, Feathr, or Tecton without significant refactoring.
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
+[![MLflow](https://img.shields.io/badge/MLflow-Tracking-blue)](https://mlflow.org/)
+[![Optuna](https://img.shields.io/badge/Optuna-Tuning-blue)](https://optuna.org/)
+[![Ray Serve](https://img.shields.io/badge/Ray-Serving-blue)](https://docs.ray.io/en/latest/serve/index.html)
+[![Hydra](https://img.shields.io/badge/Hydra-Configuration-blue)](https://hydra.cc/)
 
----
-
-## 1. Why This Structure?
-
-Modern ML systems operate through two distinct—but tightly aligned—execution paths:
-
-### **(1) Training Flow**
-- Works with offline datasets, dataloaders, and feature generation pipelines.
-- Supports heavy, compute-intensive transformations.
-- Must be fully reproducible, driven by versioned configurations.
-- Performs model training and evaluation under controlled conditions.
-
-### **(2) Serving Flow**
-- Executes only lightweight, deterministic preprocessing followed by model inference.
-- Must be fast, stable, and latency-safe for production.
-- Consumes online inputs, not training-time dataloader logic or offline transformations.
-
-Separating these flows prevents:
-- Preprocessing mismatches and training–serving drift
-- Feature leakage from offline logic leaking into production
-- Tight coupling between research code and deployment code
-- Latency risks from heavy transformations at inference time
-
-This structure keeps the code simple while staying aligned with how real systems integrate with an online/offline Feature Store later.
+A robust, modular, and extensible machine learning framework designed for Time-Series Forecasting. This project bridges the gap between research code and production systems by enforcing strict separation of concerns, reproducibility, and MLOps best practices.
 
 ---
 
-## 2. MLProject Directory Structure Documentation
-*Perspective: OOP + Modern MLOps*
+## 🏗️ Architecture & Design Philosophy
 
----
+### Core Design Principles
 
-### Root Package
+1.  **Training-Serving Skew Prevention**:
+    * **Offline Preprocessing**: Heavy transformations (windowing, scaling) happen during training.
+    * **Online Preprocessing**: Serving utilizes lightweight logic that reuses artifacts (e.g., scalers) saved during training to ensure consistency.
 
-- `configs/`
-  Configuration-driven design separates **hyperparameters, paths, experiment overrides**.
-  - `base/` — Reusable core configs.
-    - `data.yaml`, `evaluation.yaml`, `mlflow.yaml`, `model.yaml`, `preprocessing.yaml`, `training.yaml`
-  - `experiments/` — Specific experiment configs.
-    - `etth1.yaml`, `etth2.yaml`, `etth3.yaml`
-    > Demonstrates **reproducibility & parameterized experimentation**.
+2.  **Configuration-Driven**:
+    * All hyperparameters, model architectures, and data paths are defined in YAML files (Hydra). Code changes are rarely needed to run new experiments.
 
-- `data/`
-  Raw datasets; **source-of-truth separated**.
-  - `ETTh1.csv` — example time-series dataset.
+3.  **Composition over Inheritance**:
+    * Pipelines are composed of independent runners, loggers, and datamodules.
+    * **Factory Pattern** is used extensively (`ModelFactory`, `TrainerFactory`) to decouple implementation from instantiation.
 
-- `run.py`
-  CLI / orchestrator for training, evaluation, serving. Implements **single responsibility principle**.
+### System Workflow
 
----
+```mermaid
+graph TD
+    subgraph Configuration
+        Config[Hydra Configs YAML]
+    end
 
-### Serving Layer (`serve/`)
-Separation of concerns: API, services, schemas, deployment scripts.
+    subgraph "Offline Training (Pipeline)"
+        Data[Raw Data] --> Pre[Offline Preprocessor]
+        Pre -->|Processed Data| Splitter[Time Series Splitter]
+        Splitter -->|Folds| Trainer[Fold Runner / Trainer]
+        Trainer -->|Train| Model[Model Wrapper]
+        Trainer -->|Metrics| MLflow[MLflow Tracking]
+        Trainer -->|Artifacts| Registry[Model Registry]
+    end
 
-- `api.py` — FastAPI endpoints; minimal logic, delegates to service classes.
-- `models_service.py` — Encapsulates:
-  - Model loading (MLflow or local)
-  - Input preprocessing
-  - Windowing
-  - Prediction
-  > **Reusable service class** for API, Ray, or CLI.
-- `schemas.py` — Pydantic models for validation.
-- `ray/` — Ray Serve deployment.
-  - `ray_deploy.py` — PreprocessingService & ModelService, exposes ForecastAPI.
+    subgraph "Online Serving (Inference)"
+        API[FastAPI / Ray Serve] -->|Input| OnlinePre[Online Preprocessor]
+        Registry -->|Load Model| OnlinePre
+        OnlinePre -->|Features| InfModel[Loaded Model]
+        InfModel -->|Prediction| Output
+    end
 
----
+    Config -->|Injects Params| Trainer
+    Config -->|Injects Params| Pre
+```
 
-### Core ML Library (`src/`)
+# Directory Structure
+A layout designed for scalability and feature-store integration.
+```plaintext
+mlproject/
+├── configs/                 # The "Control Center"
+│   ├── base/                # Reusable defaults (model.yaml, training.yaml)
+│   └── experiments/         # Experiment snapshots (etth1.yaml, tuning.yaml)
+│
+├── src/                     # Core Library
+│   ├── datamodule/          # Data loading & splitting strategies
+│   ├── eval/                # Metrics & Evaluation logic
+│   ├── models/              # Model implementations (Wrappers)
+│   ├── pipeline/            # Orchestrators (CV, Train, Tune, Serve)
+│   ├── preprocess/          # Feature engineering (Offline vs Online)
+│   ├── tracking/            # MLflow & Experiment Managers
+│   ├── trainer/             # Training loops (DL vs Machine Learning)
+│   └── tuning/              # Optuna Hyperparameter Search
+│
+├── serve/                   # Deployment Layer
+│   ├── api.py               # FastAPI entry point
+│   ├── ray/                 # Ray Serve deployment scripts
+│   └── models_service.py    # Inference logic
+│
+└── tests/                   # Unit & Integration Tests
+```
 
-#### `datamodule/` — Dataset abstraction & modular pipelines
-- `dataset.py` — Base dataset interface
-- `dm_factory.py` — Factory pattern for data modules
-- `tsbase.py` — Base class for time-series datasets
-- `tsdl.py` — Deep learning DataLoader
-- `tsml.py` — Traditional ML DataLoader
+# Getting Started
+## 1. Prerequisites
+Python 3.9+
 
-#### `eval/` — Evaluation layer
-- `base.py` — Abstract evaluation class
-- `regression_eval.py` — MAE, MSE, SMAPE; **strategy pattern** for metric selection
-- `ts_eval.py` — Time-series specific evaluation
+Virtual Environment (recommended)
 
-#### `models/` — Model implementations & wrappers
-- `base.py` — Base model interface (`fit`, `predict`)
-- `model_factory.py` — Factory pattern
-- `nlinear_wrapper.py`, `tft_wrapper.py`, `xgboost_wrapper.py` — Adapter pattern for unified API
-
-#### `pipeline/` — Orchestration layer
-- `base.py` — Abstract BasePipeline class
-- `config_loader.py` — Hierarchical config loader
-- `eval_pipeline.py`, `run_pipeline.py`, `serve_pipeline.py`, `training_pipeline.py` — Full ML lifecycle orchestration
-
-#### `preprocess/` — Feature engineering
-- `base.py` — Abstract Preprocessor interface
-- `engine.py` — Core transformation logic
-- `offline.py` — Training-time preprocessing
-- `online.py` — Serving-time preprocessing
-> Guarantees **train-serving parity** (critical in MLOps)
-
-#### `tracking/` — MLflow & experiment tracking
-- `config_logger.py` — Logging setup
-- `experiment_manager.py` — Manages experiments lifecycle
-- `mlflow_manager.py` — MLflow wrapper
-- `model_logger.py` — Logs model metadata
-- `pyfunc_wrapper.py` — Makes arbitrary models MLflow PyFunc compatible
-- `registry_manager.py` — MLflow registry interactions
-- `run_manager.py` — Run lifecycle & reproducibility metadata
-> Supports **reproducibility, auditability, and experiment versioning**
-
-#### `trainer/` — Training abstractions
-- `base_trainer.py` — Base trainer interface
-- `dl_trainer.py` — Deep learning trainer
-- `ml_trainer.py` — Traditional ML trainer
-- `trainer_factory.py` — Dynamic trainer instantiation (**factory pattern**)
-
----
-
-### Design Patterns & Best Practices Highlighted
-1. **Encapsulation:** Expose minimal public API, hide internal logic.
-2. **Modularity & Reusability:** Services reusable across FastAPI, Ray, CLI.
-3. **Factory Pattern:** `ModelFactory`, `TrainerFactory`, `DataModuleFactory`.
-4. **Adapter Pattern:** Standardizes `predict` interface across heterogeneous models.
-5. **Separation of Concerns:** `preprocess/` vs `models/` vs `pipeline/` vs `tracking/`.
-6. **Configuration-Driven Design:** All hyperparameters, paths, experiment settings live in `configs/`.
-7. **Reproducibility & Experiment Tracking:** MLflow + `run_manager` ensures audit trail.
-8. **Train-Serving Parity:** Offline and online preprocessing ensures consistent production input.
-9. **Deployment Ready:** FastAPI + Ray Serve for **scalable, async endpoints**.
-
----
-
-# Usage Guide
-
-## 1. Environment Setup
-
-Create and initialize the development environment:
+## 2. Installation
 
 ```bash
+# Create virtual environment
 make venv
 source mlproject_env/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-
-## 2. Apply Code Style Fixes
-
-Format and clean the project automatically:
-```bash
-make style
-```
-
-## 3. Run Tests
-
-Run all style, type, and unit tests:
-
-```bash
-make test
-```
-This includes:
-
-- flake8
-- mypy
-- pytest
-- pylint
-
-
-## 4. Commands — run & serve
-
-Run mlflow server
+## 3. Quick Start
+Start the MLflow server to visualize results:
 ```bash
 mlflow ui --port 5000
 ```
-Run training pipeline
-
+Run a standard training experiment:
 ```bash
 python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/etth1.yaml
-python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth1.yaml
-python -m mlproject.src.pipeline.run_pipeline test --config mlproject/configs/experiments/etth1.yaml --input sample_input.csv
 ```
 
-Run Cross-Validation
+# Workflows & Capabilities
+## 1. Cross-Validation (Backtesting)
+Validates model stability across time folds.
 ```bash
 python -m mlproject.src.pipeline.run_pipeline cv --config mlproject/configs/experiments/etth2.yaml
-
-python -m  mlproject.src.run_cv --config mlproject/configs/experiments/etth2.yaml --n-splits 5  --test-size 24
 ```
 
-Tuning
+## 2. Hyperparameter Tuning (Optuna)
+Runs Bayesian Optimization to find best parameters, then auto-retrains the best model.
 ```bash
 python -m mlproject.src.pipeline.run_pipeline tune --config mlproject/configs/experiments/etth3_tuning.yaml
-python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth3_tuning.yaml
 ```
-
-
-Start FastAPI API
+## 3. Serving (Inference)
+Deploys the model using FastAPI or Ray Serve.
 ```bash
+# Start FastAPI
 uvicorn mlproject.serve.api:app --reload
+
+# OR Start Ray Serve
+python mlproject/serve/ray/ray_deploy.py
 ```
 
-Deployment with Ray
+# Developer Guide: How to Add a New Model
+This project uses the Adapter Pattern and Factory Pattern. To add a new algorithm (e.g., LightGBM or a new Transformer), follow these steps:
+
+## Step 1: Create the Model Wrapper
+Create a new file in mlproject/src/models/, inheriting from BaseModel.
+
+```python
+# mlproject/src/models/my_new_model.py
+from typing import Dict, Any
+from .base import BaseModel
+
+class MyNewModel(BaseModel):
+    def __init__(self, hyperparams: Dict[str, Any]):
+        super().__init__(hyperparams)
+        # Initialize your library model here
+        self.model = SomeLibraryModel(**hyperparams)
+
+    def fit(self, x, y, **kwargs):
+        self.model.fit(x, y)
+
+    def predict(self, x):
+        return self.model.predict(x)
+```
+
+## Step 2: Register in Model Factory
+Update mlproject/src/models/model_factory.py to make the factory aware of your class.
+```python
+# ... inside ModelFactory class
+MODEL_REGISTRY = {
+    "xgboost": "mlproject.src.models.xgboost_wrapper.XGBoostWrapper",
+    "tft": "mlproject.src.models.tft_wrapper.TFTWrapper",
+    "new_model": "mlproject.src.models.my_new_model.MyNewModel", # <--- Add this
+}
+```
+
+## Step 3: Define Trainer Logic (Optional)
+If your model requires a special training loop (different from standard ML fit/predict or standard Torch DataLoader), check mlproject/src/trainer/trainer_factory.py to map it to MLTrainer or DeepLearningTrainer.
+
 ```bash
-ray start --head
-python mlproject/serve/ray/ray_deploy.py
-curl http://localhost:8000/health
-ray stop
+# mlproject/src/trainer/trainer_factory.py
+if model_name in ["new_model"]:
+    entry = {"module": "mlproject.src.trainer.ml_trainer", "class": "MLTrainer"}
+```
+
+## Step 4: Create Configuration
+Create a new experiment config or update model.yaml.
+```yaml
+# mlproject/configs/experiments/my_experiment.yaml
+defaults:
+  - override /base: model
+experiment:
+  name: "New_Model_Test"
+  model: "new_model"  # Must match the key in Factory
+  hyperparams:
+    learning_rate: 0.01
+    n_estimators: 100
+```
+
+## Quality Assurance
+We enforce code quality via pre-commit hooks.
+```bash
+# Run all tests
+make test
+
+# Auto-format code
+make style
 ```
