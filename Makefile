@@ -3,7 +3,9 @@ PYTHON := python
 VENV_NAME = mlproject_env
 MAIN_FOLDER = mlproject
 TEST_FOLDER = tests
-
+# Docker variables
+IMAGE_NAME = ml-pipeline-template
+TAG = latest
 # Environment
 venv:
 	${PYTHON} -m venv ${VENV_NAME} && \
@@ -26,3 +28,15 @@ test:
 	${PYTHON} -m mypy ./${MAIN_FOLDER}/
 	CUDA_VISIBLE_DEVICES=""  ${PYTHON} -m pytest -v -s --durations=0 --disable-warnings ${TEST_FOLDER}/
 	${PYTHON} -m pylint ./${MAIN_FOLDER}/
+
+
+
+docker-build:
+	docker build -t $(IMAGE_NAME):$(TAG) .
+
+docker-run-api:
+	docker run -p 8000:8000 --name ml-api --rm $(IMAGE_NAME):$(TAG)
+
+docker-run-train:
+	# Ví dụ chạy training job bằng docker container
+	docker run --rm $(IMAGE_NAME):$(TAG) python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/etth1.yaml

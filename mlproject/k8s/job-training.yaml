@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-job-etth1
+  labels:
+    app: ml-training
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: ml-training
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: trainer
+          image: ml-pipeline-template:latest   # Replace with your actual image path
+          command:
+            - python
+            - -m
+            - mlproject.src.pipeline.run_pipeline
+            - train
+            - --config
+            - mlproject/configs/experiments/etth1.yaml
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow-service:5000"
+          volumeMounts:
+            - name: model-storage
+              mountPath: /app/mlruns   # Directory to store artifacts if not using S3
+      volumes:
+        - name: model-storage
+          emptyDir: {}   # Use PVC in production instead of emptyDir
