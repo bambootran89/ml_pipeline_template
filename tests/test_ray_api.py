@@ -18,7 +18,7 @@ from mlproject.serve.schemas import PredictRequest
 from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
 from mlproject.src.pipeline.config_loader import ConfigLoader
-from mlproject.src.preprocess.online import serve_preprocess_request
+from mlproject.src.preprocess.online import OnlinePreprocessor
 
 # --------------------------
 # Config / Artifacts paths
@@ -42,6 +42,7 @@ class PreprocessingService:
     def __init__(self):
         """Initialize preprocessing service with config."""
         self.cfg = ConfigLoader.load(CONFIG_PATH)
+        self.preprocessor = OnlinePreprocessor(self.cfg)
 
     def preprocess(self, data_dict: Dict) -> pd.DataFrame:
         """
@@ -56,7 +57,7 @@ class PreprocessingService:
         df = pd.DataFrame(data_dict)
         if "date" in df.columns:
             df = df.set_index("date")
-        return serve_preprocess_request(df, self.cfg)
+        return self.preprocessor.transform(df)
 
 
 @serve.deployment  # type: ignore

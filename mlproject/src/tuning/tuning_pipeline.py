@@ -17,7 +17,6 @@ from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
-from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
 
@@ -63,8 +62,6 @@ class TuningPipeline(BasePipeline):
         Returns:
             Any: Output from the offline preprocessing pipeline.
         """
-        preprocessor = OfflinePreprocessor(self.cfg)
-        return preprocessor.run()
 
     def run_approach(self, approach: Dict[str, Any], data: Any) -> None:
         """Not applicable in tuning pipeline."""
@@ -107,8 +104,7 @@ class TuningPipeline(BasePipeline):
         Returns:
             dict: Best hyperparameters found during tuning.
         """
-        if data is None:
-            data = self.preprocess()
+        _ = data
 
         tuner = self._load_tuner(tuner_type)
 

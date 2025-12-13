@@ -29,7 +29,9 @@ class TrainingPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
         self.mlflow_manager = MLflowManager(self.cfg)
-        self.preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
+        self.preprocessor = OfflinePreprocessor(
+            is_train=True, cfg=self.cfg, mlflow_manager=self.mlflow_manager
+        )
 
     def preprocess(self) -> Any:
         """

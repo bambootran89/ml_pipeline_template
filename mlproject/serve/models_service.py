@@ -13,7 +13,7 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.serve.schemas import PredictRequest
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.config_loader import ConfigLoader
-from mlproject.src.preprocess.online import serve_preprocess_request
+from mlproject.src.preprocess.online import OnlinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 
@@ -29,6 +29,7 @@ class ModelsService:
         self.mlflow_manager = MLflowManager(self.cfg)
 
         # Load model on initialization
+        self.preprocessor = OnlinePreprocessor(self.cfg)
         self.load_model()
 
     def load_model(self):
@@ -48,22 +49,20 @@ class ModelsService:
 
                 # <<< FIX START: Inject Run ID into config for Preprocessor >>>
                 try:
-                    # Trích xuất run_id từ metadata của model vừa load
                     run_id = self.model.metadata.run_id
                     if run_id:
                         print(f"[ModelsService] Model loaded from Run ID: {run_id}")
-                        # Cập nhật vào config để PreprocessBase biết tải scaler ở đâu
                         if "mlflow" not in self.cfg:
                             self.cfg["mlflow"] = {}
                         self.cfg.mlflow["run_id"] = run_id
                         self.cfg.mlflow["enabled"] = True
+                        self.preprocessor.update_config(self.cfg)
                 except Exception as e:
                     print(
                         f"""[ModelsService] Warning: \
                         Could not extract run_id from model metadata: {e}"""
                     )
                 # <<< FIX END >>>
-
                 return
             except Exception as e:
                 print(
@@ -89,6 +88,7 @@ class ModelsService:
             hp = OmegaConf.to_container(hp, resolve=True)
 
         self.model = ModelFactory.load(name, hp, self.cfg.training.artifacts_dir)
+        self.preprocessor.update_config(self.cfg)
 
     def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
         """Build model input window from preprocessed DataFrame."""
@@ -113,9 +113,7 @@ class ModelsService:
 
         try:
             data = pd.DataFrame(request.data)
-            # serve_preprocess_request sẽ khởi tạo PreprocessEngine với self.cfg
-            # Vì self.cfg đã có run_id (từ load_model), engine sẽ tải đúng scaler.
-            df_transformed = serve_preprocess_request(data, self.cfg)
+            df_transformed = self.preprocessor.transform(data)
             x_input = self._prepare_input_window(df_transformed)
             preds = self.model.predict(x_input)
             return {"prediction": preds.flatten().tolist()}

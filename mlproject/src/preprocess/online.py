@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import pandas as pd
 from omegaconf import DictConfig, OmegaConf
@@ -6,50 +6,44 @@ from omegaconf import DictConfig, OmegaConf
 from .engine import PreprocessEngine
 
 
-def online_preprocess_request(
-    features: Dict[str, Any],
-) -> Dict[str, float]:
+class OnlinePreprocessor:
     """
-    Preprocess a single request of raw features online (fill missing and scale).
-
-    Args:
-        features (dict): Raw features for a single request.
-
-    Returns:
-        dict: Processed numeric features ready for model inference.
+    Wrapper class for Online Preprocessing using PreprocessEngine.
+    Designed to be instantiated ONCE during service startup.
     """
 
-    df = pd.DataFrame([features])
+    def __init__(self, cfg: Optional[DictConfig] = None):
+        """
+        Initialize the preprocessor and underlying engine once.
 
-    engine = PreprocessEngine.instance()
-    df = engine.online_transform(df)
+        Args:
+            cfg (DictConfig, optional): Preprocessing configuration.
+        """
+        self.engine = PreprocessEngine(is_train=False, cfg=self._to_dict(cfg))
 
-    return df.iloc[0].to_dict()
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply transformation to the dataframe using the persistent engine.
 
+        Args:
+            df (pd.DataFrame): Raw input dataframe.
 
-def serve_preprocess_request(
-    df: pd.DataFrame, cfg: Optional[DictConfig] = None
-) -> pd.DataFrame:
-    """
-    Preprocess test df (fill missing and scale).
+        Returns:
+            pd.DataFrame: Processed dataframe ready for inference.
+        """
+        # Gọi hàm online_transform của engine đã khởi tạo
+        return self.engine.online_transform(df)
 
-    Args:
-        df (DataFrame): DataFrame
-        cfg (DictConfig, optional): Preprocessing configuration.
+    def update_config(self, cfg: DictConfig):
+        """
+        Bridge to update the underlying engine's configuration.
+        """
+        cfg_dict = self._to_dict(cfg)
+        self.engine.update_config(cfg_dict)
 
-    Returns:
-        pd.DataFrame: Processed numeric features ready for model inference.
-    """
-    # Fix mypy error: Argument 1 to "instance" has incompatible type "DictConfig | None"
-    cfg_dict: Optional[Dict[Any, Any]] = None
-    if cfg is not None:
-        # Convert DictConfig to standard python dict
+    def _to_dict(self, cfg: Optional[DictConfig]) -> dict:
+        """Helper to convert OmegaConf to dict safely."""
+        if cfg is None:
+            return {}
         container = OmegaConf.to_container(cfg, resolve=True)
-        if isinstance(container, dict):
-            cfg_dict = container
-        else:
-            # Fallback for unlikely case where cfg is a ListConfig
-            cfg_dict = {}
-
-    engine = PreprocessEngine.instance(cfg_dict)
-    return engine.online_transform(df)
+        return container if isinstance(container, dict) else {}

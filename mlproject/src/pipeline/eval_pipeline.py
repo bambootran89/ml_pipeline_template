@@ -45,6 +45,7 @@ class EvalPipeline(BasePipeline):
             .get("model_name", "ts_forecast_model")
         )
         self.model = None
+        self.preprocessor = OfflinePreprocessor(is_train=False, cfg=self.cfg)
 
         if self.mlflow_manager.enabled:
             self._sync_artifacts_from_registry()
@@ -107,9 +108,9 @@ class EvalPipeline(BasePipeline):
         Load raw data and apply preprocessing transformations.
         Returns a preprocessed DataFrame.
         """
-        preprocessor = OfflinePreprocessor(self.cfg)
-        df = preprocessor.load_raw_data()
-        df = preprocessor.engine.offline_transform(df)
+
+        df = self.preprocessor.load_raw_data()
+        df = self.preprocessor.engine.offline_transform(df)
         return df
 
     def run_approach(self, approach: Any, data: pd.DataFrame):

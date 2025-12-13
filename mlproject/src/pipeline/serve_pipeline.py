@@ -18,7 +18,7 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
-from mlproject.src.preprocess.online import serve_preprocess_request
+from mlproject.src.preprocess.online import OnlinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 
@@ -39,6 +39,8 @@ class TestPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
         self.mlflow_manager = MLflowManager(self.cfg)
+        self.preprocessor = OnlinePreprocessor(self.cfg)
+        self.preprocessor.update_config(self.cfg)
 
     def preprocess(self, data: Any = None) -> Any:
         """
@@ -69,7 +71,7 @@ class TestPipeline(BasePipeline):
         """
         if data is None:
             raise ValueError("Test mode requires input data")
-        return serve_preprocess_request(data, self.cfg)
+        return self.preprocessor.transform(data)
 
     def _load_model(self, approach: Dict[str, Any]) -> Any:
         """

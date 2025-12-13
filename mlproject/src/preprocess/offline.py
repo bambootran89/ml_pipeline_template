@@ -24,12 +24,16 @@ class OfflinePreprocessor:
     """
 
     def __init__(
-        self, cfg: Optional[Any] = None, mlflow_manager: Optional[MLflowManager] = None
+        self,
+        is_train,
+        cfg: Optional[Any] = None,
+        mlflow_manager: Optional[MLflowManager] = None,
     ):
         """
         Initialize OfflinePreprocessor.
 
         Args:
+            is_train: is to load or train scaler
             cfg (dict or DictConfig, optional): Preprocessing configuration.
             mlflow_manager (MLflowManager, optional): MLflow manager instance.
         """
@@ -38,7 +42,7 @@ class OfflinePreprocessor:
         self.artifacts_dir = self.cfg.get("preprocessing", {}).get(
             "artifacts_dir", ARTIFACT_DIR
         )
-        self.engine = PreprocessEngine.instance(cfg)
+        self.engine = PreprocessEngine(is_train, cfg)
         self.mlflow_manager = mlflow_manager
 
     def run(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:

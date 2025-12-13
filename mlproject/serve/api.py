@@ -62,6 +62,7 @@ class HealthResponse(BaseModel):
             message broker, feature store), typically represented as
             key–value pairs where values indicate availability or latency.
     """
+
     status: str
     timestamp: datetime
     model_loaded: bool

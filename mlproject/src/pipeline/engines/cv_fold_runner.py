@@ -63,9 +63,11 @@ class FoldRunner:
         Any
             Preprocessed dataframe.
         """
-        preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
+        preprocessor = OfflinePreprocessor(
+            is_train=True, cfg=self.cfg, mlflow_manager=self.mlflow_manager
+        )
         df_processed = preprocessor.run(df_fold)
-        return df_processed
+        return df_processed, preprocessor
 
     def _build_components(
         self,
@@ -232,7 +234,7 @@ class FoldRunner:
         dict
             Fold evaluation metrics.
         """
-        df_processed = self._preprocess_fold(df_fold)
+        df_processed, preprocessor = self._preprocess_fold(df_fold)
 
         trainer, datamodule = self._build_components(
             model_name=model_name,
@@ -248,8 +250,6 @@ class FoldRunner:
         # small test batch for logging
         x_sample = x_test[:5]
 
-        # Logging (optional)
-        preprocessor = OfflinePreprocessor(self.cfg, self.mlflow_manager)
         self._log_fold_results(
             model_name=model_name,
             model_trained=model_trained,
