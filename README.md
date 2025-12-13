@@ -28,62 +28,133 @@ A robust, modular, and extensible machine learning framework designed for Time-S
 
 ### System Workflow
 
+#### Training & Tuning Pipeline (Offline Workflow)
+The training pipeline is orchestrated by Hydra and powered by a robust factory pattern. It supports Nested Cross-Validation, Hyperparameter Tuning (Optuna), and automatic artifact logging to MLflow.
+
 ```mermaid
-graph TD
-    %% Define Styles
-    classDef data fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef process fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    classDef model fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
-    classDef serving fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
-    classDef storage fill:#eceff1,stroke:#455a64,stroke-width:2px;
+flowchart TD
+    %% Global Styles
+    classDef config fill:#ffe0b2,stroke:#f57c00,stroke-width:2px;
+    classDef data fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef core fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef loop fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5;
+    classDef artifact fill:#eceff1,stroke:#455a64,stroke-width:2px;
 
     %% Nodes
+    Hydra[("Hydra Configs")]:::config
     RawData[("Raw Data (CSV)")]:::data
-    Config[("Hydra Config")]:::storage
     
-    subgraph Preprocessing["🛠 Data Pipeline"]
-        Cleaner[Preprocess Engine]:::process
-        Splitter[CV Splitter]:::process
-        Scaler[Scaler Manager]:::process
+    subgraph DataEngineering ["Data Engineering Layer"]
+        OfflinePrep["Offline Preprocessor"]:::data
+        CleanData["Cleaned DataFrame"]:::data
+        FactoryDM["DataModule Factory"]:::data
+        Splitter["Time Series Splitter"]:::data
     end
 
-    subgraph Training["🏋️ Training Pipeline"]
-        Trainer[ML/DL Trainer]:::model
-        Tuner[Optuna Tuner]:::model
-        Evaluator[Evaluator]:::model
+    subgraph TrainingLoop ["Training & Tuning Core"]
+        Optuna{{"Optuna (Tuning)"}}:::core
+        CVRun["CV Fold Runner"]:::loop
+        
+        subgraph FoldExecution ["Inside Each Fold"]
+            Scaler["Scaler Manager (Fit/Transform)"]:::core
+            ModelFac["Model Factory"]:::core
+            Trainer["Base Trainer (ML/DL)"]:::core
+            Evaluator["Fold Evaluator"]:::core
+        end
     end
 
-    subgraph Tracking["Artifact Store"]
-        MLflow{MLflow Tracking}:::storage
-        Registry[Model Registry]:::storage
-    end
-
-    subgraph Serving["Deployment"]
-        API[FastAPI Gateway]:::serving
-        Ray[Ray Serve Cluster]:::serving
+    subgraph ArtifactStore ["MLOps Storage Layer"]
+        MLflow["MLflow Tracking Server"]:::artifact
+        Artifacts[("Artifacts:\n- Model.pkl\n- Scaler.joblib\n- Config.yaml")]:::artifact
     end
 
     %% Flow
-    RawData --> Cleaner
-    Config --> Cleaner
-    Cleaner --> Splitter
-    Splitter --> Scaler
-    Scaler --> Trainer
+    Hydra --> OfflinePrep
+    Hydra --> ModelFac
+    RawData --> OfflinePrep
+    OfflinePrep --> CleanData
+    CleanData --> FactoryDM
+    FactoryDM --> Splitter
     
-    Config --> Trainer
+    Splitter -- "Train/Val Indices" --> CVRun
+    Optuna -.->|"Suggest Params"| CVRun
+    
+    CVRun --> Scaler
+    Scaler --> ModelFac
+    ModelFac --> Trainer
     Trainer --> Evaluator
-    Trainer --> MLflow
-    Evaluator --> MLflow
-    Tuner -.->|Suggest Params| Trainer
     
-    MLflow --> Registry
-    Registry --> API
-    Registry --> Ray
-
-    %% Links
-    linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12 stroke-width:2px,fill:none,stroke:gray;
+    Trainer -- "Log Metrics & Model" --> MLflow
+    Evaluator -- "Log Scores" --> MLflow
+    Scaler -- "Save Scaler" --> MLflow
+    
+    MLflow --> Artifacts
 ```
 
+Key Highlights:
+
+- Modular Preprocessing: OfflinePreprocessor ensures data consistency before splitting.
+
+- Leakage Prevention: ScalerManager fits only on the training fold and transforms validation data dynamically.
+
+- Factory Pattern: Seamlessly switch between XGBoost, TFT, or NLinear via config model: name.
+#### Inference & Serving Pipeline (Online Workflow)
+The serving layer is designed to be stateless and reproducible. It strictly uses the artifacts (Models & Scalers) generated during the training phase to ensure the Training-Serving Skew is minimized.
+
+```mermaid
+flowchart TD
+    %% Global Styles
+    classDef client fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef gateway fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;
+    classDef service fill:#e0f2f1,stroke:#00695c,stroke-width:2px;
+    classDef registry fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
+    classDef logic fill:#ffebee,stroke:#c62828,stroke-width:2px;
+
+    %% Nodes
+    User(("Client / API Request")):::client
+    
+    subgraph Gateway ["API Gateway"]
+        FastAPI["FastAPI / Ray Serve"]:::gateway
+        Validator["Pydantic Schema Validation"]:::gateway
+    end
+
+    subgraph ServiceLayer ["Models Service Logic"]
+        Loader["Registry Manager"]:::service
+        OnlinePrep["Online Preprocessor"]:::logic
+        Inference["Model Inference (Predict)"]:::logic
+        PostProcess["Post-Processing"]:::logic
+    end
+
+    subgraph ModelRegistry ["Model Registry (MLflow)"]
+        LoadedModel[("Production Model")]:::registry
+        LoadedScaler[("Fitted Scaler")]:::registry
+    end
+
+    %% Flow
+    User -- "POST /predict (JSON)" --> FastAPI
+    FastAPI --> Validator
+    
+    Validator -- "Validated Data" --> OnlinePrep
+    Loader -.->|"Load Artifacts"| LoadedModel
+    Loader -.->|"Load Artifacts"| LoadedScaler
+    
+    LoadedScaler --> OnlinePrep
+    OnlinePrep -- "Scaled Features" --> Inference
+    LoadedModel --> Inference
+    
+    Inference -- "Raw Prediction" --> PostProcess
+    PostProcess -- "Result" --> FastAPI
+    FastAPI -- "JSON Response" --> User
+```
+Key Highlights:
+
+- Consistent Transformation: OnlinePreprocessor loads the exact scaler.joblib saved during training to transform real-time data.
+
+- Dual Serving Engines:
+
+    + FastAPI: Lightweight, low-latency for standard deployments.
+
+    + Ray Serve: Distributed serving for high-throughput scaling.
 # Directory Structure
 A layout designed for scalability and feature-store integration.
 ```plaintext
