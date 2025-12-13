@@ -5,6 +5,7 @@
 [![Optuna](https://img.shields.io/badge/Optuna-Tuning-blue)](https://optuna.org/)
 [![Ray Serve](https://img.shields.io/badge/Ray-Serving-blue)](https://docs.ray.io/en/latest/serve/index.html)
 [![Hydra](https://img.shields.io/badge/Hydra-Configuration-blue)](https://hydra.cc/)
+![Docker](https://img.shields.io/badge/deployment-Docker%20%7C%20K8s-2496ED)
 
 A robust, modular, and extensible machine learning framework designed for Time-Series Forecasting. This project bridges the gap between research code and production systems by enforcing strict separation of concerns, reproducibility, and MLOps best practices.
 
@@ -29,54 +30,91 @@ A robust, modular, and extensible machine learning framework designed for Time-S
 
 ```mermaid
 graph TD
-    subgraph Configuration
-        Config[Hydra Configs YAML]
+    %% Define Styles
+    classDef data fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef process fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef model fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    classDef serving fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef storage fill:#eceff1,stroke:#455a64,stroke-width:2px;
+
+    %% Nodes
+    RawData[("Raw Data (CSV)")]:::data
+    Config[("Hydra Config")]:::storage
+    
+    subgraph Preprocessing["🛠 Data Pipeline"]
+        Cleaner[Preprocess Engine]:::process
+        Splitter[CV Splitter]:::process
+        Scaler[Scaler Manager]:::process
     end
 
-    subgraph "Offline Training (Pipeline)"
-        Data[Raw Data] --> Pre[Offline Preprocessor]
-        Pre -->|Processed Data| Splitter[Time Series Splitter]
-        Splitter -->|Folds| Trainer[Fold Runner / Trainer]
-        Trainer -->|Train| Model[Model Wrapper]
-        Trainer -->|Metrics| MLflow[MLflow Tracking]
-        Trainer -->|Artifacts| Registry[Model Registry]
+    subgraph Training["🏋️ Training Pipeline"]
+        Trainer[ML/DL Trainer]:::model
+        Tuner[Optuna Tuner]:::model
+        Evaluator[Evaluator]:::model
     end
 
-    subgraph "Online Serving (Inference)"
-        API[FastAPI / Ray Serve] -->|Input| OnlinePre[Online Preprocessor]
-        Registry -->|Load Model| OnlinePre
-        OnlinePre -->|Features| InfModel[Loaded Model]
-        InfModel -->|Prediction| Output
+    subgraph Tracking["Artifact Store"]
+        MLflow{MLflow Tracking}:::storage
+        Registry[Model Registry]:::storage
     end
 
-    Config -->|Injects Params| Trainer
-    Config -->|Injects Params| Pre
+    subgraph Serving["Deployment"]
+        API[FastAPI Gateway]:::serving
+        Ray[Ray Serve Cluster]:::serving
+    end
+
+    %% Flow
+    RawData --> Cleaner
+    Config --> Cleaner
+    Cleaner --> Splitter
+    Splitter --> Scaler
+    Scaler --> Trainer
+    
+    Config --> Trainer
+    Trainer --> Evaluator
+    Trainer --> MLflow
+    Evaluator --> MLflow
+    Tuner -.->|Suggest Params| Trainer
+    
+    MLflow --> Registry
+    Registry --> API
+    Registry --> Ray
+
+    %% Links
+    linkStyle 0,1,2,3,4,5,6,7,8,9,10,11,12 stroke-width:2px,fill:none,stroke:gray;
 ```
 
 # Directory Structure
 A layout designed for scalability and feature-store integration.
 ```plaintext
-mlproject/
-├── configs/                 # The "Control Center"
-│   ├── base/                # Reusable defaults (model.yaml, training.yaml)
-│   └── experiments/         # Experiment snapshots (etth1.yaml, tuning.yaml)
-│
-├── src/                     # Core Library
-│   ├── datamodule/          # Data loading & splitting strategies
-│   ├── eval/                # Metrics & Evaluation logic
-│   ├── models/              # Model implementations (Wrappers)
-│   ├── pipeline/            # Orchestrators (CV, Train, Tune, Serve)
-│   ├── preprocess/          # Feature engineering (Offline vs Online)
-│   ├── tracking/            # MLflow & Experiment Managers
-│   ├── trainer/             # Training loops (DL vs Machine Learning)
-│   └── tuning/              # Optuna Hyperparameter Search
-│
-├── serve/                   # Deployment Layer
-│   ├── api.py               # FastAPI entry point
-│   ├── ray/                 # Ray Serve deployment scripts
-│   └── models_service.py    # Inference logic
-│
-└── tests/                   # Unit & Integration Tests
+ml_pipeline_template/
+├── .github/                   # CI/CD Workflows (GitHub Actions)
+├── k8s/                       # Kubernetes Manifests (Job, Deployment, Service)
+├── mlproject/
+│   ├── configs/               # Hydra Configurations (The "Control Center")
+│   │   ├── base/              # Base configs (model, data, training...)
+│   │   └── experiments/       # Specific experiment overrides (e.g., etth3.yaml)
+│   ├── data/                  # Raw data storage (git-ignored in prod)
+│   ├── serve/                 # Serving Logic
+│   │   ├── ray/               # Ray Serve deployment scripts
+│   │   ├── api.py             # FastAPI entrypoint
+│   │   └── schemas.py         # Pydantic schemas for API validation
+│   ├── src/
+│   │   ├── datamodule/        # Data loading, splitting, and dataset classes
+│   │   ├── eval/              # Evaluation metrics & strategies
+│   │   ├── models/            # Model definitions (XGBoost, NLinear, TFT...)
+│   │   ├── pipeline/          # Orchestrators (Train, Tune, Serve pipelines)
+│   │   ├── preprocess/        # Offline & Online data cleaning/scaling
+│   │   ├── tracking/          # MLflow & Experiment management wrappers
+│   │   ├── trainer/           # Training loops & logic (ML vs DL differentiation)
+│   │   ├── tuning/            # Optuna hyperparameter tuning
+│   │   └── utils/             # Helper functions (Shape, Factory patterns)
+│   └── __init__.py
+├── tests/                     # Unit & Integration Tests
+├── Dockerfile                 # Multi-stage Docker build
+├── Makefile                   # Handy commands for dev & ops
+├── requirements.txt           # Python dependencies
+└── setup.py                   # Package installation script
 ```
 
 # Getting Started
@@ -88,12 +126,17 @@ Virtual Environment (recommended)
 ## 2. Installation
 
 ```bash
-# Create virtual environment
-make venv
-source mlproject_env/bin/activate
+# Clone the repository
+git clone [https://github.com/bambootran89/ml_pipeline_template.git](https://github.com/bambootran89/ml_pipeline_template.git)
+cd ml_pipeline_template
 
-# Install dependencies
+# Create Virtual Environment (Recommended)
+python -m venv venv
+source venv/bin/activate
+
+# Install Dependencies
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ## 3. Quick Start
@@ -195,3 +238,31 @@ make test
 # Auto-format code
 make style
 ```
+
+## Docker & Kubernetes
+Build Docker Image
+```bash
+docker build -t ml-pipeline:latest .
+```
+
+Run Locally with Docker
+```bash
+docker run -p 8000:8000 ml-pipeline:latest
+```
+
+Deploy to Kubernetes
+```bash
+# Apply Training Job
+kubectl apply -f k8s/job-training.yaml
+
+# Apply API Service
+kubectl apply -f k8s/deployment-api.yaml
+kubectl apply -f k8s/service-api.yaml
+```
+
+## Key Features
+- Engineered for Reliability: Includes Type Hinting (mypy), Linting (flake8, pylint), and Unit Tests (pytest).
+
+- Experiment Tracking: Built-in integration with MLflow for logging metrics, params, and artifacts.
+
+- Scalable Serving: Supports both lightweight FastAPI and distributed Ray Serve.
