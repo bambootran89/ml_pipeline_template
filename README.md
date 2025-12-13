@@ -32,40 +32,54 @@ A robust, modular, and extensible machine learning framework designed for Time-S
 The training pipeline is orchestrated by Hydra and powered by a robust factory pattern. It supports Nested Cross-Validation, Hyperparameter Tuning (Optuna), and automatic artifact logging to MLflow.
 
 ```mermaid
+%%{init: {
+  "theme": "default",
+  "flowchart": {
+    "nodeSpacing": 60,
+    "rankSpacing": 70
+  },
+  "themeVariables": {
+    "fontFamily": "Inter, Arial",
+    "fontSize": "14px",
+    "primaryTextColor": "#111",
+    "lineColor": "#333"
+  }
+}}%%
+
 flowchart TD
     %% Global Styles
-    classDef config fill:#ffe0b2,stroke:#f57c00,stroke-width:2px;
-    classDef data fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
-    classDef core fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef config fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    classDef data fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
+    classDef core fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
     classDef loop fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5;
     classDef artifact fill:#eceff1,stroke:#455a64,stroke-width:2px;
 
     %% Nodes
-    Hydra[("Hydra Configs")]:::config
-    RawData[("Raw Data (CSV)")]:::data
+    Hydra[("Hydra<br/>Configs")]:::config
+    RawData[("Raw Data<br/>(CSV)")]:::data
     
     subgraph DataEngineering ["Data Engineering Layer"]
-        OfflinePrep["Offline Preprocessor"]:::data
-        CleanData["Cleaned DataFrame"]:::data
-        FactoryDM["DataModule Factory"]:::data
-        Splitter["Time Series Splitter"]:::data
+        OfflinePrep["Offline<br/>Preprocessor"]:::data
+        CleanData["Cleaned<br/>DataFrame"]:::data
+        FactoryDM["DataModule<br/>Factory"]:::data
+        Splitter["Time Series<br/>Splitter"]:::data
     end
 
     subgraph TrainingLoop ["Training & Tuning Core"]
-        Optuna{{"Optuna (Tuning)"}}:::core
-        CVRun["CV Fold Runner"]:::loop
+        Optuna{{"Optuna<br/>(Tuning)"}}:::core
+        CVRun["CV Fold<br/>Runner"]:::loop
         
         subgraph FoldExecution ["Inside Each Fold"]
-            Scaler["Scaler Manager (Fit/Transform)"]:::core
-            ModelFac["Model Factory"]:::core
-            Trainer["Base Trainer (ML/DL)"]:::core
-            Evaluator["Fold Evaluator"]:::core
+            Scaler["Scaler Manager<br/>(Fit / Transform)"]:::core
+            ModelFac["Model<br/>Factory"]:::core
+            Trainer["Base Trainer<br/>(ML / DL)"]:::core
+            Evaluator["Fold<br/>Evaluator"]:::core
         end
     end
 
     subgraph ArtifactStore ["MLOps Storage Layer"]
-        MLflow["MLflow Tracking Server"]:::artifact
-        Artifacts[("Artifacts:\n- Model.pkl\n- Scaler.joblib\n- Config.yaml")]:::artifact
+        MLflow["MLflow<br/>Tracking Server"]:::artifact
+        Artifacts[("Artifacts<br/>• Model.pkl<br/>• Scaler.joblib<br/>• Config.yaml")]:::artifact
     end
 
     %% Flow
@@ -76,20 +90,21 @@ flowchart TD
     CleanData --> FactoryDM
     FactoryDM --> Splitter
     
-    Splitter -- "Train/Val Indices" --> CVRun
-    Optuna -.->|"Suggest Params"| CVRun
+    Splitter -- "Train / Val Indices" --> CVRun
+    Optuna -.->|"Suggest<br/>Params"| CVRun
     
     CVRun --> Scaler
     Scaler --> ModelFac
     ModelFac --> Trainer
     Trainer --> Evaluator
     
-    Trainer -- "Log Metrics & Model" --> MLflow
+    Trainer -- "Log Metrics<br/>Model" --> MLflow
     Evaluator -- "Log Scores" --> MLflow
     Scaler -- "Save Scaler" --> MLflow
     
     MLflow --> Artifacts
 ```
+
 
 Key Highlights:
 
@@ -102,50 +117,64 @@ Key Highlights:
 The serving layer is designed to be stateless and reproducible. It strictly uses the artifacts (Models & Scalers) generated during the training phase to ensure the Training-Serving Skew is minimized.
 
 ```mermaid
+%%{init: {
+  "theme": "neutral",
+  "flowchart": {
+    "curve": "linear",
+    "nodeSpacing": 50,
+    "rankSpacing": 70
+  },
+  "themeVariables": {
+    "fontSize": "14px",
+    "fontFamily": "Inter, Arial, sans-serif",
+    "primaryTextColor": "#111"
+  }
+}}%%
 flowchart TD
     %% Global Styles
-    classDef client fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
-    classDef gateway fill:#e1f5fe,stroke:#0277bd,stroke-width:2px;
-    classDef service fill:#e0f2f1,stroke:#00695c,stroke-width:2px;
-    classDef registry fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
-    classDef logic fill:#ffebee,stroke:#c62828,stroke-width:2px;
+    classDef client fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#111;
+    classDef gateway fill:#e1f5fe,stroke:#0277bd,stroke-width:2px,color:#111;
+    classDef service fill:#e0f2f1,stroke:#00695c,stroke-width:2px,color:#111;
+    classDef registry fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#111;
+    classDef logic fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#111;
 
     %% Nodes
-    User(("Client / API Request")):::client
+    User(("Client<br/>API Request")):::client
     
     subgraph Gateway ["API Gateway"]
-        FastAPI["FastAPI / Ray Serve"]:::gateway
-        Validator["Pydantic Schema Validation"]:::gateway
+        FastAPI["FastAPI<br/>Ray Serve"]:::gateway
+        Validator["Pydantic<br/>Schema Validation"]:::gateway
     end
 
     subgraph ServiceLayer ["Models Service Logic"]
-        Loader["Registry Manager"]:::service
-        OnlinePrep["Online Preprocessor"]:::logic
-        Inference["Model Inference (Predict)"]:::logic
-        PostProcess["Post-Processing"]:::logic
+        Loader["Registry<br/>Manager"]:::service
+        OnlinePrep["Online<br/>Preprocessor"]:::logic
+        Inference["Model Inference<br/>(Predict)"]:::logic
+        PostProcess["Post<br/>Processing"]:::logic
     end
 
-    subgraph ModelRegistry ["Model Registry (MLflow)"]
-        LoadedModel[("Production Model")]:::registry
-        LoadedScaler[("Fitted Scaler")]:::registry
+    subgraph ModelRegistry ["Model Registry<br/>(MLflow)"]
+        LoadedModel["Production<br/>Model"]:::registry
+        LoadedScaler["Fitted<br/>Scaler"]:::registry
     end
 
     %% Flow
-    User -- "POST /predict (JSON)" --> FastAPI
+    User -- "POST /predict" --> FastAPI
     FastAPI --> Validator
     
-    Validator -- "Validated Data" --> OnlinePrep
-    Loader -.->|"Load Artifacts"| LoadedModel
-    Loader -.->|"Load Artifacts"| LoadedScaler
+    Validator --> OnlinePrep
+    Loader -.->|"Load"| LoadedModel
+    Loader -.->|"Load"| LoadedScaler
     
     LoadedScaler --> OnlinePrep
-    OnlinePrep -- "Scaled Features" --> Inference
+    OnlinePrep --> Inference
     LoadedModel --> Inference
     
-    Inference -- "Raw Prediction" --> PostProcess
-    PostProcess -- "Result" --> FastAPI
-    FastAPI -- "JSON Response" --> User
+    Inference --> PostProcess
+    PostProcess --> FastAPI
+    FastAPI --> User
 ```
+
 Key Highlights:
 
 - Consistent Transformation: OnlinePreprocessor loads the exact scaler.joblib saved during training to transform real-time data.
@@ -246,58 +275,118 @@ python mlproject/serve/ray/ray_deploy.py
 This project uses the Adapter Pattern and Factory Pattern. To add a new algorithm (e.g., LightGBM or a new Transformer), follow these steps:
 
 ## Step 1: Create the Model Wrapper
-Create a new file in mlproject/src/models/, inheriting from BaseModel.
+Create a new file in mlproject/src/models/, inheriting from MLModelWrapper.
+
+Example: mlproject/src/models/catboost_wrapper.py
 
 ```python
-# mlproject/src/models/my_new_model.py
-from typing import Dict, Any
-from .base import BaseModel
+from catboost import CatBoostRegressor
+from mlproject.src.models.base import MLModelWrapper
+import numpy as np
 
-class MyNewModel(BaseModel):
-    def __init__(self, hyperparams: Dict[str, Any]):
-        super().__init__(hyperparams)
-        # Initialize your library model here
-        self.model = SomeLibraryModel(**hyperparams)
+class CatBoostWrapper(MLModelWrapper):
+    def build(self, input_dim: int, output_dim: int) -> None:
+        # Load params from hydra config
+        iterations = self.cfg.get("iterations", 1000)
+        learning_rate = self.cfg.get("learning_rate", 0.05)
+        
+        self.model = CatBoostRegressor(
+            iterations=iterations,
+            learning_rate=learning_rate,
+            loss_function='RMSE',
+            verbose=0
+        )
 
-    def fit(self, x, y, **kwargs):
-        self.model.fit(x, y)
+    def fit(self, x, y, x_val=None, y_val=None, **kwargs):
+        # Handle shape flattening if necessary (Time Series -> Tabular)
+        x_flat = x.reshape(x.shape[0], -1) 
+        eval_set = (x_val.reshape(x_val.shape[0], -1), y_val) if x_val is not None else None
+        
+        self.model.fit(x_flat, y, eval_set=eval_set, early_stopping_rounds=50)
 
     def predict(self, x):
-        return self.model.predict(x)
+        x_flat = x.reshape(x.shape[0], -1)
+        return self.model.predict(x_flat)
 ```
 
 ## Step 2: Register in Model Factory
-Update mlproject/src/models/model_factory.py to make the factory aware of your class.
+Update mlproject/src/models/model_factory.py to recognize the new class.
 ```python
-# ... inside ModelFactory class
-MODEL_REGISTRY = {
-    "xgboost": "mlproject.src.models.xgboost_wrapper.XGBoostWrapper",
-    "tft": "mlproject.src.models.tft_wrapper.TFTWrapper",
-    "new_model": "mlproject.src.models.my_new_model.MyNewModel", # <--- Add this
-}
+# ... imports
+from mlproject.src.models.catboost_wrapper import CatBoostWrapper
+
+class ModelFactory(FactoryBase):
+    def get_model_class(self, name: str) -> Type[MLModelWrapper]:
+        if name == "xgboost":
+            return XGBWrapper
+        elif name == "nlinear":
+            return NLinearWrapper
+        elif name == "catboost":  # <--- Add this line
+            return CatBoostWrapper
+        else:
+            raise ValueError(f"Unknown model name: {name}")
 ```
 
-## Step 3: Define Trainer Logic (Optional)
-If your model requires a special training loop (different from standard ML fit/predict or standard Torch DataLoader), check mlproject/src/trainer/trainer_factory.py to map it to MLTrainer or DeepLearningTrainer.
+## Step 3: Define Configuration
+Add a new config file: mlproject/configs/experiments/catboost_etth1.yaml.
+
+```yaml
+# @package _global_
+defaults:
+  - override /base/model: null 
+
+model:
+  name: "catboost"  # Matches the key in Factory
+  params:
+    iterations: 2000
+    learning_rate: 0.03
+    depth: 6
+```
+
+Run it:
+```bash 
+python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/catboost_etth1.yaml
+```
+## Hyperparameter Tuning Guide
+This framework integrates Optuna for automated hyperparameter optimization.
+
+1. Define Search Space
+Modify mlproject/src/tuning/search_space.py to define the range for your new model.
+```python
+def get_search_space(trial, model_name):
+    if model_name == "xgboost":
+        return {
+            "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
+            "max_depth": trial.suggest_int("max_depth", 3, 10),
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True)
+        }
+    elif model_name == "catboost":
+        return {
+            "iterations": trial.suggest_int("iterations", 500, 3000),
+            "depth": trial.suggest_int("depth", 4, 10)
+        }
+```
+2. Create Tuning Config
+Create a tuning configuration file, e.g., mlproject/configs/experiments/etth3_tuning.yaml.
+
+```yaml 
+# @package _global_
+defaults:
+  - override /base/tuning: tuning  # Load base tuning settings
+
+tuning:
+  n_trials: 20            # Number of Optuna trials
+  metric: "val_loss"      # Metric to minimize
+  direction: "minimize"
+  storage: "sqlite:///db.sqlite3" # Persistent storage for resume capability
+
+model:
+  name: "xgboost"         # Model to tune
+```
+3. Run Optimization
 
 ```bash
-# mlproject/src/trainer/trainer_factory.py
-if model_name in ["new_model"]:
-    entry = {"module": "mlproject.src.trainer.ml_trainer", "class": "MLTrainer"}
-```
-
-## Step 4: Create Configuration
-Create a new experiment config or update model.yaml.
-```yaml
-# mlproject/configs/experiments/my_experiment.yaml
-defaults:
-  - override /base: model
-experiment:
-  name: "New_Model_Test"
-  model: "new_model"  # Must match the key in Factory
-  hyperparams:
-    learning_rate: 0.01
-    n_estimators: 100
+python -m mlproject.src.pipeline.run_pipeline tune --config mlproject/configs/experiments/etth3_tuning.yaml
 ```
 
 ## Quality Assurance
