@@ -35,6 +35,33 @@ def _check_mlflow_connection() -> bool:
 
 
 class HealthResponse(BaseModel):
+    """
+    Response schema for the health check endpoint.
+
+    This model represents the runtime health status of the service,
+    including system information and model readiness indicators.
+    It is typically returned by the `/health` or `/healthz` endpoint
+    for monitoring, observability, and orchestration (e.g. Kubernetes).
+
+    Attributes:
+        status (str):
+            Overall service status (e.g. "ok", "degraded", "unhealthy").
+
+        timestamp (datetime):
+            UTC timestamp when the health check was generated.
+
+        model_loaded (bool):
+            Indicates whether the ML model has been successfully loaded
+            and is ready to serve inference requests.
+
+        memory_usage_mb (float):
+            Current memory usage of the service process in megabytes.
+
+        dependencies (dict):
+            Health status of external dependencies (e.g. database,
+            message broker, feature store), typically represented as
+            key–value pairs where values indicate availability or latency.
+    """
     status: str
     timestamp: datetime
     model_loaded: bool

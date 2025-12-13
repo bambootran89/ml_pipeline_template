@@ -11,7 +11,7 @@ uvicorn
 omegaconf
 pytest
 pyarrow
-requests
+types-requests
 httpx
 mlflow
 optuna>=3.0.0
