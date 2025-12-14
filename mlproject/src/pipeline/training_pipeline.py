@@ -1,5 +1,6 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
+import mlflow
 from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
@@ -10,7 +11,9 @@ from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
+from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.tracking.pyfunc_preprocess import log_preprocessing_model
 from mlproject.src.trainer.trainer_factory import TrainerFactory
 from mlproject.src.utils.config_loader import ConfigLoader
 
@@ -104,26 +107,36 @@ class TrainingPipeline(BasePipeline):
             _, _, _, _, x_test, _ = dm.get_data()
             return x_test[:5]
 
-    def run_approach(self, approach: Dict[str, Any], data: Any):
+    def run_approach(self, approach: Dict[str, Any], data: Any) -> Dict[str, float]:
         """
         Execute a full training approach with optional MLflow logging.
 
-        Steps:
-        1. Preprocess dataset and save artifacts.
-        2. Initialize model and trainer.
-        3. Train and evaluate model.
-        4. Log metrics and model to MLflow if enabled.
+        This method acts as a high-level orchestrator. It is responsible for:
+        - Initializing model wrapper and data module
+        - Creating the trainer
+        - Delegating execution either to:
+            * an MLflow-enabled training flow, or
+            * a plain training flow without tracking
+
+        Heavy logic (training, MLflow logging) is delegated to helper methods
+        to keep this function simple and pylint-compliant.
 
         Args:
-            approach: Dictionary containing model name and hyperparameters.
-            data: Raw dataset to train on.
+            approach (Dict[str, Any]):
+                Dictionary describing the training approach.
+                Expected keys include:
+                - "model": model name
+                - "hyperparams": optional hyperparameter dictionary
+            data (Any):
+                Raw dataset used to build the DataModule.
 
         Returns:
-            Metrics dictionary.
+            Dict[str, float]:
+                Dictionary of evaluation metrics produced by the training run.
         """
         df = data
-        model_name = approach["model"].lower()
-        hyperparams = approach.get("hyperparams", {})
+        model_name: str = approach["model"].lower()
+        hyperparams: Dict[str, Any] = approach.get("hyperparams", {})
 
         wrapper = self._init_model(approach)
         dm = DataModuleFactory.build(self.cfg, df)
@@ -136,32 +149,96 @@ class TrainingPipeline(BasePipeline):
         )
 
         if self.mlflow_manager:
-            run_name = f"{model_name}_run"
-            registry_name = (
-                self.cfg.get("mlflow", {}).get("registry", {}).get("model_name")
+            return self._run_with_mlflow(
+                model_name=model_name,
+                trainer=trainer,
+                dm=dm,
+                wrapper=wrapper,
+                hyperparams=hyperparams,
             )
 
-            with self.mlflow_manager.start_run(run_name=run_name):
-                self.preprocessor.log_artifacts_to_mlflow()
+        return self._execute_training(trainer, dm, wrapper, hyperparams)
 
-                metrics = self._execute_training(trainer, dm, wrapper, hyperparams)
-                self.mlflow_manager.log_metrics(metrics)
+    def _run_with_mlflow(
+        self,
+        *,
+        model_name: str,
+        trainer: Any,
+        dm: Any,
+        wrapper: Any,
+        hyperparams: Dict[str, Any],
+    ) -> Dict[str, float]:
+        """
+        Execute a training run with full MLflow tracking enabled.
 
-                sample_input = self._get_sample_input(dm)
+        This method is responsible for:
+        - Starting and managing an MLflow run
+        - Logging preprocessing artifacts and preprocessing PyFunc model
+        - Executing training and evaluation
+        - Logging metrics and trained model to MLflow
+        - Optionally registering the model in the MLflow Model Registry
 
-                self.mlflow_manager.log_model(
-                    model_wrapper=wrapper,
-                    artifact_path="model",
-                    input_example=sample_input,
-                    registered_model_name=registry_name,
+        All MLflow-specific logic is intentionally isolated here to:
+        - Reduce cognitive load in `run_approach`
+        - Avoid pylint `too-many-locals`
+        - Improve testability and maintainability
+
+        Args:
+            model_name (str):
+                Normalized model name used for naming MLflow runs.
+            trainer (Any):
+                Initialized trainer responsible for fitting the model.
+            dm (Any):
+                Prepared DataModule instance.
+            wrapper (Any):
+                Model wrapper containing the trainable model.
+            hyperparams (Dict[str, Any]):
+                Hyperparameter dictionary passed to the training routine.
+
+        Returns:
+            Dict[str, float]:
+                Dictionary of evaluation metrics logged to MLflow.
+        """
+        run_name: str = f"{model_name}_run"
+        registry_name: Optional[str] = (
+            self.cfg.get("mlflow", {}).get("registry", {}).get("model_name")
+        )
+
+        with self.mlflow_manager.start_run(run_name=run_name):
+            self.preprocessor.log_artifacts_to_mlflow()
+
+            transform_manager: Optional[TransformManager] = (
+                self.preprocessor.transform_manager
+            )
+
+            active_run = mlflow.active_run()
+            if active_run is None:
+                raise RuntimeError(
+                    "[TrainingPipeline] No active MLflow run found while "
+                    "logging preprocessing."
                 )
 
-                if registry_name:
-                    print(
-                        f"[MLflow] Model registered as '{registry_name}' \
-                          version 'latest'"
-                    )
+            run_id: str = active_run.info.run_id
 
-                return metrics
+            if transform_manager is not None:
+                log_preprocessing_model(
+                    transform_manager=transform_manager,
+                    run_id=run_id,
+                    artifact_path="preprocessing_pipeline",
+                )
 
-        return self._execute_training(trainer, dm, wrapper, hyperparams)
+            metrics: Dict[str, float] = self._execute_training(
+                trainer, dm, wrapper, hyperparams
+            )
+            self.mlflow_manager.log_metrics(metrics)
+
+            sample_input = self._get_sample_input(dm)
+
+            self.mlflow_manager.log_model(
+                model_wrapper=wrapper,
+                artifact_path="model",
+                input_example=sample_input,
+                registered_model_name=registry_name,
+            )
+
+            return metrics

@@ -19,7 +19,7 @@ experiment:
   model: "tft"
   hyperparams:
     input_chunk_length: 24
-    n_features: 4
+    n_features: 3
     output_chunk_length: 6
     n_epochs: 20
     batch_size: 16

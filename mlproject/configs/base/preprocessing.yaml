@@ -2,11 +2,6 @@ preprocessing:
   steps:
     - name: fill_missing
       method: ffill
-    - name: gen_covariates
-      covariates:
-        past: ["mobility_inflow"]
-        future: ["day_of_week","is_holiday","influenza_visits"]
-        static: ["commune"]
     - name: normalize
       method: zscore
       columns: null

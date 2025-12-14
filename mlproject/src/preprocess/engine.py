@@ -29,12 +29,15 @@ class PreprocessEngine:
             Configuration dictionary. If None, an empty configuration
             is used to avoid initialization errors.
         """
+
         self._current_cfg = cfg or {}
-        if is_train:
-            self.base = PreprocessBase(self._current_cfg)
-        else:
-            self.base = None
-            self.update_config(cfg)
+        self.base = PreprocessBase(self._current_cfg)
+        _ = is_train
+        # if is_train:
+        #     self.base = PreprocessBase(self._current_cfg)
+        # else:
+        #     self.base = None
+        #     self.update_config(cfg)
 
     def update_config(
         self,

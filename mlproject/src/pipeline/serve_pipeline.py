@@ -10,16 +10,18 @@ Responsibilities:
 
 from typing import Any, Dict
 
-import mlflow
 import numpy as np
 import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.online import OnlinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.mlflow_utils import (
+    load_companion_preprocessor_from_model,
+    load_model_from_registry_safe,
+)
 
 
 class TestPipeline(BasePipeline):
@@ -38,9 +40,57 @@ class TestPipeline(BasePipeline):
         """
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
+
         self.mlflow_manager = MLflowManager(self.cfg)
-        self.preprocessor = OnlinePreprocessor(self.cfg)
-        self.preprocessor.update_config(self.cfg)
+        self.local_preprocessor = OnlinePreprocessor(self.cfg)
+
+        self.model: Any = None
+        self.preprocessor_model: Any | None = None
+
+        self.model = self._load_model_from_mlflow(self.cfg.get("experiment"))
+
+    def _load_model_from_mlflow(self, approach_cfg: DictConfig) -> Any | None:
+        """
+        Load the prediction model from MLflow Model Registry for inference and
+        resolve its companion preprocessing model if available.
+
+        The method attempts to:
+        1. Load the latest version of the prediction model specified by
+        ``approach_cfg.model`` from the MLflow Model Registry.
+        2. Load the associated preprocessing PyFunc model using the ``run_id``
+        stored in the prediction model metadata.
+        3. Gracefully fall back to local preprocessing logic if the companion
+        preprocessing model cannot be loaded.
+
+        Parameters
+        ----------
+        approach_cfg : DictConfig
+            Model configuration containing the model name and hyperparameters.
+
+        Returns
+        -------
+        Any | None
+            Loaded MLflow prediction model, or ``None`` if the model cannot be
+            loaded from the MLflow Model Registry.
+        """
+        model = load_model_from_registry_safe(
+            cfg=self.cfg,
+            default_model_name=approach_cfg.model,
+        )
+
+        if model is None:
+            print("[TestPipeline] MLflow model load failed")
+            return None
+
+        self.preprocessor_model = load_companion_preprocessor_from_model(model)
+
+        if self.preprocessor_model is None:
+            print(
+                "[TestPipeline] Companion preprocessor not available. "
+                "Using local fallback."
+            )
+
+        return model
 
     def preprocess(self, data: Any = None) -> Any:
         """
@@ -52,63 +102,10 @@ class TestPipeline(BasePipeline):
         Returns:
             Preprocessed DataFrame or None if no data provided.
         """
-        if data is None:
-            return None
-        return self._preprocess_input(data)
+        if self.preprocessor_model is not None:
+            return self.preprocessor_model.predict(data)
 
-    def _preprocess_input(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        Apply serving-time preprocessing to raw input.
-
-        Args:
-            data: Raw DataFrame.
-
-        Returns:
-            Transformed DataFrame ready for inference.
-
-        Raises:
-            ValueError: If input data is None.
-        """
-        if data is None:
-            raise ValueError("Test mode requires input data")
-        return self.preprocessor.transform(data)
-
-    def _load_model(self, approach: Dict[str, Any]) -> Any:
-        """
-        Load a trained model for inference.
-
-        Priority:
-        1. MLflow Registry if enabled.
-        2. Local artifacts directory as fallback.
-
-        Args:
-            approach: Dictionary specifying model name and hyperparameters.
-
-        Returns:
-            Loaded model object.
-        """
-        approach_cfg: DictConfig = DictConfig(approach)
-
-        if self.mlflow_manager and self.mlflow_manager.enabled:
-            try:
-                registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
-                model_name: str = registry_conf.get("model_name", approach_cfg.model)
-                version = "latest"
-                model_uri = f"models:/{model_name}/{version}"
-                print(f"[TestPipeline] Loading model from MLflow Registry: {model_uri}")
-                return mlflow.pyfunc.load_model(model_uri)
-            except Exception as e:
-                print(
-                    f"[TestPipeline] Warning: MLflow load failed ({e}). "
-                    "Falling back to local artifacts."
-                )
-
-        print("[TestPipeline] Loading model from Local Artifacts...")
-        name: str = approach_cfg.model.lower()
-        hp: Dict[str, Any] = approach_cfg.get("hyperparams", {})
-        if isinstance(hp, DictConfig):
-            hp = OmegaConf.to_container(hp, resolve=True)
-        return ModelFactory.load(name, hp, self.cfg.training.artifacts_dir)
+        return self.local_preprocessor.transform(data)
 
     def _prepare_input_window(
         self, df: pd.DataFrame, input_chunk_length: int
@@ -155,7 +152,7 @@ class TestPipeline(BasePipeline):
         if not isinstance(approach, dict):
             raise TypeError(f"Expected approach to be dict, got {type(approach)}")
 
-        df_transformed: pd.DataFrame = self._preprocess_input(data)
+        df_transformed: pd.DataFrame = self.preprocess(data)
         input_chunk_length: int = approach.get("hyperparams", {}).get(
             "input_chunk_length", 24
         )
@@ -163,8 +160,7 @@ class TestPipeline(BasePipeline):
             df_transformed, input_chunk_length
         )
 
-        model_wrapper: Any = self._load_model(approach)
-        preds: np.ndarray = model_wrapper.predict(x_input)
+        preds: np.ndarray = self.model.predict(x_input)
 
         print(f"[INFERENCE] Input shape: {x_input.shape}, Output shape: {preds.shape}")
         print(f"[INFERENCE] Predictions (first 10): {preds.flatten()[:10]}...")

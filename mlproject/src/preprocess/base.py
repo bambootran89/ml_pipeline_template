@@ -54,7 +54,6 @@ class PreprocessBase:
         This method performs:
         1. Missing-value filling (stateful)
         2. Label encoding (stateful)
-        3. Covariate generation (fitless)
         4. Fitting scaler (stateful)
 
         Args:
@@ -65,7 +64,6 @@ class PreprocessBase:
         """
         df = self._apply_fill_missing(df, is_fit=True)
         df = self._apply_label_encoding(df, is_fit=True)
-        df = self._apply_generate_covariates(df)
         df = self._apply_fit_scaler(df)
         self.save()
         return df
@@ -87,7 +85,6 @@ class PreprocessBase:
         """
         df = self._apply_fill_missing(df, is_fit=False)
         df = self._apply_label_encoding(df, is_fit=False)
-        df = self._apply_generate_covariates(df)
         df = self._apply_scaling(df)
         return df
 
@@ -159,30 +156,6 @@ class PreprocessBase:
             self.transform_manager.fit_label_encoding(df, columns)
 
         return self.transform_manager.transform_label_encoding(df)
-
-    def _apply_generate_covariates(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Generate additional covariate features.
-
-        Supported covariates include:
-            - `"day_of_week"` (requires DatetimeIndex)
-
-        Args:
-            df (pd.DataFrame): Input dataframe.
-
-        Returns:
-            pd.DataFrame: Dataframe with new covariates added.
-        """
-        step = self._get_step("gen_covariates")
-        if not step:
-            return df
-
-        cov = step.get("covariates", {})
-
-        if "future" in cov and "day_of_week" in cov["future"]:
-            if isinstance(df.index, pd.DatetimeIndex):
-                df["day_of_week"] = df.index.dayofweek
-
-        return df
 
     def _apply_fit_scaler(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fit scaler and persist it using TransformManager.

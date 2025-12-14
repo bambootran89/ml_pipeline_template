@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.func_utils import load_data_csv
 
@@ -60,6 +61,31 @@ class OfflinePreprocessor:
         )
         self.engine = PreprocessEngine(is_train, cfg)
         self.mlflow_manager = mlflow_manager
+
+    @property
+    def transform_manager(self) -> Optional[TransformManager]:
+        """
+        Expose the underlying TransformManager instance.
+
+        This property provides controlled access to the TransformManager
+        located in the lower layers of the pipeline hierarchy
+        (Engine -> Base), allowing higher-level components such as
+        TrainingPipeline to log preprocessing models or artifacts.
+
+        Returns
+        -------
+        Optional[TransformManager]
+            The TransformManager instance if available; otherwise, ``None``.
+        """
+        engine = getattr(self, "engine", None)
+        if engine is None:
+            return None
+
+        base = getattr(engine, "base", None)
+        if base is None:
+            return None
+
+        return getattr(base, "transform_manager", None)
 
     def run(self, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
         """

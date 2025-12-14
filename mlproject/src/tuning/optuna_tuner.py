@@ -99,9 +99,7 @@ class OptunaTuner(BaseTuner):
 
         # Include fixed hyperparameters
         fixed = dict(self.cfg.experiment.hyperparams)
-        for key in ["input_chunk_length", "output_chunk_length"]:
-            if key in fixed:
-                hyperparams[key] = fixed[key]
+        hyperparams = {**hyperparams, **fixed}
 
         # Update config for this trial
         trial_cfg = deepcopy(self.cfg)

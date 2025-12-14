@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 
-from mlproject.src.utils.func_utils import sync_artifacts_from_registry
+# from mlproject.src.utils.func_utils import sync_artifacts_from_registry
 
 ScalerType = Union[StandardScaler, MinMaxScaler]
 
@@ -335,13 +335,14 @@ class TransformManager:
         """
         Load all transform states from disk.
         """
-        current_cfg = cfg or {}
-        model_name = (
-            current_cfg.get("mlflow", {})
-            .get("registry", {})
-            .get("model_name", "ts_forecast_model")
-        )
-        sync_artifacts_from_registry(model_name, self.artifacts_dir)
+        # current_cfg = cfg or {}
+        # model_name = (
+        #     current_cfg.get("mlflow", {})
+        #     .get("registry", {})
+        #     .get("model_name", "ts_forecast_model")
+        # )
+        # sync_artifacts_from_registry(model_name, self.artifacts_dir)
+        _ = cfg
         path = os.path.join(self.artifacts_dir, "fillna_stats.pkl")
         print(f"Loading artifacts {path}")
         if os.path.exists(path):

@@ -84,7 +84,6 @@ def test_optuna_tuner_smoke():
         n_splits=2,
     )
     mlflow_manager = MLflowManager(cfg)
-
     tuner = OptunaTuner(
         cfg=cfg,
         splitter=splitter,
