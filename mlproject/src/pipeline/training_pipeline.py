@@ -9,10 +9,10 @@ from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.trainer.trainer_factory import TrainerFactory
+from mlproject.src.utils.config_loader import ConfigLoader
 
 
 class TrainingPipeline(BasePipeline):

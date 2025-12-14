@@ -15,7 +15,7 @@ from typing import Any, Dict
 import pytest
 
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
-from mlproject.src.pipeline.config_loader import ConfigLoader
+from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 

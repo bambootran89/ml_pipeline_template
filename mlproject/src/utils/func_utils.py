@@ -7,10 +7,15 @@ input/output dimensions.
 """
 
 import logging
-from typing import Any, List, Optional, Sequence, Tuple
+import os
+import shutil
+import tempfile
+from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
+import mlflow
 import numpy as np
 import pandas as pd
+from mlflow.tracking import MlflowClient
 
 logger = logging.getLogger(__name__)
 
@@ -289,3 +294,96 @@ def select_columns(
         return df
 
     return df.loc[:, valid_cols]
+
+
+def load_model_from_registry(model_name: str, version: str = "latest"):
+    """
+    Load the MLflow PyFunc model from the model registry.
+    Returns the loaded model object.
+    """
+    model_uri = f"models:/{model_name}/{version}"
+    try:
+        model = mlflow.pyfunc.load_model(model_uri)
+        return model
+    except Exception as e:
+        print(f"Failed to load model: {e}")
+        raise e
+
+
+def sync_artifacts_from_registry(model_name, artifacts_dir) -> None:
+    """
+    Synchronize preprocessing artifacts from the latest registered model version.
+
+    This method downloads all preprocessing-related artifacts (e.g. fillna
+    statistics, label encoders, scalers) associated with the latest version
+    of the registered model and stores them locally for inference or reuse.
+
+    Expected artifact structure in MLflow run:
+        preprocessing/
+            fillna_stats.pkl
+            label_encoders.pkl
+            scaler.pkl
+            ...
+
+    Missing artifacts are tolerated and will not raise errors.
+    """
+    client = MlflowClient()
+
+    try:
+        versions = client.get_latest_versions(model_name, stages=None)
+        if not versions:
+            print(f"[MLflow] No registered model found for '{model_name}'")
+            return
+
+        latest_version = max(versions, key=lambda v: int(v.version))
+        run_id = latest_version.run_id
+
+        local_artifacts_dir = artifacts_dir
+        os.makedirs(local_artifacts_dir, exist_ok=True)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Download entire preprocessing artifact folder
+            client.download_artifacts(run_id, "preprocessing", tmp_dir)
+
+            src_root = os.path.join(tmp_dir, "preprocessing")
+            if not os.path.isdir(src_root):
+                print("[MLflow] No preprocessing artifacts found in run.")
+                return
+
+            __copy_artifacts(
+                src_dir=src_root,
+                dst_dir=local_artifacts_dir,
+                allowed_ext={".pkl", ".json", ".yaml"},
+            )
+
+    except Exception as exc:  # pylint: disable=broad-except
+        print(f"[MLflow] Error syncing preprocessing artifacts: {exc}")
+
+
+def __copy_artifacts(
+    src_dir: str,
+    dst_dir: str,
+    allowed_ext: Iterable[str],
+) -> None:
+    """
+    Copy artifact files from source directory to destination directory.
+
+    Parameters
+    ----------
+    src_dir : str
+        Source directory containing downloaded artifacts.
+    dst_dir : str
+        Destination directory for local storage.
+    allowed_ext : Iterable[str]
+        Allowed file extensions to copy.
+    """
+    for root, _, files in os.walk(src_dir):
+        for filename in files:
+            _, ext = os.path.splitext(filename)
+            if ext not in allowed_ext:
+                continue
+
+            src_path = os.path.join(root, filename)
+            dst_path = os.path.join(dst_dir, filename)
+
+            shutil.copy2(src_path, dst_path)

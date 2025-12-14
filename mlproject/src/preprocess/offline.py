@@ -1,3 +1,12 @@
+"""
+Offline Preprocessor với enhanced MLflow logging.
+
+Improvements:
+- Log fillna parameters (mean/median/mode values)
+- Log label encoding artifacts
+- Log transform parameters to MLflow
+"""
+
 import json
 import logging
 import os
@@ -20,11 +29,14 @@ logger = logging.getLogger(__name__)
 
 class OfflinePreprocessor:
     """
-    Offline preprocessor for time series data.
+    Offline preprocessor for batch data.
 
-    Handles missing value imputation, feature generation, scaling,
-    and saving preprocessing artifacts. Designed for offline batch
-    preprocessing, separate from MLflow logging.
+    Handles:
+    - Missing value imputation (stateful)
+    - Label encoding (stateful)
+    - Feature generation
+    - Scaling (stateful)
+    - Artifact saving and MLflow logging
     """
 
     def __init__(
@@ -37,7 +49,7 @@ class OfflinePreprocessor:
         Initialize OfflinePreprocessor.
 
         Args:
-            is_train: is to load or train scaler
+            is_train: is to load or train transforms
             cfg (dict or DictConfig, optional): Preprocessing configuration.
             mlflow_manager (MLflowManager, optional): MLflow manager instance.
         """
@@ -80,6 +92,12 @@ class OfflinePreprocessor:
         """
         Log preprocessing artifacts to an active MLflow run.
 
+        Logs:
+        - Transform artifacts (fillna_stats, label_encoders, scaler)
+        - Transform parameters
+        - Config
+        - Statistics
+
         Args:
             df: Optional transformed DataFrame used for logging statistics.
 
@@ -94,29 +112,47 @@ class OfflinePreprocessor:
         if not mlflow.active_run():
             return
 
-        self._log_scaler()
+        self._log_transform_artifacts()
+        self._log_transform_params()
         self._log_config(df)
         self._log_statistics(df)
-        self._log_params(df)
 
-    def _log_scaler(self):
-        """Log the fitted scaler artifact."""
+    def _log_transform_artifacts(self):
+        """Log all transform artifacts to MLflow."""
         if not self.mlflow_manager or not self.mlflow_manager.enabled:
             return
 
-        scaler_path = os.path.join(self.artifacts_dir, "scaler.pkl")
-        if os.path.exists(scaler_path):
-            try:
-                # Log artifact into a subdirectory 'preprocessing/scaler'
-                self.mlflow_manager.log_artifact(
-                    scaler_path, artifact_path="preprocessing/scaler"
-                )
+        artifact_files = ["fillna_stats.pkl", "label_encoders.pkl", "scaler.pkl"]
+
+        for filename in artifact_files:
+            path = os.path.join(self.artifacts_dir, filename)
+            if os.path.exists(path):
+                try:
+                    # Log vào subdirectory preprocessing/
+                    self.mlflow_manager.log_artifact(
+                        path,
+                        artifact_path=f"preprocessing/{filename.replace('.pkl', '')}",
+                    )
+                    print(f"[OfflinePreprocessor] Logged {filename} to MLflow")
+                except Exception as e:
+                    print(f"[OfflinePreprocessor] Failed to log {filename}: {e}")
+
+    def _log_transform_params(self):
+        """Log transform parameters to MLflow."""
+        if not self.mlflow_manager or not self.mlflow_manager.enabled:
+            return
+
+        try:
+            # Get params from TransformManager
+            params = self.engine.base.get_params()
+
+            if params:
+                self.mlflow_manager.log_params(params)
                 print(
-                    "[OfflinePreprocessor] Logged scaler to MLflow: \
-                        preprocessing/scaler/scaler.pkl"
+                    f"[OfflinePreprocessor] Logged {len(params)} transform parameters"
                 )
-            except Exception as e:
-                print(f"[OfflinePreprocessor] Failed to log scaler: {e}")
+        except Exception as e:
+            print(f"[OfflinePreprocessor] Failed to log params: {e}")
 
     def _log_config(self, df: Optional[pd.DataFrame] = None):
         """Log preprocessing configuration to MLflow."""
@@ -173,24 +209,6 @@ class OfflinePreprocessor:
         except Exception:
             pass
 
-    def _log_params(self, df: Optional[pd.DataFrame] = None):
-        """Log preprocessing parameters to MLflow."""
-        if not self.mlflow_manager or not self.mlflow_manager.enabled:
-            return
-
-        try:
-            params = {"preprocessing.n_steps": len(self.steps)}
-            if df is not None:
-                params.update(
-                    {
-                        "preprocessing.n_features": len(df.columns),
-                        "preprocessing.n_samples": len(df),
-                    }
-                )
-            self.mlflow_manager.log_params(params)
-        except Exception:
-            pass
-
     def load_raw_data(self) -> pd.DataFrame:
         """
         Load raw dataset from CSV or generate synthetic data.
@@ -209,7 +227,7 @@ class OfflinePreprocessor:
         index_col = data_cfg.get("index_col")
 
         if data_type == "timeseries" and not index_col:
-            index_col = "date"  # backward-compatible default
+            index_col = "date"
 
         if data_type == "tabular":
             index_col = None

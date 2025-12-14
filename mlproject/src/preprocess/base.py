@@ -1,19 +1,18 @@
 """Base preprocessing module for transformation-only logic.
 
 This module handles:
-- Missing value imputation
+- Missing value imputation (mean/median/mode)
+- Label encoding cho categorical
 - Covariate generation
 - Scaling (fit + transform)
 
-The actual persistence (save/load) of scalers is delegated to
-`ScalerManager`.
+The actual persistence is delegated to `TransformManager`.
 """
 
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from mlproject.src.preprocess.scaler_manager import ScalerManager
+from mlproject.src.preprocess.transform_manager import TransformManager
 
 ARTIFACT_DIR = "mlproject/artifacts/preprocessing"
 
@@ -21,15 +20,15 @@ ARTIFACT_DIR = "mlproject/artifacts/preprocessing"
 class PreprocessBase:
     """Base class implementing core preprocessing transformations.
 
-    This class applies preprocessing steps such as:
-    - Filling missing values
+    This class applies preprocessing steps:
+    - Filling missing values (mean/median/mode)
+    - Label encoding for categorical features
     - Generating covariates
     - Scaling numerical features
 
     Notes:
-        - Artifact handling (saving/loading scalers) is delegated to
-          :class:`ScalerManager`.
-        - Only transform logic is implemented here.
+        - Artifact handling is delegated to :class:`TransformManager`.
+        - Supports stateful transforms with proper save/load.
     """
 
     def __init__(self, cfg=None):
@@ -46,16 +45,17 @@ class PreprocessBase:
             "artifacts_dir", ARTIFACT_DIR
         )
 
-        # Dedicated manager for artifact I/O
-        self.scaler_manager = ScalerManager(artifacts_dir, self.cfg)
+        # Unified transform manager
+        self.transform_manager = TransformManager(artifacts_dir)
 
     def fit(self, df: pd.DataFrame) -> pd.DataFrame:
         """Fit preprocessing steps to the data.
 
         This method performs:
-        1. Missing-value filling (fitless)
-        2. Covariate generation (fitless)
-        3. Fitting scaler (stateful)
+        1. Missing-value filling (stateful)
+        2. Label encoding (stateful)
+        3. Covariate generation (fitless)
+        4. Fitting scaler (stateful)
 
         Args:
             df (pd.DataFrame): Input dataframe.
@@ -63,7 +63,8 @@ class PreprocessBase:
         Returns:
             pd.DataFrame: Transformed dataframe (passthrough for fit steps).
         """
-        df = self._apply_fill_missing(df)
+        df = self._apply_fill_missing(df, is_fit=True)
+        df = self._apply_label_encoding(df, is_fit=True)
         df = self._apply_generate_covariates(df)
         df = self._apply_fit_scaler(df)
         return df
@@ -73,8 +74,9 @@ class PreprocessBase:
 
         This includes:
         - Filling missing values
+        - Label encoding
         - Covariate generation
-        - Scaling using previously fitted scaler
+        - Scaling using fitted transforms
 
         Args:
             df (pd.DataFrame): Input dataframe.
@@ -82,24 +84,26 @@ class PreprocessBase:
         Returns:
             pd.DataFrame: Preprocessed dataframe.
         """
-        df = self._apply_fill_missing(df)
+        df = self._apply_fill_missing(df, is_fit=False)
+        df = self._apply_label_encoding(df, is_fit=False)
         df = self._apply_generate_covariates(df)
-
-        # Load scaler on demand
-        if self.scaler_manager.scaler is None:
-            self.scaler_manager.load()
         df = self._apply_scaling(df)
         return df
 
-    def _apply_fill_missing(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _apply_fill_missing(
+        self, df: pd.DataFrame, is_fit: bool = False
+    ) -> pd.DataFrame:
         """Fill missing values depending on configuration.
 
         Supported methods:
-            - `"ffill"`: forward-fill + backward-fill
-            - `"mean"`: fill with per-column mean
+            - `"ffill"`: forward-fill + backward-fill (fitless)
+            - `"mean"`: fill with per-column mean (stateful)
+            - `"median"`: fill with per-column median (stateful)
+            - `"mode"`: fill with per-column mode (stateful)
 
         Args:
             df (pd.DataFrame): Input dataframe.
+            is_fit (bool): Whether to fit statistics
 
         Returns:
             pd.DataFrame: Filled dataframe.
@@ -113,12 +117,47 @@ class PreprocessBase:
 
         method = step.get("method", "ffill")
 
+        # Fitless method
         if method == "ffill":
             return df.ffill().bfill()
-        if method == "mean":
-            return df.fillna(df.mean())
+
+        # Stateful methods
+        if method in ["mean", "median", "mode"]:
+            columns = step.get("columns")
+            if columns is None:
+                columns = df.select_dtypes(include=[np.number]).columns.tolist()
+
+            if is_fit:
+                self.transform_manager.fit_fillna(df, columns, method)
+
+            return self.transform_manager.transform_fillna(df)
 
         raise ValueError(f"Unknown fill_missing method: {method}")
+
+    def _apply_label_encoding(
+        self, df: pd.DataFrame, is_fit: bool = False
+    ) -> pd.DataFrame:
+        """Label encoding cho categorical columns.
+
+        Args:
+            df (pd.DataFrame): Input dataframe.
+            is_fit (bool): Whether to fit encoders
+
+        Returns:
+            pd.DataFrame: Encoded dataframe.
+        """
+        step = self._get_step("label_encoding")
+        if not step:
+            return df
+
+        columns = step.get("columns", [])
+        if not columns:
+            return df
+
+        if is_fit:
+            self.transform_manager.fit_label_encoding(df, columns)
+
+        return self.transform_manager.transform_label_encoding(df)
 
     def _apply_generate_covariates(self, df: pd.DataFrame) -> pd.DataFrame:
         """Generate additional covariate features.
@@ -145,7 +184,7 @@ class PreprocessBase:
         return df
 
     def _apply_fit_scaler(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Fit scaler and persist it using ScalerManager.
+        """Fit scaler and persist it using TransformManager.
 
         Supported scaling methods:
             - `"zscore"`: StandardScaler
@@ -167,25 +206,7 @@ class PreprocessBase:
         cols = self._get_numeric_columns(df, step)
         method = step.get("method", "zscore")
 
-        if method == "zscore":
-            scaler = StandardScaler()
-        elif method == "minmax":
-            scaler = MinMaxScaler()
-        else:
-            raise ValueError(f"Unknown normalize method: {method}")
-
-        # Fit scaler
-        scaler.fit(df[cols].values)
-
-        # Assign feature names (optional for sklearn warnings)
-        try:
-            scaler.feature_names_in_ = np.array(cols)
-        except Exception:
-            pass
-
-        # Save through ScalerManager
-        self.scaler_manager.save(scaler, cols)
-
+        self.transform_manager.fit_scaler(df, cols, method)
         return df
 
     def _apply_scaling(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -197,21 +218,7 @@ class PreprocessBase:
         Returns:
             pd.DataFrame: Scaled dataframe.
         """
-        scaler = self.scaler_manager.scaler
-        cols = self.scaler_manager.scaler_columns
-
-        if scaler is None or cols is None:
-            return df
-
-        # Ensure columns exist in transform dataset
-        for c in cols:
-            if c not in df.columns:
-                df[c] = 0.0
-        for col in cols:
-            if not pd.api.types.is_float_dtype(df[col]):
-                df[col] = df[col].astype(np.float64)
-        df.loc[:, cols] = scaler.transform(df[cols])
-        return df
+        return self.transform_manager.transform_scaler(df)
 
     def _get_step(self, name: str):
         """Retrieve a preprocessing step by name.
@@ -239,24 +246,19 @@ class PreprocessBase:
             return cols
         return df.select_dtypes(include=[np.number]).columns.tolist()
 
-    def save_scaler(self):
-        """DEPRECATED: Use ScalerManager.save() instead."""
+    def save(self):
+        """Save all transforms via TransformManager."""
+        self.transform_manager.save()
 
-    def load_scaler(self):
-        """DEPRECATED: Use ScalerManager.load() instead."""
-        self.scaler_manager.load()
+    def load(self):
+        """Load all transforms via TransformManager."""
+        self.transform_manager.load(self.cfg)
 
-    @property
-    def scaler(self):
-        """Backward-compatible scaler property."""
-        return self.scaler_manager.scaler
-
-    @property
-    def scaler_columns(self):
-        """Backward-compatible scaler column list property."""
-        return self.scaler_manager.scaler_columns
+    def get_params(self):
+        """Get params for MLflow logging."""
+        return self.transform_manager.get_params()
 
     @property
     def artifacts_dir(self):
         """Backward-compatible artifacts directory."""
-        return self.scaler_manager.artifacts_dir
+        return self.transform_manager.artifacts_dir

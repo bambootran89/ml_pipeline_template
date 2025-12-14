@@ -40,6 +40,18 @@ mlflow:
 # -------------------------------------------------------------------
 preprocessing:
   steps:
+    - name: fill_missing
+      method: mean  # Options: mean, median, mode, ffill
+      columns:  # Optional, mặc định là tất cả numeric columns
+        - Age
+        - Fare
+    # Step 2: Label encoding cho categorical
+    - name: label_encoding
+      columns:
+        - Sex
+        - Embarked
+        - Pclass
+
     # Step 3: Scale numerical features
     - name: normalize
       method: zscore
@@ -75,7 +87,8 @@ data:
     - "SibSp"   # 1, 0...
     - "Parch"   # 0, 1...
     - "Fare"    # 7.25, 71.83...
-
+    - "Sex"
+    - "Embarked"
   # Number of folds for cross-validation
   n_folds: 5
 

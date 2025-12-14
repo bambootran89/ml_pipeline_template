@@ -61,7 +61,7 @@ class PreprocessEngine:
         )
         self._current_cfg = cfg
         self.base = PreprocessBase(self._current_cfg)
-        self.base.load_scaler()
+        self.base.transform_manager.load(self._current_cfg)
         print("[PreprocessEngine] Artifacts loaded successfully.")
 
     def offline_fit(self, df):

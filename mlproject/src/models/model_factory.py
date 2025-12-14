@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from mlproject.src.pipeline.config_loader import ConfigLoader
+from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.factory_base import DynamicFactoryBase
 
 

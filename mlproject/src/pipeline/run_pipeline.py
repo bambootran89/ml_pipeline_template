@@ -16,7 +16,7 @@ Usage examples:
 
 import argparse
 # ====================================================
-# import os
+import os
 from typing import Any, Dict, cast
 
 import pandas as pd
@@ -24,17 +24,17 @@ from omegaconf import OmegaConf
 
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
-from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
+from mlproject.src.pipeline.engines.tuning_pipeline import TuningPipeline
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
-from mlproject.src.pipeline.tuning_pipeline import TuningPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.utils.config_loader import ConfigLoader
 
-# os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
-# os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+os.environ["OMP_NUM_THREADS"] = "1"
 
 
 def run_training(cfg_path: str) -> None:

@@ -17,7 +17,7 @@ from ray import serve
 from mlproject.serve.schemas import PredictRequest
 from mlproject.src.models.nlinear_wrapper import NLinearWrapper
 from mlproject.src.models.tft_wrapper import TFTWrapper
-from mlproject.src.pipeline.config_loader import ConfigLoader
+from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.preprocess.online import OnlinePreprocessor
 
 # --------------------------

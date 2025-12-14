@@ -16,10 +16,10 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
+from mlproject.src.utils.config_loader import ConfigLoader
 
 
 class TuningPipeline(BasePipeline):

@@ -12,9 +12,9 @@ from omegaconf import DictConfig, OmegaConf
 
 from mlproject.serve.schemas import PredictRequest
 from mlproject.src.models.model_factory import ModelFactory
-from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.online import OnlinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.utils.config_loader import ConfigLoader
 
 
 class ModelsService:
