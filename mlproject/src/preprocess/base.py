@@ -67,6 +67,7 @@ class PreprocessBase:
         df = self._apply_label_encoding(df, is_fit=True)
         df = self._apply_generate_covariates(df)
         df = self._apply_fit_scaler(df)
+        self.save()
         return df
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:

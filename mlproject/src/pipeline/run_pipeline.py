@@ -15,8 +15,6 @@ Usage examples:
 """
 
 import argparse
-# ====================================================
-import os
 from typing import Any, Dict, cast
 
 import pandas as pd
@@ -33,8 +31,12 @@ from mlproject.src.pipeline.training_pipeline import TrainingPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 
-os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
-os.environ["OMP_NUM_THREADS"] = "1"
+# ====================================================
+
+
+# import os
+# os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+# os.environ["OMP_NUM_THREADS"] = "1"
 
 
 def run_training(cfg_path: str) -> None:
