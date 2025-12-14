@@ -1,10 +1,17 @@
 defaults:
-  - ../base/data.yaml
   - ../base/preprocessing.yaml
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
+
+data:
+  path: "mlproject/data/ETTh1.csv"   # optional demo
+  index_col: "date"
+  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  return_type: pandas
+  type: timeseries
 
 experiment:
   name: "multivariate_tft"
@@ -12,6 +19,9 @@ experiment:
   model: "tft"
   hyperparams:
     input_chunk_length: 24
+    n_features: 4
     output_chunk_length: 6
     n_epochs: 20
     batch_size: 16
+    hidden_size: 64
+    num_layers: 2

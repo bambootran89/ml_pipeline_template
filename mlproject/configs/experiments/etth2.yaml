@@ -1,16 +1,26 @@
 defaults:
-  - ../base/data.yaml
   - ../base/preprocessing.yaml
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
+
+data:
+  path: "mlproject/data/ETTh1.csv"   # optional demo
+  index_col: "date"
+  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  return_type: pandas
+  type: timeseries
+
 experiment:
   name: "univariate_nlinear"
-  type: "univariate_per_series"
+  type: "univariate"
   model: "nlinear"
   hyperparams:
     input_chunk_length: 24
+    n_features: 4
     output_chunk_length: 6
     n_epochs: 2
     batch_size: 8
+    hidden: 128

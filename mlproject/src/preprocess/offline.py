@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 from typing import Any, Optional
@@ -9,9 +10,12 @@ import pandas as pd
 import yaml
 
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.utils.func_utils import load_data_csv
 
 from .base import ARTIFACT_DIR
 from .engine import PreprocessEngine
+
+logger = logging.getLogger(__name__)
 
 
 class OfflinePreprocessor:
@@ -59,9 +63,18 @@ class OfflinePreprocessor:
         """
         if df is None:
             df = self.load_raw_data()
-        df = self.engine.offline_fit(df)
-        df = self.engine.offline_transform(df)
-        return df
+        data_cfg = self.cfg.get("data", {})
+        data_type = data_cfg.get("type", "timeseries").lower()
+
+        fea_df = self.engine.offline_fit(df)
+        fea_df = self.engine.offline_transform(fea_df)
+
+        if data_type == "timeseries":
+            return fea_df
+        else:
+            target_cols = data_cfg.get("target_columns", [])
+            tar_df = df[target_cols]
+            return pd.concat([fea_df, tar_df], axis=1)
 
     def log_artifacts_to_mlflow(self, df: Optional[pd.DataFrame] = None):
         """
@@ -186,17 +199,24 @@ class OfflinePreprocessor:
             Raw DataFrame with datetime index.
         """
         data_cfg = self.cfg.get("data", {})
+
         path = data_cfg.get("path")
-        index_col = data_cfg.get("index_col", "date")
+        if not path:
+            raise ValueError("`data.path` must be specified in config.")
+
+        data_type = data_cfg.get("type", "timeseries").lower()
+
+        index_col = data_cfg.get("index_col")
+
+        if data_type == "timeseries" and not index_col:
+            index_col = "date"  # backward-compatible default
+
+        if data_type == "tabular":
+            index_col = None
 
         if not path or not os.path.exists(path):
             return self._load_synthetic(index_col)
-        return self._load_csv(path, index_col)
-
-    def _load_csv(self, path: str, index_col: str) -> pd.DataFrame:
-        """Load CSV dataset."""
-        df = pd.read_csv(path, parse_dates=[index_col])
-        return df.set_index(index_col)
+        return load_data_csv(path, index_col, data_type)
 
     def _load_synthetic(self, index_col: str) -> pd.DataFrame:
         """Generate synthetic dataset."""

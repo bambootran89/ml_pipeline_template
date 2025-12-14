@@ -15,12 +15,15 @@ from mlflow.tracking import MlflowClient
 from omegaconf import DictConfig
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
+from mlproject.src.eval.base import BaseEvaluator
+from mlproject.src.eval.classification_eval import ClassificationEvaluator
+from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.utils.shape_utils import flatten_metrics_for_mlflow
+from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
 
 
 class EvalPipeline(BasePipeline):
@@ -46,6 +49,14 @@ class EvalPipeline(BasePipeline):
         )
         self.model = None
         self.preprocessor = OfflinePreprocessor(is_train=False, cfg=self.cfg)
+        self.evaluator: BaseEvaluator
+        eval_type = self.cfg.get("evaluation", {}).get("type", "regression")
+        if eval_type == "classification":
+            self.evaluator = ClassificationEvaluator()
+        elif eval_type == "regression":
+            self.evaluator = RegressionEvaluator()
+        else:
+            self.evaluator = TimeSeriesEvaluator()
 
         if self.mlflow_manager.enabled:
             self._sync_artifacts_from_registry()
@@ -108,10 +119,17 @@ class EvalPipeline(BasePipeline):
         Load raw data and apply preprocessing transformations.
         Returns a preprocessed DataFrame.
         """
-
         df = self.preprocessor.load_raw_data()
-        df = self.preprocessor.engine.offline_transform(df)
-        return df
+        fea_df = self.preprocessor.engine.offline_transform(df)
+        data_cfg = self.cfg.get("data", {})
+        data_type = data_cfg.get("type", "timeseries").lower()
+
+        if data_type == "timeseries":
+            return fea_df
+        else:
+            target_cols = data_cfg.get("target_columns", [])
+            tar_df = df[target_cols]
+            return pd.concat([fea_df, tar_df], axis=1)
 
     def run_approach(self, approach: Any, data: pd.DataFrame):
         """
@@ -138,8 +156,7 @@ class EvalPipeline(BasePipeline):
         run_name = f"eval_{self.model_name}_latest"
         with self.mlflow_manager.start_run(run_name=run_name):
             preds = self.model.predict(x_test)
-            evaluator = TimeSeriesEvaluator()
-            metrics = evaluator.evaluate(y_test, preds)
+            metrics = self.evaluator.evaluate(y_test, preds)
             safe_metrics = flatten_metrics_for_mlflow(metrics)
             self.mlflow_manager.log_metrics(safe_metrics)
         print(safe_metrics)

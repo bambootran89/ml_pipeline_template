@@ -5,7 +5,6 @@ import torch
 from torch.utils.data import DataLoader
 
 from mlproject.src.trainer.base_trainer import BaseTrainer
-from mlproject.src.utils.shape_utils import infer_io_dims
 
 
 def infer_dims_from_batch(xb: Any, yb: Any) -> tuple[int, int]:
@@ -77,9 +76,7 @@ class DeepLearningTrainer(BaseTrainer):
         train_loader, val_loader, _, _ = datamodule.get_loaders()
         # Build model if needed
         if self.wrapper.model is None:
-            xb, yb = next(iter(train_loader))
-            input_dim, output_dim = infer_io_dims(xb, yb)
-            self.wrapper.build(input_dim, output_dim)
+            self.wrapper.build(model_type="timeseries")
 
         # Move model to device
         if self.wrapper.model is not None:

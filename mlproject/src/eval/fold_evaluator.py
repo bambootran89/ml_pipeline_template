@@ -1,5 +1,7 @@
 from typing import Any, Tuple
 
+from mlproject.src.eval.classification_eval import ClassificationEvaluator
+from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 
 
@@ -9,8 +11,15 @@ class FoldEvaluator:
     cross-validation fold. Keeps evaluation logic isolated from FoldRunner.
     """
 
-    def __init__(self):
-        self.evaluator = TimeSeriesEvaluator()
+    def __init__(self, cfg):
+        assert cfg is not None
+        eval_type = cfg.get("evaluation", {}).get("type", "regression")
+        if eval_type == "classification":
+            self.evaluator = ClassificationEvaluator()
+        elif eval_type == "regression":
+            self.evaluator = RegressionEvaluator()
+        else:
+            self.evaluator = TimeSeriesEvaluator()
 
     def evaluate(self, wrapper: Any, test_data: Tuple):
         """

@@ -21,14 +21,15 @@ class DataModuleFactory(DynamicFactoryBase):
             "class": "TSDLDataModule",
         },
         "ml": {
-            "module": "mlproject.src.datamodule.tsbase",
-            "class": "TSBaseDataModule",
+            "module": "mlproject.src.datamodule.base",
+            "class": "BaseDataModule",
         },
     }
 
     @classmethod
     def _get_datamodule_type(cls, cfg: DictConfig) -> str:
         """Return datamodule type (``dl`` or ``ml``) derived from the model registry."""
+
         model_type = cfg.experiment.get("model", "").lower()
         model_registry = cfg.get("model_registry", {})
 

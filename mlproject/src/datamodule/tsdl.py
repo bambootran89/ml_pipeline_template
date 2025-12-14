@@ -3,11 +3,11 @@ from typing import Any, Optional, Tuple
 import numpy as np
 from torch.utils.data import DataLoader
 
+from mlproject.src.datamodule.base import BaseDataModule
 from mlproject.src.datamodule.dataset import NumpyWindowDataset
-from mlproject.src.datamodule.tsbase import TSBaseDataModule
 
 
-class TSDLDataModule(TSBaseDataModule):
+class TSDLDataModule(BaseDataModule):
     """Deep Learning DataModule for PyTorch models.
 
     Extends TSBaseDataModule by adding DataLoader creation.

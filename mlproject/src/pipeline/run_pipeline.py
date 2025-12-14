@@ -15,12 +15,15 @@ Usage examples:
 """
 
 import argparse
+# ====================================================
+# import os
 from typing import Any, Dict, cast
 
 import pandas as pd
 from omegaconf import OmegaConf
 
-from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
+from mlproject.src.datamodule.base_splitter import BaseSplitter
+from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 # === moved all imports to top to fix pylint C0415 ===
@@ -30,7 +33,8 @@ from mlproject.src.pipeline.training_pipeline import TrainingPipeline
 from mlproject.src.pipeline.tuning_pipeline import TuningPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
-# ====================================================
+# os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+# os.environ["OMP_NUM_THREADS"] = "1"
 
 
 def run_training(cfg_path: str) -> None:
@@ -70,10 +74,22 @@ def run_cross_validation(cfg_path: str) -> None:
     mlflow_manager = MLflowManager(cfg)
 
     cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
-    splitter = TimeSeriesFoldSplitter(
-        cfg_dict,
-        n_splits=cfg.get("tuning", {}).get("n_splits", 3),
-    )
+    splitter: BaseSplitter
+    eval_type = cfg.get("data", {}).get("type", "timeseries")
+    if eval_type == "timeseries":
+
+        splitter = cast(
+            BaseSplitter,
+            TimeSeriesFoldSplitter(
+                cfg_dict,
+                n_splits=cfg.get("tuning", {}).get("n_splits", 3),
+            ),
+        )
+    else:
+        splitter = BaseSplitter(
+            cfg_dict,
+            n_splits=cfg.get("tuning", {}).get("n_splits", 3),
+        )
 
     cv_pipeline = CrossValidationPipeline(cfg, splitter, mlflow_manager)
 

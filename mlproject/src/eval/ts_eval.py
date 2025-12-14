@@ -71,4 +71,5 @@ class TimeSeriesEvaluator(RegressionEvaluator):
                 "smape": self.smape(y_true, y_pred),
             }
         )
+        print(metrics)
         return metrics

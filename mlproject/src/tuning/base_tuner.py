@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
+from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.search_space import SearchSpaceRegistry  # noqa: WPS433
 

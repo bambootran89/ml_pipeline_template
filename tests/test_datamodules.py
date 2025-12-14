@@ -21,7 +21,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
-from mlproject.src.datamodule.tsbase import TSBaseDataModule
+from mlproject.src.datamodule.base import BaseDataModule
 from mlproject.src.datamodule.tsdl import TSDLDataModule
 
 
@@ -64,7 +64,7 @@ class ConfigBuilder:
         return {
             "preprocessing": {"split": {"train": 0.6, "val": 0.2, "test": 0.2}},
             "training": {"num_workers": 0},
-            "data": {"target_columns": ["HUFL"]},
+            "data": {"target_columns": ["HUFL"], "type": "timeseries"},
         }
 
     @staticmethod
@@ -146,7 +146,7 @@ class TestDataModuleFactory:
     ):
         """Test factory creates TSBaseDataModule for ML models."""
         dm = DataModuleFactory.build(ml_config, synthetic_data)
-        assert isinstance(dm, TSBaseDataModule)
+        assert isinstance(dm, BaseDataModule)
         assert dm.input_chunk == 5
         assert dm.output_chunk == 2
 
@@ -242,7 +242,7 @@ class TestTSBaseDataModule:
         self, synthetic_data: pd.DataFrame, ml_config: DictConfig
     ):
         """Test get_data() returns numpy arrays."""
-        dm = TSBaseDataModule(
+        dm = BaseDataModule(
             df=synthetic_data,
             cfg=OmegaConf.to_container(ml_config, resolve=True),
             target_column="HUFL",
@@ -257,7 +257,7 @@ class TestTSBaseDataModule:
 
     def test_array_shapes(self, synthetic_data: pd.DataFrame, ml_config: DictConfig):
         """Test array shapes match expected dimensions."""
-        dm = TSBaseDataModule(
+        dm = BaseDataModule(
             df=synthetic_data,
             cfg=OmegaConf.to_container(ml_config, resolve=True),
             target_column="HUFL",
@@ -271,7 +271,7 @@ class TestTSBaseDataModule:
 
     def test_summary(self, synthetic_data: pd.DataFrame, ml_config: DictConfig):
         """Test summary() returns dataset sizes."""
-        dm = TSBaseDataModule(
+        dm = BaseDataModule(
             df=synthetic_data,
             cfg=OmegaConf.to_container(ml_config, resolve=True),
             target_column="HUFL",

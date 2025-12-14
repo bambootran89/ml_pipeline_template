@@ -8,7 +8,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 from sklearn.base import BaseEstimator
 
-from mlproject.src.utils.shape_utils import flatten_timeseries
+from mlproject.src.utils.func_utils import flatten_timeseries
 
 
 class BaseModelWrapper(ABC):
@@ -32,13 +32,11 @@ class BaseModelWrapper(ABC):
             self.cfg = OmegaConf.create(cfg)
         else:
             raise TypeError("cfg must be dict or DictConfig")
-
+        self.model_type: str = ""
         self.model: Optional[Any] = None
-        self.input_dim: Optional[int] = None
-        self.output_dim: Optional[int] = None
 
     @abstractmethod
-    def build(self, input_dim: int, output_dim: int):
+    def build(self, model_type: str):
         """Build or initialize model."""
         raise NotImplementedError
 
@@ -71,7 +69,7 @@ class DLModelWrapperBase(BaseModelWrapper):
     """
 
     @abstractmethod
-    def build(self, input_dim: int, output_dim: int):
+    def build(self, model_type: str):
         """Build model architecture."""
         raise NotImplementedError
 
@@ -90,8 +88,7 @@ class DLModelWrapperBase(BaseModelWrapper):
 
         state = {
             "model_state": self.model.state_dict(),
-            "input_dim": self.input_dim,
-            "output_dim": self.output_dim,
+            "model_type": self.model_type,
             "cfg": OmegaConf.to_container(self.cfg, resolve=True),
         }
         torch.save(state, os.path.join(save_dir, "model.pt"))
@@ -103,22 +100,11 @@ class DLModelWrapperBase(BaseModelWrapper):
             raise RuntimeError(f"Model file not found: {path}")
 
         state = torch.load(path, map_location="cpu")
-
-        self.input_dim = state["input_dim"]
-        self.output_dim = state["output_dim"]
-
-        loaded_cfg = OmegaConf.create(state["cfg"])
-        if not isinstance(self.cfg, DictConfig):
-            self.cfg = DictConfig({})
-        self.cfg = cast(DictConfig, OmegaConf.merge(self.cfg, loaded_cfg))
-
-        assert isinstance(self.input_dim, int)
-        assert isinstance(self.output_dim, int)
-
-        self.build(self.input_dim, self.output_dim)
+        self.model_type = state["model_state"]
+        assert len(self.model_type) > 0
+        self.build(self.model_type)
         assert self.model is not None
         self.model.load_state_dict(state["model_state"])
-
         print(f"[Model Loaded] {path}")
         return self
 
@@ -144,10 +130,9 @@ class MLModelWrapper(BaseModelWrapper):
         self.estimator_class = estimator_class
         self.estimator_kwargs = estimator_kwargs
 
-    def build(self, input_dim: int, output_dim: int):
+    def build(self, model_type: str):
         """Initialize estimator."""
-        self.input_dim = input_dim
-        self.output_dim = output_dim
+        self.model_type = model_type
         self.model = self.estimator_class(**self.estimator_kwargs)
 
     def fit(
@@ -159,13 +144,8 @@ class MLModelWrapper(BaseModelWrapper):
     ):
         """Train model with sklearn-style estimator."""
         if self.model is None:
-            x_sample = flatten_timeseries(x)
-            input_dim = x_sample.shape[1]
 
-            # Determine output dimension (1 if y is 1D)
-            output_dim = y.shape[-1] if y.ndim > 1 else 1
-
-            self.build(input_dim, output_dim)
+            self.build(model_type=self.model_type)
 
         self.ensure_built()
 
@@ -188,8 +168,7 @@ class MLModelWrapper(BaseModelWrapper):
 
         state = {
             "model": self.model,
-            "input_dim": self.input_dim,
-            "output_dim": self.output_dim,
+            "model_type": self.model_type,
             "cfg": OmegaConf.to_container(self.cfg, resolve=True),
         }
 
@@ -204,8 +183,7 @@ class MLModelWrapper(BaseModelWrapper):
 
         state = joblib.load(path)
 
-        self.input_dim = state.get("input_dim")
-        self.output_dim = state.get("output_dim")
+        self.model_type = state.get("model_type")
 
         loaded_cfg = OmegaConf.create(state.get("cfg", {}))
         if not isinstance(self.cfg, DictConfig):

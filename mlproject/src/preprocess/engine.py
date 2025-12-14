@@ -1,3 +1,5 @@
+from mlproject.src.utils.func_utils import select_columns
+
 from .base import PreprocessBase
 
 
@@ -64,11 +66,13 @@ class PreprocessEngine:
 
     def offline_fit(self, df):
         """Fit preprocessing using offline/batch data."""
-        return self.base.fit(df)
+        df_selected = select_columns(self._current_cfg, df, include_target=True)
+        return self.base.fit(df_selected)
 
     def offline_transform(self, df):
         """Transform offline/batch data using the fitted preprocessing."""
-        return self.base.transform(df)
+        df_selected = select_columns(self._current_cfg, df, include_target=True)
+        return self.base.transform(df_selected)
 
     def online_transform(self, df):
         """
@@ -88,5 +92,5 @@ class PreprocessEngine:
         pandas.DataFrame
             Transformed data after applying the loaded preprocessor.
         """
-
-        return self.base.transform(df)
+        df_selected = select_columns(self._current_cfg, df, include_target=False)
+        return self.base.transform(df_selected)

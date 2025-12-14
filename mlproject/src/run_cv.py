@@ -10,7 +10,8 @@ from typing import Any, Dict
 
 from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
+from mlproject.src.datamodule.base_splitter import BaseSplitter
+from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
@@ -56,12 +57,21 @@ def main() -> None:
     cfg_dict: Dict[str, Any] = OmegaConf.to_container(
         cfg, resolve=True
     )  # type: ignore[assignment]
-
     # Initialize components
-    splitter = TimeSeriesFoldSplitter(
-        cfg_dict,  # <-- FIX: mypy now recognizes correct type
-        n_splits=args.n_splits,
-    )
+    splitter: BaseSplitter
+
+    eval_type = cfg.get("data", {}).get("type", "timeseries")
+    if eval_type == "timeseries":
+
+        splitter = TimeSeriesFoldSplitter(
+            cfg_dict,  # <-- FIX: mypy now recognizes correct type
+            n_splits=args.n_splits,
+        )
+    else:
+        splitter = BaseSplitter(
+            cfg_dict,  # <-- FIX: mypy now recognizes correct type
+            n_splits=args.n_splits,
+        )
 
     mlflow_manager = MLflowManager(cfg)
     cv_pipeline = CrossValidationPipeline(cfg, splitter, mlflow_manager)

@@ -1,0 +1,122 @@
+from typing import Any, Dict, List, Optional, Sequence
+
+import pandas as pd
+from sklearn.model_selection import KFold, StratifiedKFold
+
+from mlproject.src.utils.func_utils import load_data_csv
+
+
+class BaseSplitter:
+    """
+    K-fold splitter for base datasets.
+
+    The splitter partitions a DataFrame into `n_splits` folds and returns
+    a list of DataFrames. Each fold contains the FULL set of columns,
+    including target columns.
+
+    Target columns are used ONLY for stratified splitting when enabled.
+    """
+
+    def __init__(self, cfg: Dict[str, Any], n_splits: int) -> None:
+        """
+        Initialize the splitter from configuration and number of folds.
+
+        Args:
+            cfg: Dictionary-like configuration object.
+            n_splits: Number of folds to generate.
+        """
+        self.cfg = cfg
+        self.df_cfg = cfg.get("data", {})
+
+        self.n_splits = int(n_splits)
+        self.shuffle = bool(self.df_cfg.get("shuffle", True))
+        self.random_state = int(self.df_cfg.get("random_state", 42))
+        self.stratify = bool(self.df_cfg.get("stratify", False))
+
+        self.target_columns = self._resolve_target_columns()
+
+    def _load_data(self, data_type) -> pd.DataFrame:
+        """
+        Load the DataFrame from disk, parse datetime index, and sort.
+
+        Returns:
+            The loaded and indexed DataFrame.
+
+        Raises:
+            FileNotFoundError: If the CSV file path is invalid.
+            ValueError: If index column is missing.
+        """
+        path = self.df_cfg.get("path")
+        index_col = self.df_cfg.get("index_col")
+
+        df = load_data_csv(path, index_col, data_type)
+        df = df.sort_index()
+        return df
+
+    def _resolve_target_columns(self) -> Sequence[str]:
+        data_cfg = self.cfg.get("data", {})
+        target_cols = data_cfg.get("target_columns", [])
+
+        if isinstance(target_cols, str):
+            return [target_cols]
+
+        if isinstance(target_cols, (list, tuple)):
+            return list(target_cols)
+
+        return []
+
+    def _resolve_stratify_y(self, df: pd.DataFrame) -> Optional[pd.Series]:
+        """
+        Resolve target series for stratified splitting only.
+        """
+        if not self.target_columns:
+            return None
+
+        valid_targets = [c for c in self.target_columns if c in df.columns]
+
+        # StratifiedKFold requires exactly one target column
+        if len(valid_targets) != 1:
+            return None
+
+        return df[valid_targets[0]]
+
+    def generate_folds(self) -> List[pd.DataFrame]:
+        """
+        Split DataFrame into K folds.
+
+        Returns
+        -------
+        List[pd.DataFrame]
+            A list of DataFrames, each representing one fold.
+            All original columns (including target) are preserved.
+        """
+        df = self._load_data("tabular")
+        if self.stratify:
+            y = self._resolve_stratify_y(df)
+            if y is None:
+                raise ValueError(
+                    "Stratified splitting requires exactly one valid target "
+                    "column defined in cfg.data.target_columns."
+                )
+
+            splitter = StratifiedKFold(
+                n_splits=self.n_splits,
+                shuffle=self.shuffle,
+                random_state=self.random_state,
+            )
+            split_iter = splitter.split(df, y)
+        else:
+            splitter = KFold(
+                n_splits=self.n_splits,
+                shuffle=self.shuffle,
+                random_state=self.random_state,
+            )
+            split_iter = splitter.split(df)
+
+        folds: List[pd.DataFrame] = []
+
+        for _, fold_idx in split_iter:
+            fold_df = df.iloc[fold_idx].reset_index(drop=True)
+            folds.append(fold_df)
+
+        return folds

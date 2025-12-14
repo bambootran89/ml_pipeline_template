@@ -1,19 +1,30 @@
 defaults:
-  - ../base/data.yaml
   - ../base/preprocessing.yaml
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
+
+data:
+  path: "mlproject/data/ETTh1.csv"   # optional demo
+  index_col: "date"
+  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  return_type: pandas
+  type: timeseries
+
+
 experiment:
   name: "xgboost"
-  type: "xgboost_per_series"
+  type: "timeseries"
   model: "xgboost"
   hyperparams:
     input_chunk_length: 24
     output_chunk_length: 6
-    n_estimators: 20
-    max_depth: 3
-    learning_rate: 0.1
-    objective: "reg:squarederror"
-    early_stopping_round: 15
+    type: "regression"
+    args:
+      n_estimators: 20
+      max_depth: 3
+      learning_rate: 0.1
+      objective: "reg:squarederror"
+      early_stopping_round: 15

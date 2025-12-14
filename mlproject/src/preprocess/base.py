@@ -88,7 +88,6 @@ class PreprocessBase:
         # Load scaler on demand
         if self.scaler_manager.scaler is None:
             self.scaler_manager.load()
-
         df = self._apply_scaling(df)
         return df
 
@@ -208,8 +207,10 @@ class PreprocessBase:
         for c in cols:
             if c not in df.columns:
                 df[c] = 0.0
-
-        df[cols] = scaler.transform(df[cols])
+        for col in cols:
+            if not pd.api.types.is_float_dtype(df[col]):
+                df[col] = df[col].astype(np.float64)
+        df.loc[:, cols] = scaler.transform(df[cols])
         return df
 
     def _get_step(self, name: str):

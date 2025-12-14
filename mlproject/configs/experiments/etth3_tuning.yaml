@@ -1,5 +1,4 @@
 defaults:
-  - ../base/data.yaml
   - ../base/preprocessing.yaml
   - ../base/model.yaml
   - ../base/training.yaml
@@ -7,19 +6,28 @@ defaults:
   - ../base/mlflow.yaml
   - ../base/tuning.yaml
 
+data:
+  path: "mlproject/data/ETTh1.csv"   # optional demo
+  index_col: "date"
+  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  return_type: pandas
+  type: timeseries
+
 experiment:
   name: "xgboost_tuning"
-  type: "xgboost_per_series"
+  type: "timeseries"
   model: "xgboost"
   hyperparams:
     # Initial guess (will be overridden by tuning)
     input_chunk_length: 24
     output_chunk_length: 6
-    n_estimators: 100
-    max_depth: 5
-    learning_rate: 0.1
-    objective: "reg:squarederror"
-    early_stopping_round: 15
+    args:
+      n_estimators: 100
+      max_depth: 5
+      learning_rate: 0.1
+      objective: "reg:squarederror"
+      early_stopping_round: 15
 
 # Override tuning settings
 tuning:

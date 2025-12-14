@@ -3,6 +3,9 @@ from typing import Any, Dict
 from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
+from mlproject.src.eval.base import BaseEvaluator
+from mlproject.src.eval.classification_eval import ClassificationEvaluator
+from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
@@ -32,6 +35,14 @@ class TrainingPipeline(BasePipeline):
         self.preprocessor = OfflinePreprocessor(
             is_train=True, cfg=self.cfg, mlflow_manager=self.mlflow_manager
         )
+        self.evaluator: BaseEvaluator
+        eval_type = self.cfg.get("evaluation", {}).get("type", "regression")
+        if eval_type == "classification":
+            self.evaluator = ClassificationEvaluator()
+        elif eval_type == "regression":
+            self.evaluator = RegressionEvaluator()
+        else:
+            self.evaluator = TimeSeriesEvaluator()
 
     def preprocess(self) -> Any:
         """
@@ -75,7 +86,7 @@ class TrainingPipeline(BasePipeline):
             raise AttributeError("DataModule must support retrieving test data")
 
         preds = wrapper.predict(x_test)
-        metrics = TimeSeriesEvaluator().evaluate(y_test, preds)
+        metrics = self.evaluator.evaluate(y_test, preds)
         print(metrics)
         return metrics
 

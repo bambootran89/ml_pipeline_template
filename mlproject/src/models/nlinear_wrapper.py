@@ -40,18 +40,20 @@ class NLinearWrapper(DLModelWrapperBase):
     Provides build(), train_step(), and predict() following the DLModelWrapperBase API.
     """
 
-    def build(self, input_dim: int, output_dim: int) -> None:
+    def build(self, model_type: str) -> None:
         """
         Build the internal FallbackNLinear model.
 
         Args:
-            input_dim (int): Number of input features.
-            output_dim (int): Number of output features.
+            model_type (str):type of model
         """
+        print(f"building {model_type}")
         hidden = self.cfg.get("hidden", 128)
+        n_features = self.cfg.get("n_features", 4)
+        input_dim = self.cfg.get("input_chunk_length", 24) * n_features
+        output_dim = self.cfg.get("output_chunk_length", 6)
         self.model = FallbackNLinear(input_dim, output_dim, hidden=hidden)
-        self.input_dim = input_dim
-        self.output_dim = output_dim
+        self.model_type = model_type
 
     def train_step(self, batch, optimizer, loss_fn, device):
         """

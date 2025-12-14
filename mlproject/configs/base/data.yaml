@@ -4,3 +4,4 @@ data:
   target_columns: ["HUFL","MUFL","HULL","LULL"]
   features: ["HUFL", "MUFL", "mobility_inflow"]
   return_type: pandas
+  type: timeseries

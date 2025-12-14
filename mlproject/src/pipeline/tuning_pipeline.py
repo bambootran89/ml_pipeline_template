@@ -13,7 +13,8 @@ from typing import Any, Dict, cast
 
 from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
+from mlproject.src.datamodule.base_splitter import BaseSplitter
+from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
@@ -38,16 +39,26 @@ class TuningPipeline(BasePipeline):
             cfg_path:
                 Path to the experiment configuration YAML file.
         """
+        self.cfg_path = cfg_path
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
 
         self.mlflow_manager = MLflowManager(self.cfg)
         cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(self.cfg, resolve=True))
         # Build CV splitter. Parameters may be overridden in YAML config.
-        self.splitter = TimeSeriesFoldSplitter(
-            cfg_dict,
-            n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
-        )
+        self.splitter: BaseSplitter
+        eval_type = self.cfg.get("data", {}).get("type", "timeseries")
+        if eval_type == "timeseries":
+
+            self.splitter = TimeSeriesFoldSplitter(
+                cfg_dict,
+                n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
+            )
+        else:
+            self.splitter = BaseSplitter(
+                cfg_dict,
+                n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
+            )
 
     def preprocess(self):
         """
@@ -107,8 +118,7 @@ class TuningPipeline(BasePipeline):
         print("  RETRAINING WITH BEST HYPERPARAMETERS")
         print(f"{'=' * 60}\n")
 
-        training_pipeline = TrainingPipeline("")
-        training_pipeline.cfg = self.cfg
+        training_pipeline = TrainingPipeline(self.cfg_path)
 
         # This will log the FINAL MODEL (artifacts enabled by default in
         # TrainingPipeline)

@@ -5,16 +5,20 @@ This class handles orchestration only. Heavy computation is delegated
 to FoldRunner to keep functions short and testable.
 """
 
+# import os
 from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
+from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.engines.cv_fold_runner import FoldRunner
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+
+# os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+# os.environ["OMP_NUM_THREADS"] = "1"
 
 
 class CrossValidationPipeline(BasePipeline):
@@ -23,7 +27,7 @@ class CrossValidationPipeline(BasePipeline):
     def __init__(
         self,
         cfg: DictConfig,
-        splitter: TimeSeriesFoldSplitter,
+        splitter: BaseSplitter,
         mlflow_manager: MLflowManager,
     ) -> None:
         """Initialize the cross-validation pipeline.

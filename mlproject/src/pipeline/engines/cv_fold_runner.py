@@ -21,7 +21,7 @@ class FoldRunner:
     def __init__(self, cfg: Any, mlflow_manager: MLflowManager):
         self.cfg = cfg
         self.mlflow_log_all = False
-        self.evaluator = FoldEvaluator()
+        self.evaluator = FoldEvaluator(cfg)
         self.mlflow_manager = mlflow_manager
 
     def _extract_test_data(self, dm) -> Tuple[Any, Any]:

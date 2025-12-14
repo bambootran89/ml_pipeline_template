@@ -1,4 +1,4 @@
-from typing import Any, Tuple, cast
+from typing import Any, Tuple
 
 import torch
 from torch import nn
@@ -59,16 +59,18 @@ class TFTWrapper(DLModelWrapperBase):
         (keys: 'hidden_size', 'num_layers').
     """
 
-    def build(self, input_dim: int, output_dim: int) -> None:
+    def build(self, model_type: str) -> None:
         """
         Build the TFTFallback model with specified input and output dimensions.
 
         Args:
-            input_dim (int): Number of input features.
-            output_dim (int): Number of output features.
+            model_type (str): type of model
         """
+        print(f"building {model_type}")
         hidden = self.cfg.get("hidden_size", 64)
         layers = self.cfg.get("num_layers", 1)
+        input_dim = self.cfg.get("n_features", 4)
+        output_dim = self.cfg.get("output_chunk_length", 6)
 
         self.model = TFTFallback(
             input_dim=input_dim,
@@ -77,8 +79,7 @@ class TFTWrapper(DLModelWrapperBase):
             num_layers=layers,
         )
 
-        self.input_dim = input_dim
-        self.output_dim = output_dim
+        self.model_type = model_type
 
     @staticmethod
     def _ensure_seq_dim(x: torch.Tensor) -> torch.Tensor:
@@ -130,13 +131,6 @@ class TFTWrapper(DLModelWrapperBase):
         Returns:
             float: Training loss for the batch.
         """
-        # Ensure model exists
-        if self.model is None:
-            x, y = batch
-            x = self._ensure_float(x)
-            x = self._ensure_seq_dim(x)
-            self.build(input_dim=x.shape[-1], output_dim=y.shape[-1])
-
         assert self.model is not None  # <-- fix mypy
 
         self.model.train()
@@ -146,14 +140,6 @@ class TFTWrapper(DLModelWrapperBase):
         y = self._ensure_float(y).to(device)
 
         x = self._ensure_seq_dim(x)
-        batch_input_dim = x.shape[-1]
-
-        if not isinstance(self.model, TFTFallback):
-            raise RuntimeError("Model is not TFTFallback")
-
-        if batch_input_dim != cast(TFTFallback, self.model).rnn.input_size:
-            self.build(batch_input_dim, y.shape[-1])
-            assert self.model is not None
 
         preds = self.model(x)
         loss = loss_fn(preds, y)

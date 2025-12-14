@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.splitter import TimeSeriesFoldSplitter
+from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.config_loader import ConfigLoader
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline

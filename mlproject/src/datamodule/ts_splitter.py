@@ -2,8 +2,10 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
+from .base_splitter import BaseSplitter
 
-class TimeSeriesFoldSplitter:
+
+class TimeSeriesFoldSplitter(BaseSplitter):
     """
     Split a time-series DataFrame into contiguous folds while respecting
     model input/output window lengths.
@@ -33,8 +35,8 @@ class TimeSeriesFoldSplitter:
             cfg: Dictionary-like configuration object.
             n_splits: Number of folds to generate.
         """
-        self.cfg = cfg
-        self.df_cfg = cfg.get("data", {})
+        super().__init__(cfg=cfg, n_splits=n_splits)
+
         self.experiment_cfg = cfg.get("experiment", {})
 
         hp_cfg = self.experiment_cfg.get("hyperparams", {})
@@ -42,37 +44,6 @@ class TimeSeriesFoldSplitter:
         self.output_len = int(hp_cfg.get("output_chunk_length", 6))
 
         self.n_splits = int(n_splits)
-
-        self.df: pd.DataFrame | None = None
-        self.n_samples = 0
-
-        self._load_data()
-
-    def _load_data(self) -> pd.DataFrame:
-        """
-        Load the DataFrame from disk, parse datetime index, and sort.
-
-        Returns:
-            The loaded and indexed DataFrame.
-
-        Raises:
-            FileNotFoundError: If the CSV file path is invalid.
-            ValueError: If index column is missing.
-        """
-        path = self.df_cfg.get("path")
-        index_col = self.df_cfg.get("index_col")
-
-        if path is None:
-            raise ValueError("Dataset config missing required field: 'path'.")
-        if index_col is None:
-            raise ValueError("Dataset config missing required field: 'index_col'.")
-
-        df = pd.read_csv(path, parse_dates=[index_col])
-        df = df.set_index(index_col).sort_index()
-
-        self.df = df
-        self.n_samples = len(df)
-        return df
 
     def generate_folds(self) -> List[pd.DataFrame]:
         """
@@ -88,11 +59,12 @@ class TimeSeriesFoldSplitter:
         Raises:
             RuntimeError: If data is not loaded before folding.
         """
-        if self.df is None:
-            raise RuntimeError("Data not loaded. Call `_load_data()` first.")
+
+        df = self._load_data("timeseries")
+        n_samples = len(df)
 
         min_train_size = self.input_len
-        max_train_end = self.n_samples - self.output_len
+        max_train_end = n_samples - self.output_len
 
         if max_train_end <= min_train_size:
             raise ValueError(
@@ -109,12 +81,12 @@ class TimeSeriesFoldSplitter:
             fold_end = min_train_size + step * (i + 1)
 
             # Pylint R1730: use `min(...)`
-            fold_end = min(fold_end, self.n_samples)
+            fold_end = min(fold_end, n_samples)
 
-            fold_df = self.df.iloc[fold_start:fold_end].copy()
+            fold_df = df.iloc[fold_start:fold_end].copy()
             folds.append(fold_df)
 
-            if fold_end == self.n_samples:
+            if fold_end == n_samples:
                 break
 
         return folds

@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from mlproject.src.datamodule.dataset import NumpyWindowDataset
 
 
-class TSBaseDataModule:
+class BaseDataModule:
     """Base class for ML/DL time-series DataModules.
 
     This module handles:
@@ -56,7 +56,13 @@ class TSBaseDataModule:
         self.target_column = target_column
         self.input_chunk = input_chunk
         self.output_chunk = output_chunk
-
+        data_cfg = self.cfg.get("data", {})
+        data_type = data_cfg.get(
+            "type",
+            "tabular",
+        )
+        self.data_type = data_type
+        self.target_cols = data_cfg.get("target_columns", [])
         self.x_train: np.ndarray
         self.y_train: np.ndarray
         self.x_val: np.ndarray
@@ -84,11 +90,16 @@ class TSBaseDataModule:
             {"train": 0.6, "val": 0.2, "test": 0.2},
         )
 
-        x, y = self._create_windows(
-            target_col=self.target_column,
-            input_chunk=self.input_chunk,
-            output_chunk=self.output_chunk,
-        )
+        if self.data_type == "timeseries":
+            x, y = self._create_windows(
+                target_col=self.target_column,
+                input_chunk=self.input_chunk,
+                output_chunk=self.output_chunk,
+            )
+        else:
+
+            y = self.df[self.target_cols].values
+            x = self.df.drop(columns=self.target_cols).values
 
         if len(x) == 0:
             raise ValueError("Windowing produced zero samples. Check input length.")
