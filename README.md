@@ -15,85 +15,37 @@ A robust, modular, and extensible machine learning framework designed for Time-S
 
 ### Core Design Principles
 
-1.  **Training-Serving Skew Prevention**:
-    * **Offline Preprocessing**: Heavy transformations (windowing, scaling) happen during training.
-    * **Online Preprocessing**: Serving utilizes lightweight logic that reuses artifacts (e.g., scalers) saved during training to ensure consistency.
 
-2.  **Configuration-Driven**:
-    * All hyperparameters, model architectures, and data paths are defined in YAML files (Hydra). Code changes are rarely needed to run new experiments.
+#### Unified Artifact Packaging (Training-Serving Skew Prevention)
 
-3.  **Composition over Inheritance**:
-    * Pipelines are composed of independent runners, loggers, and datamodules.
-    * **Factory Pattern** is used extensively (`ModelFactory`, `TrainerFactory`) to decouple implementation from instantiation.
+- **Self-Contained Artifacts**:
+  Instead of storing only the model weights, the system packages both the **Stateful Preprocessor** and the **Model** together inside a single **PyFuncWrapper**. This ensures that preprocessing and model inference are always consistent.
+
+- **Zero Logic Duplication**:
+  The serving environment does not reimplement any data processing logic. It simply **hydrates** the learned state from training, guaranteeing **100% consistency** between training and serving.
+
+
+#### Distributed & Async Architecture
+
+- **Decoupled Microservices**:
+  Using **Ray Serve**, Feature Engineering (CPU-bound) and Model Inference (GPU-bound) are split into independent **Actors**, allowing each to scale independently based on load.
+
+- **Non-blocking I/O**:
+  Heavy computation is handled with **Async/Await** and **ThreadPool**, preventing the API's main event loop from being blocked while executing CPU-intensive tasks.
+
+## Modular & Configuration-Driven
+
+- **Hydra Configs**:
+  All experiment parameters, model architectures, and dataset paths are managed through **YAML** configuration files, enabling reproducibility and flexible experiment management.
+
+- **Factory Pattern**:
+  The training pipeline leverages the **Factory Pattern** (e.g., `ModelFactory`, `TrainerFactory`) to separate **instantiation** from execution logic. This design makes it easy to add new algorithms without modifying core pipeline code.
+
 
 ### System Workflow
 
 #### Training & Tuning Pipeline (Offline Workflow)
 The training pipeline is orchestrated by Hydra and powered by a robust factory pattern. It supports Nested Cross-Validation, Hyperparameter Tuning (Optuna), and automatic artifact logging to MLflow.
-
-```mermaid
-%%{init: {
-  "theme": "base",
-  "flowchart": {"nodeSpacing":50,"rankSpacing":60,"curve":"linear"},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"14px"}
-}}%%
-
-flowchart TD
-    %% --- Styles ---
-    classDef input fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
-    classDef engine fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    classDef logic fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
-    classDef artifact fill:#eceff1,stroke:#37474f,stroke-width:2px,stroke-dasharray:5 5;
-    classDef storage fill:#01579b,stroke:#0277bd,stroke-width:2px,color:#fff;
-
-    %% --- Input Layer ---
-    Config["Hydra Configs"]:::input
-    RawData["Raw Dataset"]:::input
-
-    %% --- Execution Layer ---
-    Splitter["Data Splitter"]:::engine
-    TrainData["Train Set"]:::engine
-    ValData["Validation Set"]:::engine
-    DataProcessor["Preprocessor (Fit & Transform)"]:::logic
-    ModelTrainer["Model Trainer"]:::logic
-
-    %% --- Packaging Layer ---
-    Serializer["Serialize Artifacts"]:::engine
-    Wrapper["PyFunc Wrapper"]:::logic
-
-    %% --- MLflow Layer ---
-    FinalArtifact["MLflow Deployable Artifact"]:::storage
-
-    %% --- Connections ---
-    Config --> Splitter
-    RawData --> Splitter
-    Splitter --> TrainData
-    Splitter --> ValData
-
-    TrainData --> DataProcessor
-    DataProcessor -- "Apply Transform Only" --> ValData
-    DataProcessor --> ModelTrainer
-
-    DataProcessor --> Serializer
-    ModelTrainer --> Serializer
-    Serializer --> Wrapper
-    Wrapper --> FinalArtifact
-
-    %% --- Annotation ---
-    Note1["Ensures Train & Serve use identical logic"] -.-> Wrapper
-
-```
-
-
-Key Highlights:
-
-- Modular Preprocessing: OfflinePreprocessor ensures data consistency before splitting.
-
-- Leakage Prevention: ScalerManager fits only on the training fold and transforms validation data dynamically.
-
-- Factory Pattern: Seamlessly switch between XGBoost, TFT, or NLinear via config model: name.
-#### Inference & Serving Pipeline (Online Workflow)
-The serving layer is designed to be stateless and reproducible. It strictly uses the artifacts (Models & Scalers) generated during the training phase to ensure the Training-Serving Skew is minimized.
 
 ```mermaid
 %%{init: {
@@ -165,6 +117,84 @@ flowchart TD
     %% --- Annotations ---
     Note1["Anti-Leakage: Stats fit ONLY on Train set"]:::note -.-> TransFit
     Note2["Self-Contained Artifact for Inference"]:::note -.-> Wrapper
+```
+
+
+Key Highlights:
+
+- Modular Preprocessing: OfflinePreprocessor ensures data consistency before splitting.
+
+- Leakage Prevention: ScalerManager fits only on the training fold and transforms validation data dynamically.
+
+- Factory Pattern: Seamlessly switch between XGBoost, TFT, or NLinear via config model: name.
+#### Inference & Serving Pipeline (Online Workflow)
+The serving layer is designed to be stateless and reproducible. It strictly uses the artifacts (Models & Scalers) generated during the training phase to ensure the Training-Serving Skew is minimized.
+
+```mermaid
+%%{init: {
+  "theme": "base",
+  "flowchart": {"nodeSpacing":60,"rankSpacing":80,"curve":"basis"},
+  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"14px"}
+}}%%
+
+flowchart TD
+    %% --- Styles ---
+    classDef client fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef gateway fill:#bbdefb,stroke:#1976d2,stroke-width:2px;
+    classDef compute fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
+    classDef storage fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px,stroke-dasharray:5 5;
+    classDef hotpath stroke:#d32f2f,stroke-width:2px;
+    classDef coldpath stroke:#0288d1,stroke-width:2px,stroke-dasharray:5 5;
+    classDef note fill:#fff3e0,stroke:#fb8c00,stroke-width:1px,font-style:italic;
+
+    %% --- Client ---
+    Client(("Client App")):::client
+
+    %% --- Ray Serve Cluster ---
+    subgraph RayCluster ["☁️ Ray Serve Cluster"]
+        direction TB
+
+        %% Ingress Layer
+        subgraph Gateway ["API & Validation Layer"]
+            API["Forecast API"]:::gateway
+            Validator["Schema Validator"]:::gateway
+        end
+
+        %% Compute Layer
+        subgraph Compute ["Distributed Compute Layer"]
+            direction TB
+            subgraph Preprocess ["Preprocessing Service"]
+                PrepActor["Stateful Preprocessor"]:::compute
+                ThreadPool["Async ThreadPool"]:::compute
+                PrepActor <--> ThreadPool
+            end
+
+            subgraph Inference ["Inference Service"]
+                ModelActor["Model Server"]:::compute
+            end
+        end
+    end
+
+    %% --- Artifact Storage ---
+    MLflow["MLflow Artifact Registry"]:::storage
+
+    %% --- Hot Path (Solid Red) ---
+    Client == "1. POST /predict" ==> API:::hotpath
+    API --> Validator:::hotpath
+    Validator -- "2. Validated Data" --> PrepActor:::hotpath
+    PrepActor -- "3. Feature Vectors" --> ModelActor:::hotpath
+    ModelActor -- "4. Raw Prediction" --> API:::hotpath
+    API == "5. JSON Response" ==> Client:::hotpath
+
+    %% --- Cold Path (Dotted Blue) ---
+    MLflow -.-> |"Load Preprocessor"| PrepActor:::coldpath
+    MLflow -.-> |"Load Model Binary"| ModelActor:::coldpath
+    ModelActor -.-> |"Run ID Sync"| PrepActor:::coldpath
+
+    %% --- Annotations ---
+    Note1["Async: Preprocessing does not block Inference"]:::note -.-> PrepActor
+    Note2["Version Consistency: Preprocessor matches Model"]:::note -.-> MLflow
+
 ```
 
 Key Highlights:
