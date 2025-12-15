@@ -33,76 +33,55 @@ The training pipeline is orchestrated by Hydra and powered by a robust factory p
 
 ```mermaid
 %%{init: {
-  "theme": "default",
-  "flowchart": {
-    "nodeSpacing": 60,
-    "rankSpacing": 70
-  },
-  "themeVariables": {
-    "fontFamily": "Inter, Arial",
-    "fontSize": "14px",
-    "primaryTextColor": "#111",
-    "lineColor": "#333"
-  }
+  "theme": "base",
+  "flowchart": {"nodeSpacing":50,"rankSpacing":60,"curve":"linear"},
+  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"14px"}
 }}%%
 
 flowchart TD
-    %% Global Styles
-    classDef config fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
-    classDef data fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
-    classDef core fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    classDef loop fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,stroke-dasharray: 5 5;
-    classDef artifact fill:#eceff1,stroke:#455a64,stroke-width:2px;
+    %% --- Styles ---
+    classDef input fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    classDef engine fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef logic fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px;
+    classDef artifact fill:#eceff1,stroke:#37474f,stroke-width:2px,stroke-dasharray:5 5;
+    classDef storage fill:#01579b,stroke:#0277bd,stroke-width:2px,color:#fff;
 
-    %% Nodes
-    Hydra[("Hydra<br/>Configs")]:::config
-    RawData[("Raw Data<br/>(CSV)")]:::data
-    
-    subgraph DataEngineering ["Data Engineering Layer"]
-        OfflinePrep["Offline<br/>Preprocessor"]:::data
-        CleanData["Cleaned<br/>DataFrame"]:::data
-        FactoryDM["DataModule<br/>Factory"]:::data
-        Splitter["Time Series<br/>Splitter"]:::data
-    end
+    %% --- Input Layer ---
+    Config["Hydra Configs"]:::input
+    RawData["Raw Dataset"]:::input
 
-    subgraph TrainingLoop ["Training & Tuning Core"]
-        Optuna{{"Optuna<br/>(Tuning)"}}:::core
-        CVRun["CV Fold<br/>Runner"]:::loop
-        
-        subgraph FoldExecution ["Inside Each Fold"]
-            Scaler["Scaler Manager<br/>(Fit / Transform)"]:::core
-            ModelFac["Model<br/>Factory"]:::core
-            Trainer["Base Trainer<br/>(ML / DL)"]:::core
-            Evaluator["Fold<br/>Evaluator"]:::core
-        end
-    end
+    %% --- Execution Layer ---
+    Splitter["Data Splitter"]:::engine
+    TrainData["Train Set"]:::engine
+    ValData["Validation Set"]:::engine
+    DataProcessor["Preprocessor (Fit & Transform)"]:::logic
+    ModelTrainer["Model Trainer"]:::logic
 
-    subgraph ArtifactStore ["MLOps Storage Layer"]
-        MLflow["MLflow<br/>Tracking Server"]:::artifact
-        Artifacts[("Artifacts<br/>• Model.pkl<br/>• Scaler.joblib<br/>• Config.yaml")]:::artifact
-    end
+    %% --- Packaging Layer ---
+    Serializer["Serialize Artifacts"]:::engine
+    Wrapper["PyFunc Wrapper"]:::logic
 
-    %% Flow
-    Hydra --> OfflinePrep
-    Hydra --> ModelFac
-    RawData --> OfflinePrep
-    OfflinePrep --> CleanData
-    CleanData --> FactoryDM
-    FactoryDM --> Splitter
-    
-    Splitter -- "Train / Val Indices" --> CVRun
-    Optuna -.->|"Suggest<br/>Params"| CVRun
-    
-    CVRun --> Scaler
-    Scaler --> ModelFac
-    ModelFac --> Trainer
-    Trainer --> Evaluator
-    
-    Trainer -- "Log Metrics<br/>Model" --> MLflow
-    Evaluator -- "Log Scores" --> MLflow
-    Scaler -- "Save Scaler" --> MLflow
-    
-    MLflow --> Artifacts
+    %% --- MLflow Layer ---
+    FinalArtifact["MLflow Deployable Artifact"]:::storage
+
+    %% --- Connections ---
+    Config --> Splitter
+    RawData --> Splitter
+    Splitter --> TrainData
+    Splitter --> ValData
+
+    TrainData --> DataProcessor
+    DataProcessor -- "Apply Transform Only" --> ValData
+    DataProcessor --> ModelTrainer
+
+    DataProcessor --> Serializer
+    ModelTrainer --> Serializer
+    Serializer --> Wrapper
+    Wrapper --> FinalArtifact
+
+    %% --- Annotation ---
+    Note1["Ensures Train & Serve use identical logic"] -.-> Wrapper
+
 ```
 
 
@@ -118,61 +97,74 @@ The serving layer is designed to be stateless and reproducible. It strictly uses
 
 ```mermaid
 %%{init: {
-  "theme": "neutral",
-  "flowchart": {
-    "curve": "linear",
-    "nodeSpacing": 50,
-    "rankSpacing": 70
-  },
-  "themeVariables": {
-    "fontSize": "14px",
-    "fontFamily": "Inter, Arial, sans-serif",
-    "primaryTextColor": "#111"
-  }
+  "theme": "base",
+  "flowchart": {"nodeSpacing":60,"rankSpacing":80,"curve":"basis"},
+  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"14px"}
 }}%%
+
 flowchart TD
-    %% Global Styles
-    classDef client fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,color:#111;
-    classDef gateway fill:#e1f5fe,stroke:#0277bd,stroke-width:2px,color:#111;
-    classDef service fill:#e0f2f1,stroke:#00695c,stroke-width:2px,color:#111;
-    classDef registry fill:#f3e5f5,stroke:#8e24aa,stroke-width:2px,color:#111;
-    classDef logic fill:#ffebee,stroke:#c62828,stroke-width:2px,color:#111;
+    %% --- Styles ---
+    classDef input fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef orchestrator fill:#bbdefb,stroke:#1976d2,stroke-width:2px;
+    classDef compute fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
+    classDef package fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px;
+    classDef storage fill:#37474f,stroke:#263238,stroke-width:2px,color:#fff;
+    classDef hotpath stroke:#d32f2f,stroke-width:2px;
+    classDef parampath stroke:#0288d1,stroke-width:2px,stroke-dasharray:5 5;
+    classDef note fill:#fff3e0,stroke:#fb8c00,stroke-width:1px,font-style:italic;
 
-    %% Nodes
-    User(("Client<br/>API Request")):::client
-    
-    subgraph Gateway ["API Gateway"]
-        FastAPI["FastAPI<br/>Ray Serve"]:::gateway
-        Validator["Pydantic<br/>Schema Validation"]:::gateway
+    %% --- Input Layer ---
+    subgraph InputLayer ["1. Configuration & Data Ingestion"]
+        Config["Hydra Config"]:::input
+        Dataset["Raw Time Series Data"]:::input
     end
 
-    subgraph ServiceLayer ["Models Service Logic"]
-        Loader["Registry<br/>Manager"]:::service
-        OnlinePrep["Online<br/>Preprocessor"]:::logic
-        Inference["Model Inference<br/>(Predict)"]:::logic
-        PostProcess["Post<br/>Processing"]:::logic
+    %% --- Orchestration Layer ---
+    subgraph Orchestrator ["2. Experiment Orchestration"]
+        CVManager["CV Manager"]:::orchestrator
+        Optuna["Hyperparam Tuner"]:::orchestrator
     end
 
-    subgraph ModelRegistry ["Model Registry<br/>(MLflow)"]
-        LoadedModel["Production<br/>Model"]:::registry
-        LoadedScaler["Fitted<br/>Scaler"]:::registry
+    %% --- Compute Layer ---
+    subgraph ComputeLayer ["3. Training Execution Context (Per Fold)"]
+        direction TB
+        subgraph DataOps ["Feature Engineering"]
+            TransFit["Preprocessor Fit & Transform Train"]:::compute
+            TransApply["Preprocessor Transform Validation"]:::compute
+        end
+        subgraph ModelOps ["Model Training"]
+            Trainer["Trainer (Fit Model)"]:::compute
+        end
     end
 
-    %% Flow
-    User -- "POST /predict" --> FastAPI
-    FastAPI --> Validator
-    
-    Validator --> OnlinePrep
-    Loader -.->|"Load"| LoadedModel
-    Loader -.->|"Load"| LoadedScaler
-    
-    LoadedScaler --> OnlinePrep
-    OnlinePrep --> Inference
-    LoadedModel --> Inference
-    
-    Inference --> PostProcess
-    PostProcess --> FastAPI
-    FastAPI --> User
+    %% --- Packaging Layer ---
+    subgraph Packaging ["4. Model Packaging & Serialization"]
+        Serializer["Serialize Artifacts"]:::package
+        Wrapper["PyFunc Wrapper (Model + Preprocessor)"]:::package
+    end
+
+    %% --- Storage Layer ---
+    MLflow["MLflow Registry"]:::storage
+
+    %% --- Hot Path Connections (Solid Red) ---
+    Config & Dataset ==> CVManager:::hotpath
+    CVManager -- "Train/Val Indices" --> TransFit:::hotpath
+    TransFit -- "Learned Stats" --> TransApply:::hotpath
+    TransFit -- "Train Features" --> Trainer:::hotpath
+    TransApply -- "Val Features" --> Trainer:::hotpath
+
+    %% Packaging Flow (Hot Path)
+    TransFit -- "Serialize Preprocessor" --> Serializer:::hotpath
+    Trainer -- "Serialize Model" --> Serializer:::hotpath
+    Serializer -- "Bundle Artifacts" --> Wrapper:::hotpath
+    Wrapper -- "Log Model Context" --> MLflow:::hotpath
+
+    %% Parameter / Suggestion Flow (Dashed Blue)
+    Optuna -.-> |"Suggest Params"| Trainer:::parampath
+
+    %% --- Annotations ---
+    Note1["Anti-Leakage: Stats fit ONLY on Train set"]:::note -.-> TransFit
+    Note2["Self-Contained Artifact for Inference"]:::note -.-> Wrapper
 ```
 
 Key Highlights:
@@ -193,24 +185,27 @@ ml_pipeline_template/
 ├── mlproject/
 │   ├── configs/               # Hydra Configurations (The "Control Center")
 │   │   ├── base/              # Base configs (model, data, training...)
-│   │   └── experiments/       # Specific experiment overrides (e.g., etth3.yaml)
+│   │   └── experiments/       # Specific experiment overrides (e.g., etth1.yaml)
 │   ├── data/                  # Raw data storage (git-ignored in prod)
 │   ├── serve/                 # Serving Logic
-│   │   ├── ray/               # Ray Serve deployment scripts
-│   │   ├── api.py             # FastAPI entrypoint
+│   │   ├── ray/               # Ray Serve deployment scripts (ray_deploy.py)
+│   │   ├── api.py             # FastAPI entrypoint (Local/Docker basic serving)
+│   │   ├── models_service.py  # Model loading & inference logic independent of API
 │   │   └── schemas.py         # Pydantic schemas for API validation
 │   ├── src/
 │   │   ├── datamodule/        # Data loading, splitting, and dataset classes
 │   │   ├── eval/              # Evaluation metrics & strategies
 │   │   ├── models/            # Model definitions (XGBoost, NLinear, TFT...)
-│   │   ├── pipeline/          # Orchestrators (Train, Tune, Serve pipelines)
+│   │   ├── pipeline/          # Orchestrators (Train, Eval, Serve pipelines)
+│   │   │   └── engines/       # Execution engines (CV Fold Runner, Tuning Pipeline)
 │   │   ├── preprocess/        # Offline & Online data cleaning/scaling
-│   │   ├── tracking/          # MLflow & Experiment management wrappers
-│   │   ├── trainer/           # Training loops & logic (ML vs DL differentiation)
-│   │   ├── tuning/            # Optuna hyperparameter tuning
-│   │   └── utils/             # Helper functions (Shape, Factory patterns)
+│   │   ├── tracking/          # MLflow wrappers (Experiment, Run, Registry, PyFunc)
+│   │   ├── trainer/           # Training loops (ML vs DL differentiation)
+│   │   ├── tuning/            # Optuna hyperparameter tuning logic
+│   │   └── utils/             # Helper functions (ConfigLoader, MLflowUtils...)
+│   ├── run.py                 # Main CLI entrypoint (Training/Prediction)
 │   └── __init__.py
-├── tests/                     # Unit & Integration Tests
+├── tests/                     # Unit & Integration Tests (End2End, Ray, Pipeline...)
 ├── Dockerfile                 # Multi-stage Docker build
 ├── Makefile                   # Handy commands for dev & ops
 ├── requirements.txt           # Python dependencies
@@ -289,7 +284,7 @@ class CatBoostWrapper(MLModelWrapper):
         # Load params from hydra config
         iterations = self.cfg.get("iterations", 1000)
         learning_rate = self.cfg.get("learning_rate", 0.05)
-        
+
         self.model = CatBoostRegressor(
             iterations=iterations,
             learning_rate=learning_rate,
@@ -299,9 +294,9 @@ class CatBoostWrapper(MLModelWrapper):
 
     def fit(self, x, y, x_val=None, y_val=None, **kwargs):
         # Handle shape flattening if necessary (Time Series -> Tabular)
-        x_flat = x.reshape(x.shape[0], -1) 
+        x_flat = x.reshape(x.shape[0], -1)
         eval_set = (x_val.reshape(x_val.shape[0], -1), y_val) if x_val is not None else None
-        
+
         self.model.fit(x_flat, y, eval_set=eval_set, early_stopping_rounds=50)
 
     def predict(self, x):
@@ -333,7 +328,7 @@ Add a new config file: mlproject/configs/experiments/catboost_etth1.yaml.
 ```yaml
 # @package _global_
 defaults:
-  - override /base/model: null 
+  - override /base/model: null
 
 model:
   name: "catboost"  # Matches the key in Factory
@@ -344,7 +339,7 @@ model:
 ```
 
 Run it:
-```bash 
+```bash
 python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/catboost_etth1.yaml
 ```
 ## Hyperparameter Tuning Guide
@@ -369,7 +364,7 @@ def get_search_space(trial, model_name):
 2. Create Tuning Config
 Create a tuning configuration file, e.g., mlproject/configs/experiments/etth3_tuning.yaml.
 
-```yaml 
+```yaml
 # @package _global_
 defaults:
   - override /base/tuning: tuning  # Load base tuning settings
