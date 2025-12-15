@@ -24,6 +24,7 @@ from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.pipeline.engines.tuning_pipeline import TuningPipeline
+
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
@@ -79,7 +80,6 @@ def run_cross_validation(cfg_path: str) -> None:
     splitter: BaseSplitter
     eval_type = cfg.get("data", {}).get("type", "timeseries")
     if eval_type == "timeseries":
-
         splitter = cast(
             BaseSplitter,
             TimeSeriesFoldSplitter(

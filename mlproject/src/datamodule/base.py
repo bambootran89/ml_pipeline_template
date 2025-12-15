@@ -97,9 +97,11 @@ class BaseDataModule:
                 output_chunk=self.output_chunk,
             )
         else:
-
-            y = self.df[self.target_cols].values
-            x = self.df.drop(columns=self.target_cols).values
+            df_shuffled = self.df.sample(frac=1.0, random_state=42).reset_index(
+                drop=True
+            )
+            y = df_shuffled[self.target_cols].values
+            x = df_shuffled.drop(columns=self.target_cols).values
 
         if len(x) == 0:
             raise ValueError("Windowing produced zero samples. Check input length.")

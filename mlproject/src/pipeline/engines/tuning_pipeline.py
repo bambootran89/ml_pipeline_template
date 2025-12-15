@@ -49,7 +49,6 @@ class TuningPipeline(BasePipeline):
         self.splitter: BaseSplitter
         eval_type = self.cfg.get("data", {}).get("type", "timeseries")
         if eval_type == "timeseries":
-
             self.splitter = TimeSeriesFoldSplitter(
                 cfg_dict,
                 n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),

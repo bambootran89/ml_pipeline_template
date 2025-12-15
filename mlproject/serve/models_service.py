@@ -3,7 +3,7 @@
 Contains ModelsService which loads a model and runs inference.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -11,7 +11,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from mlproject.serve.schemas import PredictRequest
 from mlproject.src.models.model_factory import ModelFactory
-from mlproject.src.preprocess.online import OnlinePreprocessor
+from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.mlflow_utils import (
@@ -25,14 +25,24 @@ class ModelsService:
     Unified service for loading models and serving predictions.
     """
 
-    def __init__(self, cfg_path: str = ""):
-        """Initialize service using a config path."""
-        self.cfg = ConfigLoader.load(cfg_path)
-        self.model = None
-        self.mlflow_manager = MLflowManager(self.cfg)
+    model: Optional[Any]
+    preprocessor_model: Optional[Any]
+    local_transform_manager: Optional[TransformManager]
 
-        # Load model on initialization
-        self.preprocessor = OnlinePreprocessor(self.cfg)
+    def __init__(self, cfg_path: str = "") -> None:
+        """
+        Initialize service using a config path.
+
+        Parameters
+        ----------
+        cfg_path : str
+            Path to the configuration YAML/JSON file.
+        """
+        self.cfg: DictConfig = ConfigLoader.load(cfg_path)
+        self.model = None
+        self.preprocessor_model = None
+        self.local_transform_manager = None
+        self.mlflow_manager = MLflowManager(self.cfg)
         self.load_model()
 
     def load_model(self) -> None:
@@ -74,7 +84,16 @@ class ModelsService:
             hp,
             self.cfg.training.artifacts_dir,
         )
-        self.preprocessor.update_config(self.cfg)
+
+        print("[Service] Loading Local TransformManager...")
+        self.local_transform_manager = TransformManager(
+            artifacts_dir=self.cfg.training.artifacts_dir
+        )
+        if self.local_transform_manager is not None:
+            try:
+                self.local_transform_manager.load(self.cfg)
+            except FileNotFoundError:
+                print("[Service] Warning: Local preprocessing artifacts not found.")
 
     def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
         """Build model input window from preprocessed DataFrame."""
@@ -112,14 +131,28 @@ class ModelsService:
         """
         if self.preprocessor_model is not None:
             print("[Preprocess] Using MLflow PyFunc preprocessor.")
-            transformed: pd.DataFrame = self.preprocessor_model.predict(data)
-            return transformed
+            return self.preprocessor_model.predict(data)
 
-        print("[Preprocess] Using local preprocessor fallback.")
-        return self.preprocessor.transform(data)
+        if self.local_transform_manager is not None:
+            print("[Preprocess] Using local preprocessor fallback.")
+            return self.local_transform_manager.transform(data)
+
+        raise RuntimeError("No preprocessing pipeline available.")
 
     def predict(self, request: PredictRequest) -> Dict[str, Any]:
-        """Run full prediction pipeline and return JSON-serializable dict."""
+        """
+        Run full prediction pipeline and return JSON-serializable dict.
+
+        Parameters
+        ----------
+        request : PredictRequest
+            Input request containing raw data.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary with key 'prediction' containing list of predictions.
+        """
         if self.model is None:
             raise RuntimeError("Model is not loaded.")
 
@@ -132,4 +165,4 @@ class ModelsService:
 
         except Exception as e:
             print(f"[ModelsService] Error during prediction: {e}")
-            raise e
+            raise

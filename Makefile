@@ -29,8 +29,6 @@ test:
 	CUDA_VISIBLE_DEVICES=""  ${PYTHON} -m pytest -v -s --durations=0 --disable-warnings ${TEST_FOLDER}/
 	${PYTHON} -m pylint ./${MAIN_FOLDER}/
 
-
-
 docker-build:
 	docker build -t $(IMAGE_NAME):$(TAG) .
 

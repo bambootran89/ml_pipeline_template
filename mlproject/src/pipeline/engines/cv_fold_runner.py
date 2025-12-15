@@ -64,9 +64,11 @@ class FoldRunner:
             Preprocessed dataframe.
         """
         preprocessor = OfflinePreprocessor(
-            is_train=True, cfg=self.cfg, mlflow_manager=self.mlflow_manager
+            is_train=True,
+            cfg=self.cfg,
         )
-        df_processed = preprocessor.run(df_fold)
+        preprocessor.fit_manager(df_fold)
+        df_processed = preprocessor.transform_full_dataset(df_fold)
         return df_processed, preprocessor
 
     def _build_components(

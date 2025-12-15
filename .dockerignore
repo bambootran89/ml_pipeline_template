@@ -1,0 +1,27 @@
+# .dockerignore
+
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Local virtual environments
+env/
+venv/
+mlproject_env/
+
+# Git metadata
+.git
+.github
+
+# Caches
+.pytest_cache
+.mypy_cache
+
+# MLflow runs directory
+mlruns/
+
+# Data should be mounted from an external volume,
+# not included in the image (except for small samples)
+# mlproject/data/

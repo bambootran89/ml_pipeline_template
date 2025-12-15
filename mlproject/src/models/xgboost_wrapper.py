@@ -14,7 +14,6 @@ class XGBWrapper(MLModelWrapper):
     """
 
     def build(self, model_type: str) -> None:
-
         args = self.cfg.get("args", {})
         if len(model_type) == 0:
             model_type = self.cfg.get("type", "regression")

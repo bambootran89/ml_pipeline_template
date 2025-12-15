@@ -129,12 +129,14 @@ class EvalPipeline(BasePipeline):
         pd.DataFrame
             Transformed features.
         """
+
         if self.preprocessor_model is not None:
             print("[EvalPipeline] Using MLflow preprocessing model")
             return self.preprocessor_model.predict(df)
-
-        print("[EvalPipeline] Using local preprocessing fallback")
-        return self.preprocessor.engine.offline_transform(df)
+        else:
+            print("[EvalPipeline] Using local preprocessing fallback")
+            self.preprocessor.transform_manager.load(self.cfg)
+            return self.preprocessor.transform_manager.transform(df)
 
     def _attach_targets_if_needed(
         self, df_raw: pd.DataFrame, fea_df: pd.DataFrame

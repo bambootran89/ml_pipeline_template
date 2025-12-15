@@ -35,9 +35,7 @@ class TrainingPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
         self.mlflow_manager = MLflowManager(self.cfg)
-        self.preprocessor = OfflinePreprocessor(
-            is_train=True, cfg=self.cfg, mlflow_manager=self.mlflow_manager
-        )
+        self.preprocessor = OfflinePreprocessor(is_train=True, cfg=self.cfg)
         self.evaluator: BaseEvaluator
         eval_type = self.cfg.get("evaluation", {}).get("type", "regression")
         if eval_type == "classification":
@@ -205,11 +203,9 @@ class TrainingPipeline(BasePipeline):
         )
 
         with self.mlflow_manager.start_run(run_name=run_name):
-            self.preprocessor.log_artifacts_to_mlflow()
-
-            transform_manager: Optional[TransformManager] = (
-                self.preprocessor.transform_manager
-            )
+            transform_manager: Optional[
+                TransformManager
+            ] = self.preprocessor.transform_manager
 
             active_run = mlflow.active_run()
             if active_run is None:

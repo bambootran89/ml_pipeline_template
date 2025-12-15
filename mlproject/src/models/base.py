@@ -144,7 +144,6 @@ class MLModelWrapper(BaseModelWrapper):
     ):
         """Train model with sklearn-style estimator."""
         if self.model is None:
-
             self.build(model_type=self.model_type)
 
         self.ensure_built()

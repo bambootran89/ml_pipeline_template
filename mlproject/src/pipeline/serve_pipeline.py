@@ -15,7 +15,7 @@ import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.preprocess.online import OnlinePreprocessor
+from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.mlflow_utils import (
@@ -42,7 +42,7 @@ class TestPipeline(BasePipeline):
         super().__init__(self.cfg)
 
         self.mlflow_manager = MLflowManager(self.cfg)
-        self.local_preprocessor = OnlinePreprocessor(self.cfg)
+        self.preprocessor = OfflinePreprocessor(is_train=False, cfg=self.cfg)
 
         self.model: Any = None
         self.preprocessor_model: Any | None = None
@@ -104,8 +104,9 @@ class TestPipeline(BasePipeline):
         """
         if self.preprocessor_model is not None:
             return self.preprocessor_model.predict(data)
-
-        return self.local_preprocessor.transform(data)
+        else:
+            self.preprocessor.transform_manager.load(cfg=self.cfg)
+            return self.preprocessor.transform_manager.transform(data)
 
     def _prepare_input_window(
         self, df: pd.DataFrame, input_chunk_length: int

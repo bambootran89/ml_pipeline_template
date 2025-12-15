@@ -62,7 +62,6 @@ def main() -> None:
 
     eval_type = cfg.get("data", {}).get("type", "timeseries")
     if eval_type == "timeseries":
-
         splitter = TimeSeriesFoldSplitter(
             cfg_dict,  # <-- FIX: mypy now recognizes correct type
             n_splits=args.n_splits,

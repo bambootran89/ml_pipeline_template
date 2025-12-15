@@ -1,14 +1,8 @@
-"""
-Ray Serve deployment for time-series forecasting.
-
-Run:
-    python mlproject/serve/ray/ray_deploy.py
-"""
+from __future__ import annotations
 
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-import mlflow
 import numpy as np
 import pandas as pd
 import ray
@@ -18,199 +12,353 @@ from ray import serve
 
 from mlproject.serve.schemas import PredictRequest
 from mlproject.src.models.model_factory import ModelFactory
-from mlproject.src.preprocess.online import OnlinePreprocessor
+from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.mlflow_utils import (
+    load_companion_preprocessor_from_model,
+    load_model_from_registry_safe,
+)
 
 ARTIFACTS_DIR = os.path.join("mlproject", "artifacts", "models")
 CONFIG_PATH = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
 
-app = FastAPI(title="mlproject Ray Serve Forecast API")
+app = FastAPI(title="mlproject Ray Serve Inference API")
 
 
-@serve.deployment  # type: ignore
+@serve.deployment
 class PreprocessingService:
-    """Ray deployment for preprocessing input data."""
+    """
+    Ray Serve deployment for input preprocessing.
 
-    def __init__(self):
-        """Initialize preprocessing service with config."""
+    Attributes
+    ----------
+    cfg : DictConfig
+        Experiment configuration.
+    mlflow_manager : MLflowManager
+        MLflow manager instance.
+    preprocessor : Optional[Any]
+        Either a PyFunc preprocessor or TransformManager.
+    initialized : bool
+        Indicates whether preprocessing artifacts are loaded.
+    """
+
+    cfg: DictConfig
+    mlflow_manager: MLflowManager
+    preprocessor: Optional[Any]
+    initialized: bool
+
+    def __init__(self) -> None:
+        """Initialize PreprocessingService and MLflow manager."""
         self.cfg = ConfigLoader.load(CONFIG_PATH)
-        self.preprocessor = OnlinePreprocessor(self.cfg)
-        self.preprocessor.update_config(self.cfg)
+        self.mlflow_manager = MLflowManager(self.cfg)
+        self.preprocessor = None
+        self.initialized = False
 
-    def preprocess(self, data_dict: Dict) -> pd.DataFrame:
+    async def _lazy_initialize(self, model_handle: Any) -> None:
         """
-        Preprocess raw input dictionary into a transformed DataFrame.
+        Lazily initialize preprocessing artifacts.
 
-        Args:
-            data_dict: Raw input data {"feature": [values...]}
+        Priority:
+        1. MLflow companion preprocessor (if available)
+        2. Local TransformManager fallback
 
-        Returns:
-            pd.DataFrame: Preprocessed features
+        Parameters
+        ----------
+        model_handle : Any
+            Ray actor handle to ModelService.
         """
-        df = pd.DataFrame(data_dict)
+        if self.initialized:
+            return
+
+        model = await model_handle.get_model.remote()  # type: ignore[attr-defined]
+
+        if self.mlflow_manager.enabled and model is not None:
+            try:
+                self.preprocessor = load_companion_preprocessor_from_model(model)
+                self.initialized = True
+                return
+            except Exception as exc:
+                print(
+                    f"[PreprocessingService] Companion preprocessor load failed: {exc}"
+                )
+
+        # Load local TransformManager
+        self.preprocessor = TransformManager(
+            artifacts_dir=self.cfg.training.artifacts_dir,
+        )
+        self.preprocessor.load(cfg=self.cfg)
+        self.initialized = True
+
+    async def preprocess(
+        self, data: Dict[str, List[Any]], model_handle: Any
+    ) -> pd.DataFrame:
+        """
+        Transform raw input payload into feature DataFrame.
+
+        Parameters
+        ----------
+        data : Dict[str, List[Any]]
+            Raw input payload from HTTP request.
+        model_handle : Any
+            Ray actor handle to ModelService.
+
+        Returns
+        -------
+        pd.DataFrame
+            Transformed feature DataFrame.
+        """
+        await self._lazy_initialize(model_handle)
+
+        df = pd.DataFrame(data)
         if "date" in df.columns:
             df = df.set_index("date")
+        assert self.preprocessor is not None
         return self.preprocessor.transform(df)
 
 
-@serve.deployment  # type: ignore
+@serve.deployment
 class ModelService:
-    """Ray deployment for model inference."""
+    """
+    Ray Serve deployment for model inference.
 
-    def __init__(self):
-        """Initialize model service and load the trained model."""
+    Attributes
+    ----------
+    cfg : DictConfig
+        Experiment configuration.
+    mlflow_manager : MLflowManager
+        MLflow manager instance.
+    model : Optional[Any]
+        Loaded model instance.
+    model_loaded : bool
+        Indicates if the model is loaded.
+    run_id : Optional[str]
+        MLflow run ID if loaded from MLflow.
+    input_chunk_length : int
+        Number of time steps for model input.
+    """
+
+    cfg: DictConfig
+    mlflow_manager: MLflowManager
+    model: Optional[Any]
+    model_loaded: bool
+    run_id: Optional[str]
+    input_chunk_length: int
+
+    def __init__(self) -> None:
+        """Initialize ModelService, load MLflow manager and model."""
         self.cfg = ConfigLoader.load(CONFIG_PATH)
         self.mlflow_manager = MLflowManager(self.cfg)
         self.model = None
         self.model_loaded = False
+        self.run_id = None
+        self.input_chunk_length = self._load_input_chunk_length()
+        self._load_model()
 
+    def _load_input_chunk_length(self) -> int:
+        """
+        Load input_chunk_length from experiment config.
+
+        Returns
+        -------
+        int
+            Number of input time steps.
+        """
+        if hasattr(self.cfg, "experiment") and hasattr(
+            self.cfg.experiment, "hyperparams"
+        ):
+            return int(self.cfg.experiment.hyperparams.get("input_chunk_length", 24))
+        return 24
+
+    def _load_model(self) -> None:
+        """Load model from MLflow or fallback to local artifacts."""
         if self.mlflow_manager.enabled:
-            try:
-                registry_conf = self.cfg.get("mlflow", {}).get("registry", {})
-                model_name = registry_conf.get("model_name", "ts_forecast_model")
-                version = "latest"
-                model_uri = f"models:/{model_name}/{version}"
-                print(f"[ModelService] Loading MLflow model: {model_uri}")
-                self.model = mlflow.pyfunc.load_model(model_uri)
-                self.model_loaded = True
-            except Exception as e:
-                print(
-                    f"[ModelService] Warning: \
-                          Could not load MLflow model ({e}). \
-                              Falling back to local artifacts."
-                )
-
+            self._try_load_mlflow_model()
         if not self.model_loaded:
-            approach = self.cfg.approaches[0]
-            name = approach["model"].lower()
-            hp = approach.get("hyperparams", {})
-            if isinstance(hp, DictConfig):
-                hp = OmegaConf.to_container(hp, resolve=True)
-            self.model = ModelFactory.load(name, hp, ARTIFACTS_DIR)
-            self.model_loaded = True
+            self._load_local_model()
 
-        experiment = self.cfg.experiment
-        self.input_chunk_length = experiment.get("hyperparams", {}).get(
-            "input_chunk_length", 24
+    def _try_load_mlflow_model(self) -> None:
+        """Attempt loading model from MLflow registry."""
+        result = load_model_from_registry_safe(
+            self.cfg, default_model_name="ts_forecast_model"
         )
+        if result is None:
+            return
+        self.model = result.model
+        self.run_id = result.run_id
+        self.model_loaded = True
 
-    def predict(self, x_input: np.ndarray) -> List[float]:
+    def _load_local_model(self) -> None:
+        """Load model from local artifacts directory."""
+        approach = self.cfg.approaches[0]
+        name = approach["model"].lower()
+        hyperparams = approach.get("hyperparams", {})
+        if isinstance(hyperparams, DictConfig):
+            hyperparams = OmegaConf.to_container(hyperparams, resolve=True)
+        self.model = ModelFactory.load(name, hyperparams, ARTIFACTS_DIR)
+        self.model_loaded = True
+
+    def prepare_input(self, df: pd.DataFrame) -> np.ndarray:
         """
-        Make predictions from input window.
+        Prepare model input from preprocessed DataFrame.
 
-        Args:
-            x_input: Input array [1, seq_len, n_features]
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Preprocessed feature DataFrame.
 
-        Returns:
-            List[float]: Predicted values
+        Returns
+        -------
+        np.ndarray
+            2D array with shape (1, input_chunk_length, n_features).
         """
+        if self.model is None:
+            raise RuntimeError("Model not loaded")
+        if len(df) < self.input_chunk_length:
+            raise ValueError(
+                f"Need at least {self.input_chunk_length} rows, got {len(df)}"
+            )
+        return df.values[-self.input_chunk_length :][np.newaxis, :]
+
+    def predict_prepared(self, x_input: np.ndarray) -> List[float]:
+        """
+        Run prediction on prepared input array.
+
+        Parameters
+        ----------
+        x_input : np.ndarray
+            Prepared input array.
+
+        Returns
+        -------
+        List[float]
+            Flattened prediction results.
+        """
+        if self.model is None or not hasattr(self.model, "predict"):
+            raise RuntimeError("Model not loaded or has no predict method")
         preds = self.model.predict(x_input)
-        return preds.flatten().tolist()
+        return np.asarray(preds).flatten().tolist()
 
     def is_loaded(self) -> bool:
-        """Check if the model has been loaded successfully."""
+        """Return whether the model is loaded."""
         return self.model_loaded
 
+    def get_run_id(self) -> Optional[str]:
+        """Return MLflow run ID."""
+        return self.run_id
 
-@serve.deployment  # type: ignore
-@serve.ingress(app)  # type: ignore
+    def get_model(self) -> Optional[Any]:
+        """Return underlying model instance."""
+        return self.model
+
+
+@serve.deployment
+@serve.ingress(app)
 class ForecastAPI:
-    """Main API deployment handling HTTP requests."""
+    """
+    Ray Serve HTTP API for model-agnostic inference.
 
-    def __init__(self, preprocess_handle: Any, model_handle: Any):
+    Attributes
+    ----------
+    preprocess_handle : Any
+        Ray actor handle for PreprocessingService.
+    model_handle : Any
+        Ray actor handle for ModelService.
+    """
+
+    preprocess_handle: Any
+    model_handle: Any
+
+    def __init__(self, preprocess_handle: Any, model_handle: Any) -> None:
         """
-        Initialize API with service handles.
+        Initialize ForecastAPI with preprocessing and model handles.
 
-        Args:
-            preprocess_handle: Handle to PreprocessingService
-            model_handle: Handle to ModelService
+        Parameters
+        ----------
+        preprocess_handle : Any
+            Preprocessing Ray actor handle.
+        model_handle : Any
+            Model Ray actor handle.
         """
         self.preprocess_handle = preprocess_handle
         self.model_handle = model_handle
 
     @app.post("/predict")
-    async def predict(self, req: PredictRequest):
+    async def predict(self, req: PredictRequest) -> Dict[str, List[float]]:
         """
-        Prediction endpoint.
+        Run model prediction for input payload.
 
-        Args:
-            req: PredictRequest containing input data
+        Parameters
+        ----------
+        req : PredictRequest
+            FastAPI request payload containing data.
 
-        Returns:
-            dict: {"prediction": [values...]}
-
-        Raises:
-            HTTPException: 400 if input is invalid, 500 if prediction fails
+        Returns
+        -------
+        Dict[str, List[float]]
+            Dictionary with prediction results.
         """
         try:
-            # Step 1: Preprocess input
-            df_transformed = await self.preprocess_handle.preprocess.remote(req.data)
-
-            # Step 2: Check input length
-            input_chunk_length = self.model_handle.input_chunk_length
-            if len(df_transformed) < input_chunk_length:
-                raise ValueError(
-                    f"Input data has {len(df_transformed)} rows, \
-                        need at least {input_chunk_length}"
-                )
-
-            # Step 3: Prepare input window
-            x_input = df_transformed.iloc[-input_chunk_length:].values[np.newaxis, :]
-
-            # Step 4: Run prediction
-            preds = await self.model_handle.predict.remote(x_input)
+            # Call .remote() on Ray handles
+            df: pd.DataFrame = await self.preprocess_handle.preprocess.remote(
+                # type: ignore[attr-defined]
+                req.data,
+                self.model_handle,
+            )
+            # type: ignore[attr-defined]
+            x_input = await self.model_handle.prepare_input.remote(df)
+            # type: ignore[attr-defined]
+            preds = await self.model_handle.predict_prepared.remote(x_input)
             return {"prediction": preds}
-
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        except Exception as e:
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
             raise HTTPException(
-                status_code=500, detail=f"Prediction failed: {e}"
-            ) from e
+                status_code=500, detail=f"Prediction failed: {exc}"
+            ) from exc
 
     @app.get("/health")
-    async def health_check(self):
+    async def health(self) -> Dict[str, bool]:
         """
         Health check endpoint.
 
-        Returns:
-            dict: {"status": "ok", "model_loaded": bool}
+        Returns
+        -------
+        Dict[str, bool]
+            Dictionary indicating API and model status.
         """
         try:
-            model_loaded = await self.model_handle.is_loaded.remote()
+            # type: ignore[attr-defined]
+            loaded = await self.model_handle.is_loaded.remote()
         except Exception:
-            model_loaded = False
-        return {"status": "ok", "model_loaded": model_loaded}
+            loaded = False
+        return {"status": True, "model_loaded": loaded}
 
 
-def main():
+def main() -> None:
     """
-    Main entry point to deploy the Ray Serve application.
+    Start Ray Serve application.
 
-    Steps:
-        1. Initialize Ray
-        2. Start Ray Serve
-        3. Bind deployment handles
-        4. Deploy ForecastAPI
+    Initializes Ray, starts Serve, and deploys ForecastAPI.
     """
-    # Start Ray + Serve
     ray.init(ignore_reinit_error=True)
     serve.start(detached=True)
 
-    # Bind handles (pylint ignore dynamic attributes)
-    preprocess_handle = PreprocessingService.bind()  # pylint: disable=no-member
-    model_handle = ModelService.bind()  # pylint: disable=no-member
+    # pylint: disable=no-member
 
-    # Deploy the API
+    preprocess = PreprocessingService.bind()  # type: ignore[attr-defined]
+
+    # pylint: disable=no-member
+
+    model = ModelService.bind()  # type: ignore[attr-defined]
+
     serve.run(
-        ForecastAPI.bind(preprocess_handle, model_handle),  # pylint: disable=no-member
+        # pylint: disable=no-member
+        ForecastAPI.bind(preprocess, model),  # type: ignore[attr-defined]
         route_prefix="/",
     )
 
-    print("[Ray Serve] Deployment successful!")
-    print("[Ray Serve] API available at http://localhost:8000")
-    print("[Ray Serve] Swagger docs at http://localhost:8000/docs")
+    print("[Ray Serve] API ready at http://localhost:8000")
 
 
 if __name__ == "__main__":

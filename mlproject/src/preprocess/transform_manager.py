@@ -65,11 +65,44 @@ class TransformManager:
             Directory where transform artifacts are stored.
         """
         self.artifacts_dir: str = artifacts_dir
-
+        self.is_load = False
         self.fillna_stats: Dict[str, FillnaStat] = {}
         self.label_encoders: Dict[str, LabelEncoder] = {}
         self.scaler: Optional[ScalerType] = None
         self.scaler_columns: Optional[List[str]] = None
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply the full data transformation pipeline in a deterministic order.
+
+        This method serves as the single source of truth for all feature
+        transformations and guarantees consistent preprocessing across
+        training, validation, and inference stages.
+
+        Transformation steps:
+        1. Missing value handling
+        2. Label encoding for categorical features
+        3. Feature scaling
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input raw dataframe.
+
+        Returns
+        -------
+        pd.DataFrame
+            Transformed dataframe ready for modeling.
+        """
+        df_transformed = df.copy()
+        if self.fillna_stats:
+            df_transformed = self.transform_fillna(df_transformed)
+        if self.label_encoders:
+            df_transformed = self.transform_label_encoding(df_transformed)
+        if self.scaler:
+            df_transformed = self.transform_scaler(df_transformed)
+
+        return df_transformed
 
     def fit_fillna(
         self,
@@ -102,8 +135,13 @@ class TransformManager:
         ValueError
             If an unsupported fillna method is provided.
         """
-        if method not in {"mean", "median", "mode"}:
+        if method not in {"mean", "median", "mode", "ffill"}:
             raise ValueError(f"Invalid fillna method: {method}")
+
+        if method == "ffill":
+            for col in columns:
+                df[col] = df[col].ffill().bfill()
+            return
 
         for col in columns:
             if col not in df.columns:
@@ -343,6 +381,8 @@ class TransformManager:
         # )
         # sync_artifacts_from_registry(model_name, self.artifacts_dir)
         _ = cfg
+        if self.is_load:
+            return
         path = os.path.join(self.artifacts_dir, "fillna_stats.pkl")
         print(f"Loading artifacts {path}")
         if os.path.exists(path):
