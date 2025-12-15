@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
+import mlflow
 import numpy as np
 import pandas as pd
 import ray
@@ -15,10 +17,7 @@ from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
-from mlproject.src.utils.mlflow_utils import (
-    load_companion_preprocessor_from_model,
-    load_model_from_registry_safe,
-)
+from mlproject.src.utils.mlflow_utils import load_model_from_registry_safe
 
 ARTIFACTS_DIR = os.path.join("mlproject", "artifacts", "models")
 CONFIG_PATH = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
@@ -26,7 +25,7 @@ CONFIG_PATH = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
 app = FastAPI(title="mlproject Ray Serve Inference API")
 
 
-@serve.deployment
+@serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
 class PreprocessingService:
     """
     Ray Serve deployment for input preprocessing.
@@ -46,16 +45,20 @@ class PreprocessingService:
     cfg: DictConfig
     mlflow_manager: MLflowManager
     preprocessor: Optional[Any]
-    initialized: bool
+    ready: bool
 
-    def __init__(self) -> None:
+    def __init__(self, model_handle: Any) -> None:
         """Initialize PreprocessingService and MLflow manager."""
         self.cfg = ConfigLoader.load(CONFIG_PATH)
         self.mlflow_manager = MLflowManager(self.cfg)
         self.preprocessor = None
-        self.initialized = False
 
-    async def _lazy_initialize(self, model_handle: Any) -> None:
+        self.model_handle = model_handle
+        self.ready = False
+
+        asyncio.create_task(self._warmup())
+
+    async def _warmup(self) -> None:
         """
         Lazily initialize preprocessing artifacts.
 
@@ -68,15 +71,27 @@ class PreprocessingService:
         model_handle : Any
             Ray actor handle to ModelService.
         """
-        if self.initialized:
+        if self.ready:
             return
 
-        model = await model_handle.get_model.remote()  # type: ignore[attr-defined]
-
-        if self.mlflow_manager.enabled and model is not None:
+        run_id: Optional[str] = None
+        while run_id is None:
             try:
-                self.preprocessor = load_companion_preprocessor_from_model(model)
-                self.initialized = True
+                run_id = await self.model_handle.get_run_id.remote()
+            except Exception:
+                # Model might not be initialized yet, wait before retry
+                await asyncio.sleep(1)
+
+        print(
+            f"[PreprocessingService] Retrieved Run ID: {run_id}. Loading artifacts..."
+        )
+
+        if self.mlflow_manager.enabled and run_id:
+            try:
+                pp_uri = f"runs:/{run_id}/preprocessing_pipeline"
+                self.preprocessor = mlflow.pyfunc.load_model(pp_uri)
+                self.ready = True
+                self.ready = True
                 return
             except Exception as exc:
                 print(
@@ -88,7 +103,14 @@ class PreprocessingService:
             artifacts_dir=self.cfg.training.artifacts_dir,
         )
         self.preprocessor.load(cfg=self.cfg)
-        self.initialized = True
+        self.ready = True
+
+    def check_health(self):
+        """
+        check health by ray
+        """
+        if not self.ready:
+            raise RuntimeError("PreprocessingService is still warming up...")
 
     async def preprocess(
         self, data: Dict[str, List[Any]], model_handle: Any
@@ -108,16 +130,20 @@ class PreprocessingService:
         pd.DataFrame
             Transformed feature DataFrame.
         """
-        await self._lazy_initialize(model_handle)
+        _ = model_handle
+        if not self.ready:
+            raise RuntimeError("Service temporarily unavailable")
 
         df = pd.DataFrame(data)
         if "date" in df.columns:
             df = df.set_index("date")
+
+        loop = asyncio.get_running_loop()
         assert self.preprocessor is not None
-        return self.preprocessor.transform(df)
+        return await loop.run_in_executor(None, self.preprocessor.transform, df)
 
 
-@serve.deployment
+@serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
 class ModelService:
     """
     Ray Serve deployment for model inference.
@@ -147,6 +173,7 @@ class ModelService:
 
     def __init__(self) -> None:
         """Initialize ModelService, load MLflow manager and model."""
+        print("[ModelService] Initializing...")
         self.cfg = ConfigLoader.load(CONFIG_PATH)
         self.mlflow_manager = MLflowManager(self.cfg)
         self.model = None
@@ -154,6 +181,12 @@ class ModelService:
         self.run_id = None
         self.input_chunk_length = self._load_input_chunk_length()
         self._load_model()
+        print(f"[ModelService] Initialization Complete. Loaded: {self.model_loaded}")
+
+    def check_health(self):
+        """check_health"""
+        if not self.model_loaded:
+            raise RuntimeError("Model artifacts not loaded yet.")
 
     def _load_input_chunk_length(self) -> int:
         """

@@ -1,5 +1,5 @@
-# Use Python 3.9 slim for a lightweight base image
-FROM python:3.9-slim
+# Use Python 3.11 slim for a lightweight base image
+FROM python:3.11-slim
 
 # Environment variables to prevent Python from generating .pyc files
 # and force unbuffered output. Also disable pip cache for smaller layers.
@@ -24,7 +24,11 @@ RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 # Copy the entire project into the container
-COPY . .
+COPY . /app
+WORKDIR /app
+
+ENV PYTHONPATH=/app
+ENV MLPROJECT_CONFIG_PATH=/app/mlproject/configs/experiments/etth1.yaml
 
 # Install the local package so `import mlproject` works everywhere
 RUN pip install .
