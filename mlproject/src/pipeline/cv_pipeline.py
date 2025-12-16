@@ -78,15 +78,15 @@ class CrossValidationPipeline(BasePipeline):
 
         # Generate folds from splitter
         folds = self.splitter.generate_folds()
-
         model_name: str = approach["model"].lower()
         hyperparams: Dict[str, Any] = approach.get("hyperparams", {})
-
+        model_type: str = approach["model_type"].lower()
         fold_metrics: List[Dict[str, float]] = []
 
         for i, df_fold in enumerate(folds):
             metrics = self._fold_runner.run_fold(
                 df_fold=df_fold,
+                model_type=model_type,
                 model_name=model_name,
                 hyperparams=hyperparams,
                 is_tuning=is_tuning,

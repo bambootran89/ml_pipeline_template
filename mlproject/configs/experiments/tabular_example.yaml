@@ -8,7 +8,7 @@ defaults:
   - override /base/data: null
   - ../base/model.yaml
   - ../base/training.yaml
-
+  - ../base/tuning.yaml
 
 # -------------------------------------------------------------------
 # 2. MLflow tracking & model registry
@@ -81,7 +81,7 @@ data:
     - Survived
 
   # Selected feature columns
-  feature_cols: 
+  feature_cols:
     - "Pclass"  # 1, 2, 3
     - "Age"     # 22.0, 38.0...
     - "SibSp"   # 1, 0...
@@ -135,6 +135,7 @@ experiment:
   name: 'Tabular_Titanic_Experiment'
   type: 'classification'
   model: "xgboost"
+  model_type: "ml"
   hyperparams:
     input_chunk_length: 24
     output_chunk_length: 6
@@ -143,7 +144,6 @@ experiment:
       n_estimators: 100
       max_depth: 6
       learning_rate: 0.05
-      objective: "binary:logistic" 
+      objective: "binary:logistic"
       eval_metric: "auc"
       early_stopping_round: 15
-    

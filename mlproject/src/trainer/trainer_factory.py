@@ -47,6 +47,7 @@ class TrainerFactory(DynamicFactoryBase):
 
         # Extract required arguments
         model_name = kwargs.get("model_name")
+        model_type = kwargs.get("model_type")
         wrapper = kwargs.get("wrapper")
         save_dir = kwargs.get("save_dir")
 
@@ -57,9 +58,9 @@ class TrainerFactory(DynamicFactoryBase):
         if not isinstance(save_dir, str):
             raise ValueError("TrainerFactory.create requires 'save_dir' (str).")
 
-        if model_name in ["xgboost"]:  # ML Models
+        if model_type == "ml":  # ML Models
             entry = {"module": "mlproject.src.trainer.ml_trainer", "class": "MLTrainer"}
-        elif model_name in ["nlinear", "tft"]:  # DL Models
+        elif model_type == "dl":  # DL Models
             entry = {
                 "module": "mlproject.src.trainer.dl_trainer",
                 "class": "DeepLearningTrainer",

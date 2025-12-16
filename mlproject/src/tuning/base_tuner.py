@@ -14,7 +14,6 @@ from omegaconf import DictConfig
 
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.tuning.search_space import SearchSpaceRegistry  # noqa: WPS433
 
 # Forward reference for static type checking only
 if TYPE_CHECKING:
@@ -95,19 +94,6 @@ class BaseTuner(ABC):
         """
         raise NotImplementedError
 
-    # -------------------------------------------------------------------------
-    # Internal helper to avoid import-outside-toplevel violations
-    # -------------------------------------------------------------------------
-    @staticmethod
-    def _get_default_search_space(model_name: str) -> Dict[str, Any]:
-        """
-        Lazily import SearchSpaceRegistry to avoid top-level import cycles.
-        """
-
-        return SearchSpaceRegistry.get(model_name)
-
-    # -------------------------------------------------------------------------
-
     def get_search_space(self, model_name: str) -> Dict[str, Any]:
         """
         Retrieve the search space definition for the given model.
@@ -129,6 +115,7 @@ class BaseTuner(ABC):
 
         if search_space:
             return dict(search_space)
-
-        # Fallback to default registry (lazy import)
-        return self._get_default_search_space(model_name)
+        raise ValueError(
+            f"No hyperparameter search_space defined for model '{model_name}'. "
+            "Please configure it under tuning.search_space in your YAML file."
+        )

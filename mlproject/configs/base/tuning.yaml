@@ -78,3 +78,20 @@ tuning:
       batch_size:
         type: "categorical"
         range: [16, 32, 64]
+    catboost:
+      iterations:
+        type: "int"
+        range: [100, 1000]
+        step: 100
+      learning_rate:
+        type: "float"
+        range: [0.001, 0.1]
+        log: true
+      depth:
+        type: "int"
+        range: [4, 10]
+        step: 1
+      l2_leaf_reg:
+        type: "float"
+        range: [1, 10]
+        log: false

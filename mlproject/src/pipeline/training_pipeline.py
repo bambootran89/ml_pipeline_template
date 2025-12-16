@@ -133,12 +133,13 @@ class TrainingPipeline(BasePipeline):
         df = data
         model_name: str = approach["model"].lower()
         hyperparams: Dict[str, Any] = approach.get("hyperparams", {})
-
+        model_type: str = approach["model_type"].lower()
         wrapper = self._init_model(approach)
         dm = DataModuleFactory.build(self.cfg, df)
         dm.setup()
 
         trainer = TrainerFactory.create(
+            model_type=model_type,
             model_name=model_name,
             wrapper=wrapper,
             save_dir=self.cfg.training.artifacts_dir,

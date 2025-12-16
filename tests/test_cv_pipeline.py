@@ -15,9 +15,9 @@ from typing import Any, Dict
 import pytest
 
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
-from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.utils.config_loader import ConfigLoader
 
 
 @pytest.fixture
@@ -58,6 +58,7 @@ def test_cv_pipeline_smoke(cv_pipeline: CrossValidationPipeline) -> None:
     """
     approach: Dict[str, Any] = {
         "model": cv_pipeline.cfg.experiment.model,
+        "model_type": cv_pipeline.cfg.experiment.model_type,
         "hyperparams": dict(cv_pipeline.cfg.experiment.hyperparams),
         "name": cv_pipeline.cfg.experiment.name,
     }
@@ -81,6 +82,7 @@ def test_cv_metrics_format(cv_pipeline: CrossValidationPipeline) -> None:
 
     approach: Dict[str, Any] = {
         "model": cv_pipeline.cfg.experiment.model,
+        "model_type": cv_pipeline.cfg.experiment.model_type,
         "hyperparams": dict(cv_pipeline.cfg.experiment.hyperparams),
         "name": cv_pipeline.cfg.experiment.name,
     }

@@ -18,6 +18,7 @@ experiment:
   name: "xgboost"
   type: "timeseries"
   model: "xgboost"
+  model_type: "ml"
   hyperparams:
     input_chunk_length: 24
     output_chunk_length: 6

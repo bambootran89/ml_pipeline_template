@@ -15,7 +15,7 @@ class OptunaTuner(BaseTuner):
     Hyperparameter tuner using Optuna for time-series forecasting models.
 
     Supports:
-    - Automatic search-space suggestion via SearchSpaceRegistry
+    - Automatic search-space suggestion via cfg
     - MLflow integration for tracking parameters, metrics, and nested runs
     - Nested cross-validation evaluation
     """
@@ -95,6 +95,7 @@ class OptunaTuner(BaseTuner):
         Objective function evaluated for each Optuna trial.
         """
         model_name = self.cfg.experiment.model.lower()
+        model_type = self.cfg.experiment.model_type.lower()
         hyperparams = self._suggest_params(trial, model_name)
 
         # Include fixed hyperparameters
@@ -113,7 +114,11 @@ class OptunaTuner(BaseTuner):
             self.mlflow_manager.log_params(hyperparams)
 
             # Preprocess data
-            approach = {"model": model_name, "hyperparams": hyperparams}
+            approach = {
+                "model": model_name,
+                "hyperparams": hyperparams,
+                "model_type": model_type,
+            }
 
             # Run cross-validation
             agg_metrics: Dict[str, Any] = self.cv_pipeline.run_cv(

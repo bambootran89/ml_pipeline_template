@@ -17,6 +17,7 @@ experiment:
   name: "multivariate_tft"
   type: "multivariate"
   model: "tft"
+  model_type: "dl"
   hyperparams:
     input_chunk_length: 24
     n_features: 3

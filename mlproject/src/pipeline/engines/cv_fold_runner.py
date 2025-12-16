@@ -73,6 +73,7 @@ class FoldRunner:
 
     def _build_components(
         self,
+        model_type: str,
         model_name: str,
         df_processed: Any,
         is_tuning: bool,
@@ -82,6 +83,8 @@ class FoldRunner:
 
         Parameters
         ----------
+        model_type : str
+            ml or dl
         model_name : str
             Model identifier.
         df_processed : Any
@@ -97,6 +100,7 @@ class FoldRunner:
         model_wrapper = ModelFactory.create(model_name, self.cfg)
 
         trainer = TrainerFactory.create(
+            model_type=model_type,
             model_name=model_name,
             wrapper=model_wrapper,
             save_dir=self.cfg.training.artifacts_dir,
@@ -208,6 +212,7 @@ class FoldRunner:
     def run_fold(
         self,
         df_fold: Any,
+        model_type: str,
         model_name: str,
         hyperparams: dict,
         is_tuning: bool = False,
@@ -221,6 +226,8 @@ class FoldRunner:
         ----------
         df_fold : Any
             Raw dataframe for this fold.
+        model_type: str
+            ml or dl
         model_name : str
             Model identifier.
         hyperparams : dict
@@ -236,6 +243,7 @@ class FoldRunner:
         df_processed, preprocessor = self._preprocess_fold(df_fold)
 
         trainer, datamodule = self._build_components(
+            model_type=model_type,
             model_name=model_name,
             df_processed=df_processed,
             is_tuning=is_tuning,

@@ -97,6 +97,7 @@ def run_cross_validation(cfg_path: str) -> None:
 
     approach = {
         "model": cfg.experiment.model,
+        "model_type": cfg.experiment.model_type,
         "hyperparams": dict(cfg.experiment.hyperparams),
     }
 

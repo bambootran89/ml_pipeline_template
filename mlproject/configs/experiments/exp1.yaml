@@ -15,20 +15,23 @@ data:
   type: timeseries
 
 experiment:
-  name: "xgboost_tuning"
+  name: "catboost_tuning"
   type: "timeseries"
-  model: "xgboost"
+  model: "catboost"
   model_type: "ml"
   hyperparams:
     # Initial guess (will be overridden by tuning)
     input_chunk_length: 24
     output_chunk_length: 6
     args:
-      n_estimators: 100
-      max_depth: 5
-      learning_rate: 0.1
-      objective: "reg:squarederror"
-      early_stopping_round: 15
+      iterations: 1000
+      learning_rate: 0.05
+      depth: 6
+      loss_function: "MultiRMSE"
+      task_type: "CPU"
+      early_stopping_rounds: 20
+      verbose: 100
+      allow_writing_files: False
 
 # Override tuning settings
 tuning:

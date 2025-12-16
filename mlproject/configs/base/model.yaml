@@ -11,3 +11,7 @@ model_registry:
     module: "mlproject.src.models.xgboost_wrapper"
     class: "XGBWrapper"
     datamodule_type: "ml"
+  catboost:
+      module: "mlproject.src.models.catboost_wrapper"
+      class: "CatBoostWrapper"
+      datamodule_type: "ml"
