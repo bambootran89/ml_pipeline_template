@@ -10,6 +10,7 @@ import logging
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 import mlflow
@@ -387,3 +388,22 @@ def __copy_artifacts(
             dst_path = os.path.join(dst_dir, filename)
 
             shutil.copy2(src_path, dst_path)
+
+
+def get_env_path(var_name: str, default: str) -> Path:
+    """
+    Resolve a filesystem path from an environment variable.
+
+    Parameters
+    ----------
+    var_name : str
+        Name of the environment variable.
+    default : str
+        Default relative path if the variable is not set.
+
+    Returns
+    -------
+    Path
+        Resolved absolute path.
+    """
+    return Path(os.getenv(var_name, default)).resolve()

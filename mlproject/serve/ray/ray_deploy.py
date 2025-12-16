@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 from typing import Any, Dict, List, Optional
 
 import mlflow
@@ -17,15 +18,28 @@ from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.func_utils import get_env_path
 from mlproject.src.utils.mlflow_utils import load_model_from_registry_safe
 
-ARTIFACTS_DIR = os.path.join("mlproject", "artifacts", "models")
-CONFIG_PATH = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
+ARTIFACTS_DIR: str = get_env_path(
+    "ARTIFACTS_DIR",
+    "mlproject/artifacts/models",
+).as_posix()
+
+CONFIG_PATH: str = get_env_path(
+    "CONFIG_PATH",
+    "mlproject/configs/experiments/etth1.yaml",
+).as_posix()
 
 app = FastAPI(title="mlproject Ray Serve Inference API")
 
 
-@serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
+@serve.deployment(
+    health_check_period_s=10,
+    health_check_timeout_s=30,
+    num_replicas=int(os.getenv("RAY_PREPROCESS_REPLICAS", "2")),
+    ray_actor_options={"num_cpus": 0.5},
+)
 class PreprocessingService:
     """
     Ray Serve deployment for input preprocessing.
@@ -38,24 +52,34 @@ class PreprocessingService:
         MLflow manager instance.
     preprocessor : Optional[Any]
         Either a PyFunc preprocessor or TransformManager.
-    initialized : bool
+    model_handle : Any
+        Handle to ModelService for warmup.
+    ready : bool
         Indicates whether preprocessing artifacts are loaded.
     """
 
     cfg: DictConfig
     mlflow_manager: MLflowManager
     preprocessor: Optional[Any]
+    model_handle: Any
     ready: bool
 
     def __init__(self, model_handle: Any) -> None:
-        """Initialize PreprocessingService and MLflow manager."""
+        """
+        Initialize PreprocessingService and MLflow manager.
+
+        Parameters
+        ----------
+        model_handle : Any
+            Ray Serve handle to ModelService for warmup.
+        """
         self.cfg = ConfigLoader.load(CONFIG_PATH)
         self.mlflow_manager = MLflowManager(self.cfg)
         self.preprocessor = None
-
         self.model_handle = model_handle
         self.ready = False
 
+        # Trigger async warmup
         asyncio.create_task(self._warmup())
 
     async def _warmup(self) -> None:
@@ -65,15 +89,11 @@ class PreprocessingService:
         Priority:
         1. MLflow companion preprocessor (if available)
         2. Local TransformManager fallback
-
-        Parameters
-        ----------
-        model_handle : Any
-            Ray actor handle to ModelService.
         """
         if self.ready:
             return
 
+        # Wait for ModelService to initialize and get run_id
         run_id: Optional[str] = None
         while run_id is None:
             try:
@@ -86,31 +106,33 @@ class PreprocessingService:
             f"[PreprocessingService] Retrieved Run ID: {run_id}. Loading artifacts..."
         )
 
+        # Try loading MLflow companion preprocessor first
         if self.mlflow_manager.enabled and run_id:
             try:
                 pp_uri = f"runs:/{run_id}/preprocessing_pipeline"
                 self.preprocessor = mlflow.pyfunc.load_model(pp_uri)
                 self.ready = True
-                self.ready = True
+                print("[PreprocessingService] Loaded MLflow companion preprocessor")
                 return
             except Exception as exc:
                 print(
                     f"[PreprocessingService] Companion preprocessor load failed: {exc}"
                 )
 
-        # Load local TransformManager
+        # Fallback: Load local TransformManager
         self.preprocessor = TransformManager(
             artifacts_dir=self.cfg.training.artifacts_dir,
         )
         self.preprocessor.load(cfg=self.cfg)
         self.ready = True
+        print("[PreprocessingService] Loaded local TransformManager")
 
-    def check_health(self):
-        """
-        check health by ray
-        """
+    def check_health(self) -> None:
+        """Health check by Ray - allow warmup phase."""
+        # Don't fail health check during warmup, just log status
         if not self.ready:
-            raise RuntimeError("PreprocessingService is still warming up...")
+            print("[PreprocessingService] Still warming up...")
+        # Health check passes even during warmup
 
     async def preprocess(
         self, data: Dict[str, List[Any]], model_handle: Any
@@ -123,7 +145,7 @@ class PreprocessingService:
         data : Dict[str, List[Any]]
             Raw input payload from HTTP request.
         model_handle : Any
-            Ray actor handle to ModelService.
+            Ray actor handle to ModelService (unused, kept for compatibility).
 
         Returns
         -------
@@ -140,7 +162,7 @@ class PreprocessingService:
 
         loop = asyncio.get_running_loop()
         assert self.preprocessor is not None
-        return await loop.run_in_executor(None, self.preprocessor.transform, df)
+        return await loop.run_in_executor(None, self.preprocessor.predict, df)
 
 
 @serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
@@ -183,8 +205,8 @@ class ModelService:
         self._load_model()
         print(f"[ModelService] Initialization Complete. Loaded: {self.model_loaded}")
 
-    def check_health(self):
-        """check_health"""
+    def check_health(self) -> None:
+        """Health check by Ray."""
         if not self.model_loaded:
             raise RuntimeError("Model artifacts not loaded yet.")
 
@@ -212,14 +234,25 @@ class ModelService:
 
     def _try_load_mlflow_model(self) -> None:
         """Attempt loading model from MLflow registry."""
-        result = load_model_from_registry_safe(
+        pyfunc_model = load_model_from_registry_safe(
             self.cfg, default_model_name="ts_forecast_model"
         )
-        if result is None:
+        if pyfunc_model is None:
             return
-        self.model = result.model
-        self.run_id = result.run_id
+
+        # pyfunc_model là PyFuncModel từ mlflow.pyfunc.load_model()
+        self.model = pyfunc_model
+
+        # Extract run_id từ model metadata
+        if hasattr(pyfunc_model, "metadata") and hasattr(
+            pyfunc_model.metadata, "run_id"
+        ):
+            self.run_id = pyfunc_model.metadata.run_id
+        else:
+            self.run_id = None
+
         self.model_loaded = True
+        print(f"[ModelService] Loaded MLflow model, run_id={self.run_id}")
 
     def _load_local_model(self) -> None:
         """Load model from local artifacts directory."""
@@ -267,9 +300,15 @@ class ModelService:
         List[float]
             Flattened prediction results.
         """
-        if self.model is None or not hasattr(self.model, "predict"):
-            raise RuntimeError("Model not loaded or has no predict method")
-        preds = self.model.predict(x_input)
+        if self.model is None:
+            raise RuntimeError("Model not loaded")
+
+        # PyFuncModel từ MLflow có method predict
+        # Model local từ ModelFactory cũng có method predict
+        if not hasattr(self.model, "predict"):
+            raise RuntimeError("Model has no predict method")
+
+        preds = self.model.predict(x_input.astype(np.float32))
         return np.asarray(preds).flatten().tolist()
 
     def is_loaded(self) -> bool:
@@ -334,10 +373,10 @@ class ForecastAPI:
         try:
             # Call .remote() on Ray handles
             df: pd.DataFrame = await self.preprocess_handle.preprocess.remote(
-                # type: ignore[attr-defined]
                 req.data,
                 self.model_handle,
-            )
+            )  # type: ignore[attr-defined]
+
             # type: ignore[attr-defined]
             x_input = await self.model_handle.prepare_input.remote(df)
             # type: ignore[attr-defined]
@@ -374,24 +413,38 @@ def main() -> None:
 
     Initializes Ray, starts Serve, and deploys ForecastAPI.
     """
-    ray.init(ignore_reinit_error=True)
+    # Start Ray với dashboard
+    ray.init(
+        ignore_reinit_error=True,
+        include_dashboard=True,
+        dashboard_host="0.0.0.0",
+        dashboard_port=8265,
+    )
     serve.start(detached=True)
 
     # pylint: disable=no-member
-
-    preprocess = PreprocessingService.bind()  # type: ignore[attr-defined]
-
-    # pylint: disable=no-member
-
     model = ModelService.bind()  # type: ignore[attr-defined]
+    # pylint: disable=no-member
+    preprocess = PreprocessingService.bind(model)  # type: ignore[attr-defined]
 
+    # Deploy API với cả 2 handles
+    # pylint: disable=no-member
     serve.run(
-        # pylint: disable=no-member
         ForecastAPI.bind(preprocess, model),  # type: ignore[attr-defined]
         route_prefix="/",
     )
 
     print("[Ray Serve] API ready at http://localhost:8000")
+    print("[Ray Serve] Dashboard at http://localhost:8265")
+    print("[Ray Serve] Press Ctrl+C to stop")
+
+    # Giữ script chạy
+    try:
+        signal.pause()  # Wait for signal (Ctrl+C)
+    except KeyboardInterrupt:
+        print("\n[Ray Serve] Shutting down...")
+        serve.shutdown()
+        ray.shutdown()
 
 
 if __name__ == "__main__":

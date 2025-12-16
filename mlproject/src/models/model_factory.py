@@ -1,6 +1,5 @@
 from typing import Any, Dict, Optional
 
-from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.factory_base import DynamicFactoryBase
 
 
@@ -45,10 +44,9 @@ class ModelFactory(DynamicFactoryBase):
         name = args[0]
         config = args[1]
 
-        model_registry: Optional[Dict[str, Any]] = kwargs.get("model_registry")
+        model_registry: Optional[Dict[str, Any]] = config.get("model_registry")
         if model_registry is None:
-            cfg_global = ConfigLoader.load()
-            model_registry = cfg_global.get("model_registry", {})
+            raise ValueError("Please check config")
 
         entry = model_registry.get(name)
         if not entry:
@@ -58,7 +56,7 @@ class ModelFactory(DynamicFactoryBase):
             )
 
         model_class = cls._get_class_from_config(entry)
-        return model_class(cfg=config)
+        return model_class(cfg=config.get("experiment", {}).get("hyperparams"))
 
     @classmethod
     def load(cls, *args: Any, **kwargs: Any):

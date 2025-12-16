@@ -264,7 +264,17 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-## 3. Quick Start
+## 3. Quality Assurance
+We enforce code quality via pre-commit hooks.
+```bash
+# Run all tests
+make test
+
+# Auto-format code
+make style
+```
+
+## 4. Quick Start
 Start the MLflow server to visualize results:
 ```bash
 mlflow ui --port 5000
@@ -287,142 +297,30 @@ Runs Bayesian Optimization to find best parameters, then auto-retrains the best 
 python -m mlproject.src.pipeline.run_pipeline tune --config mlproject/configs/experiments/etth3_tuning.yaml
 ```
 ## 3. Serving (Inference)
-Deploys the model using FastAPI or Ray Serve.
+Deploys the model using FastAPI.
 ```bash
 # Start FastAPI
 uvicorn mlproject.serve.api:app --reload
-
+```
+Deploys the model using Ray Serve.
+```bash
 # OR Start Ray Serve
 python mlproject/serve/ray/ray_deploy.py
 ```
-
-# Developer Guide: How to Add a New Model
-This project uses the Adapter Pattern and Factory Pattern. To add a new algorithm (e.g., LightGBM or a new Transformer), follow these steps:
-
-## Step 1: Create the Model Wrapper
-Create a new file in mlproject/src/models/, inheriting from MLModelWrapper.
-
-Example: mlproject/src/models/catboost_wrapper.py
-
-```python
-from catboost import CatBoostRegressor
-from mlproject.src.models.base import MLModelWrapper
-import numpy as np
-
-class CatBoostWrapper(MLModelWrapper):
-    def build(self, input_dim: int, output_dim: int) -> None:
-        # Load params from hydra config
-        iterations = self.cfg.get("iterations", 1000)
-        learning_rate = self.cfg.get("learning_rate", 0.05)
-
-        self.model = CatBoostRegressor(
-            iterations=iterations,
-            learning_rate=learning_rate,
-            loss_function='RMSE',
-            verbose=0
-        )
-
-    def fit(self, x, y, x_val=None, y_val=None, **kwargs):
-        # Handle shape flattening if necessary (Time Series -> Tabular)
-        x_flat = x.reshape(x.shape[0], -1)
-        eval_set = (x_val.reshape(x_val.shape[0], -1), y_val) if x_val is not None else None
-
-        self.model.fit(x_flat, y, eval_set=eval_set, early_stopping_rounds=50)
-
-    def predict(self, x):
-        x_flat = x.reshape(x.shape[0], -1)
-        return self.model.predict(x_flat)
-```
-
-## Step 2: Register in Model Factory
-Update mlproject/src/models/model_factory.py to recognize the new class.
-```python
-# ... imports
-from mlproject.src.models.catboost_wrapper import CatBoostWrapper
-
-class ModelFactory(FactoryBase):
-    def get_model_class(self, name: str) -> Type[MLModelWrapper]:
-        if name == "xgboost":
-            return XGBWrapper
-        elif name == "nlinear":
-            return NLinearWrapper
-        elif name == "catboost":  # <--- Add this line
-            return CatBoostWrapper
-        else:
-            raise ValueError(f"Unknown model name: {name}")
-```
-
-## Step 3: Define Configuration
-Add a new config file: mlproject/configs/experiments/catboost_etth1.yaml.
-
-```yaml
-# @package _global_
-defaults:
-  - override /base/model: null
-
-model:
-  name: "catboost"  # Matches the key in Factory
-  params:
-    iterations: 2000
-    learning_rate: 0.03
-    depth: 6
-```
-
-Run it:
+Test API services
 ```bash
-python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/catboost_etth1.yaml
-```
-## Hyperparameter Tuning Guide
-This framework integrates Optuna for automated hyperparameter optimization.
 
-1. Define Search Space
-Modify mlproject/src/tuning/search_space.py to define the range for your new model.
-```python
-def get_search_space(trial, model_name):
-    if model_name == "xgboost":
-        return {
-            "n_estimators": trial.suggest_int("n_estimators", 100, 1000),
-            "max_depth": trial.suggest_int("max_depth", 3, 10),
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True)
-        }
-    elif model_name == "catboost":
-        return {
-            "iterations": trial.suggest_int("iterations", 500, 3000),
-            "depth": trial.suggest_int("depth", 4, 10)
-        }
-```
-2. Create Tuning Config
-Create a tuning configuration file, e.g., mlproject/configs/experiments/etth3_tuning.yaml.
-
-```yaml
-# @package _global_
-defaults:
-  - override /base/tuning: tuning  # Load base tuning settings
-
-tuning:
-  n_trials: 20            # Number of Optuna trials
-  metric: "val_loss"      # Metric to minimize
-  direction: "minimize"
-  storage: "sqlite:///db.sqlite3" # Persistent storage for resume capability
-
-model:
-  name: "xgboost"         # Model to tune
-```
-3. Run Optimization
-
-```bash
-python -m mlproject.src.pipeline.run_pipeline tune --config mlproject/configs/experiments/etth3_tuning.yaml
+curl -X POST http://localhost:8000/predict   -H "Content-Type: application/json"   -d '{
+    "data": {
+      "HUFL": [-0.15, 0.08, 0.01, -0.01, 0.21, -0.15, 0.12, 0.05, -0.08, 0.18, -0.12, 0.22, 0.03, -0.18, 0.15, -0.05, 0.28, -0.22, 0.08, -0.15, 0.32, -0.28, 0.12, -0.18],
+      "MUFL": [1.14, 1.06, 0.93, 1.11, 0.96, 1.05, 0.98, 1.12, 0.95, 1.08, 0.92, 1.15, 0.88, 1.22, 0.85, 1.18, 0.82, 1.25, 0.78, 1.32, 0.75, 1.38, 0.72, 1.42],
+      "mobility_inflow": [1.24, 4.42, 7.28, 1.03, 0.73, 2.5, 3.2, 4.1, 1.8, 5.3, 2.1, 6.4, 1.5, 7.8, 3.6, 4.9, 2.7, 8.2, 1.9, 5.5, 3.8, 6.7, 2.3, 4.2]
+    }
+  }'
 ```
 
-## Quality Assurance
-We enforce code quality via pre-commit hooks.
-```bash
-# Run all tests
-make test
 
-# Auto-format code
-make style
-```
+
 
 ## Docker & Kubernetes
 Build Docker Image

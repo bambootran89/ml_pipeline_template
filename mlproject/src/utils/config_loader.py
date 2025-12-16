@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Any, Dict, Union, cast
 
 from omegaconf import DictConfig, ListConfig, OmegaConf
@@ -109,7 +110,11 @@ class ConfigLoader:
         """
         # Default experiment file
         if not cfg_path:
-            cfg_path = os.path.join("mlproject", "configs", "experiments", "etth1.yaml")
+            raise ValueError("cfg_path must be a non-empty string")
+
+        cfg_file = Path(cfg_path)
+        if not cfg_file.exists():
+            raise FileNotFoundError(f"Config file not found: {cfg_file}")
 
         # Load primary config
         cfg_raw = OmegaConf.load(cfg_path)

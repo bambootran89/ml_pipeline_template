@@ -74,7 +74,6 @@ class FoldRunner:
     def _build_components(
         self,
         model_name: str,
-        hyperparams: dict,
         df_processed: Any,
         is_tuning: bool,
     ):
@@ -85,8 +84,6 @@ class FoldRunner:
         ----------
         model_name : str
             Model identifier.
-        hyperparams : dict
-            Model hyperparameters.
         df_processed : Any
             Preprocessed dataframe.
         is_tuning : bool
@@ -97,7 +94,7 @@ class FoldRunner:
         tuple
             (model_wrapper, trainer, datamodule, preprocessor)
         """
-        model_wrapper = ModelFactory.create(model_name, hyperparams)
+        model_wrapper = ModelFactory.create(model_name, self.cfg)
 
         trainer = TrainerFactory.create(
             model_name=model_name,
@@ -240,7 +237,6 @@ class FoldRunner:
 
         trainer, datamodule = self._build_components(
             model_name=model_name,
-            hyperparams=hyperparams,
             df_processed=df_processed,
             is_tuning=is_tuning,
         )

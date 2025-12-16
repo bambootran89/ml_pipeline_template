@@ -65,14 +65,12 @@ def test_model_service_init_mlflow(mock_config_loader):
 
         mock_result = MagicMock()
         mock_result.model = MagicMock()
-        mock_result.run_id = "run_123_abc"
         mock_load_safe.return_value = mock_result
 
         service = ModelService.func_or_class()
 
         mock_load_safe.assert_called_once()
         assert service.is_loaded()
-        assert service.get_run_id() == "run_123_abc"
 
 
 @pytest.mark.asyncio

@@ -17,12 +17,22 @@ from pydantic import BaseModel
 
 from mlproject.serve.models_service import ModelsService
 from mlproject.serve.schemas import PredictRequest
+from mlproject.src.utils.func_utils import get_env_path
+
+ARTIFACTS_DIR: str = get_env_path(
+    "ARTIFACTS_DIR",
+    "mlproject/artifacts/models",
+).as_posix()
+
+CONFIG_PATH: str = get_env_path(
+    "CONFIG_PATH",
+    "mlproject/configs/experiments/etth1.yaml",
+).as_posix()
 
 # Initialize FastAPI app
 app = FastAPI(title="TS Forecasting API", version="1.0.0")
-
 # Initialize service once at startup
-service = ModelsService()
+service = ModelsService(cfg_path=CONFIG_PATH)
 
 
 def _check_mlflow_connection() -> bool:

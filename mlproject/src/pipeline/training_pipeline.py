@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 import mlflow
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
@@ -65,10 +65,7 @@ class TrainingPipeline(BasePipeline):
             Initialized model wrapper.
         """
         name = approach["model"].lower()
-        hp = approach.get("hyperparams", {})
-        if isinstance(hp, DictConfig):
-            hp = OmegaConf.to_container(hp, resolve=True)
-        return ModelFactory.create(name, hp)
+        return ModelFactory.create(name, self.cfg)
 
     def _execute_training(self, trainer, dm, wrapper, hyperparams: Dict[str, Any]):
         """
