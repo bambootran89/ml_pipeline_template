@@ -119,13 +119,6 @@ flowchart TD
     Note2["Self-Contained Artifact for Inference"]:::note -.-> Wrapper
 ```
 
-
-Key Highlights:
-
-- Modular Preprocessing: OfflinePreprocessor ensures data consistency before splitting.
-
-- Leakage Prevention: ScalerManager fits only on the training fold and transforms validation data dynamically.
-
 - Factory Pattern: Seamlessly switch between XGBoost, TFT, or NLinear via config model: name.
 #### Inference & Serving Pipeline (Online Workflow)
 The serving layer is designed to be stateless and reproducible. It strictly uses the artifacts (Models & Scalers) generated during the training phase to ensure the Training-Serving Skew is minimized.
@@ -133,79 +126,72 @@ The serving layer is designed to be stateless and reproducible. It strictly uses
 ```mermaid
 %%{init: {
   "theme": "base",
-  "flowchart": {"nodeSpacing":60,"rankSpacing":80,"curve":"basis"},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"14px"}
+  "flowchart": {
+    "nodeSpacing": 80,
+    "rankSpacing": 100,
+    "curve": "linear"
+  },
+  "themeVariables": {
+    "fontFamily": "Inter, Arial, sans-serif",
+    "fontSize": "14px",
+    "edgeLabelBackground": "#ffffff"
+  }
 }}%%
 
 flowchart TD
-    %% --- Styles ---
-    classDef client fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
-    classDef gateway fill:#bbdefb,stroke:#1976d2,stroke-width:2px;
-    classDef compute fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
-    classDef storage fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px,stroke-dasharray:5 5;
-    classDef hotpath stroke:#d32f2f,stroke-width:2px;
-    classDef coldpath stroke:#0288d1,stroke-width:2px,stroke-dasharray:5 5;
-    classDef note fill:#fff3e0,stroke:#fb8c00,stroke-width:1px,font-style:italic;
 
-    %% --- Client ---
-    Client(("Client App")):::client
+%% =========================
+%% Style Definitions
+%% =========================
+classDef client  fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+classDef gateway fill:#bbdefb,stroke:#1976d2,stroke-width:2px;
+classDef compute fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
+classDef storage fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px,stroke-dasharray:4 4;
+classDef hot      stroke:#d32f2f,stroke-width:2px;
+classDef cold     stroke:#0288d1,stroke-width:2px,stroke-dasharray:4 4;
 
-    %% --- Ray Serve Cluster ---
-    subgraph RayCluster ["☁️ Ray Serve Cluster"]
-        direction TB
+%% =========================
+%% Hot Path — Online Inference
+%% =========================
+subgraph HOT["Online Inference (Hot Path)"]
+    direction TB
 
-        %% Ingress Layer
-        subgraph Gateway ["API & Validation Layer"]
-            API["Forecast API"]:::gateway
-            Validator["Schema Validator"]:::gateway
-        end
+    Client["Client App"]:::client
+    API["Forecast API"]:::gateway
+    Validator["Schema Validator"]:::gateway
+    Preprocess["Preprocessing Service"]:::compute
+    Model["Inference Service"]:::compute
+    Response["JSON Response"]:::gateway
 
-        %% Compute Layer
-        subgraph Compute ["Distributed Compute Layer"]
-            direction TB
-            subgraph Preprocess ["Preprocessing Service"]
-                PrepActor["Stateful Preprocessor"]:::compute
-                ThreadPool["Async ThreadPool"]:::compute
-                PrepActor <--> ThreadPool
-            end
+    Client --> API:::hot
+    API --> Validator:::hot
+    Validator --> Preprocess:::hot
+    Preprocess --> Model:::hot
+    Model --> Response:::hot
+end
 
-            subgraph Inference ["Inference Service"]
-                ModelActor["Model Server"]:::compute
-            end
-        end
-    end
+%% =========================
+%% Async Execution (Local)
+%% =========================
+AsyncPool["Async ThreadPool"]:::compute
+Preprocess <--> AsyncPool
 
-    %% --- Artifact Storage ---
-    MLflow["MLflow Artifact Registry"]:::storage
+%% =========================
+%% Cold Path — Artifact Warmup
+%% =========================
+subgraph COLD["Artifacts & Warmup (Cold Path)"]
+    direction TB
 
-    %% --- Hot Path (Solid Red) ---
-    Client == "1. POST /predict" ==> API:::hotpath
-    API --> Validator:::hotpath
-    Validator -- "2. Validated Data" --> PrepActor:::hotpath
-    PrepActor -- "3. Feature Vectors" --> ModelActor:::hotpath
-    ModelActor -- "4. Raw Prediction" --> API:::hotpath
-    API == "5. JSON Response" ==> Client:::hotpath
+    MLflow["MLflow Registry"]:::storage
+    ArtifactHub["Artifact Loader"]:::storage
 
-    %% --- Cold Path (Dotted Blue) ---
-    MLflow -.-> |"Load Preprocessor"| PrepActor:::coldpath
-    MLflow -.-> |"Load Model Binary"| ModelActor:::coldpath
-    ModelActor -.-> |"Run ID Sync"| PrepActor:::coldpath
-
-    %% --- Annotations ---
-    Note1["Async: Preprocessing does not block Inference"]:::note -.-> PrepActor
-    Note2["Version Consistency: Preprocessor matches Model"]:::note -.-> MLflow
+    MLflow --> ArtifactHub
+    ArtifactHub -->|Load Preprocessor| Preprocess:::cold
+    ArtifactHub -->|Load Model Binary| Model:::cold
+end
 
 ```
 
-Key Highlights:
-
-- Consistent Transformation: OnlinePreprocessor loads the exact scaler.joblib saved during training to transform real-time data.
-
-- Dual Serving Engines:
-
-    + FastAPI: Lightweight, low-latency for standard deployments.
-
-    + Ray Serve: Distributed serving for high-throughput scaling.
 # Directory Structure
 A layout designed for scalability and feature-store integration.
 ```plaintext
@@ -260,7 +246,8 @@ python -m venv venv
 source venv/bin/activate
 
 # Install Dependencies
-pip install -r requirements.txt
+pip install -r requirements/prod.txt
+pip install -r requirements/dev.txt (optional, it is for test)
 pip install -e .
 ```
 

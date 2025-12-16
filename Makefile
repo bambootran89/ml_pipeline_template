@@ -11,7 +11,7 @@ venv:
 	${PYTHON} -m venv ${VENV_NAME} && \
 	source ${VENV_NAME}/bin/activate && \
 	${PYTHON} -m pip install pip setuptools wheel && \
-	${PYTHON} -m pip install pip autoflake autopep8 isort flake8 mypy && \
+	${PYTHON} -m pip install -r requirements/dev.txt && \
 	${PYTHON} -m pip install -e .[dev] && \
 	pre-commit install
 

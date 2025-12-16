@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy dependency list first to leverage Docker layer caching
-COPY requirements.txt .
+COPY requirements/prod.txt requirements.txt
 
 # Install Python dependencies
 RUN pip install --upgrade pip && \
