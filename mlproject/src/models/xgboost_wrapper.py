@@ -37,7 +37,6 @@ class XGBWrapper(MLModelWrapper):
             self.build(model_type="")  # Dùng giá trị int đã tính toán
 
         self.ensure_built()
-
         x_reshaped = flatten_timeseries(x)
 
         # Tạo eval_set nếu có validation data

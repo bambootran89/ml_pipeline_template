@@ -8,7 +8,7 @@ import pandas as pd
 from omegaconf import DictConfig
 
 from mlproject.src.preprocess.transform_manager import TransformManager
-from mlproject.src.utils.func_utils import load_data_csv
+from mlproject.src.utils.func_utils import load_data_csv, select_columns
 
 ARTIFACT_DIR = "mlproject/artifacts/preprocessing"
 
@@ -120,6 +120,22 @@ class OfflinePreprocessor:
             return df_shuffled.iloc[:train_size].copy()
         return df.iloc[:train_size]
 
+    def get_select_df(
+        self, df: pd.DataFrame, include_target: bool = True
+    ) -> pd.DataFrame:
+        """
+        Docstring for get_select_df
+
+        :param self: Description
+        :param df: Description
+        :type df: pd.DataFrame
+        :param include_target: Description
+        :type include_target: bool
+        :return: Description
+        :rtype: DataFrame
+        """
+        return select_columns(self.cfg, df, include_target=include_target)
+
     def fit_manager(self, train_df: pd.DataFrame) -> None:
         """
         Fit all preprocessing components using training data.
@@ -162,7 +178,10 @@ class OfflinePreprocessor:
         self.transform_manager.save()
         print("[OfflinePreprocessor] Preprocessing artifacts saved")
 
-    def transform_full_dataset(self, df: pd.DataFrame) -> pd.DataFrame:
+    def transform_full_dataset(
+        self,
+        df: pd.DataFrame,
+    ) -> pd.DataFrame:
         """
         Apply fitted preprocessing pipeline to full dataset.
 
@@ -177,6 +196,7 @@ class OfflinePreprocessor:
             Transformed dataset.
         """
         print("[OfflinePreprocessor] Applying preprocessing transforms")
+
         return self.transform_manager.transform(df)
 
     def run(self) -> pd.DataFrame:
@@ -189,10 +209,13 @@ class OfflinePreprocessor:
             Fully processed dataset.
         """
         df = self.load_raw_data()
+        df = self.get_select_df(df, include_target=True)
         if self.is_train:
             train_df = self.select_train_subset(df)
             self.fit_manager(train_df)
-        return self.transform_full_dataset(df)
+        return self.transform_full_dataset(
+            df,
+        )
 
     def log_artifacts_to_mlflow(self) -> None:
         """

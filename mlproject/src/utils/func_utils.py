@@ -204,9 +204,7 @@ def load_data_csv(
         logger.warning("CSV file is empty: %s", path)
         return pd.DataFrame()
 
-    # ------------------------------------------------------------------
     # Time-series dataset
-    # ------------------------------------------------------------------
     if data_type == "timeseries":
         if not index_col:
             raise ValueError("index_col must be provided for time-series data")
@@ -228,9 +226,7 @@ def load_data_csv(
 
         return df.set_index(index_col)
 
-    # ------------------------------------------------------------------
     # Tabular dataset
-    # ------------------------------------------------------------------
     df = pd.read_csv(path)
 
     if index_col and index_col in df.columns:
@@ -280,13 +276,12 @@ def select_columns(
     cols_to_keep: List[str] = list(feature_cols)
 
     if include_target:
-        target_cols = data_cfg.get("target_columns", [])
+        target_cols = list(data_cfg.get("target_columns", []))
 
         if isinstance(target_cols, str):
             cols_to_keep.append(target_cols)
         elif isinstance(target_cols, (list, tuple)):
             cols_to_keep.extend(target_cols)
-
     # Keep only columns that actually exist in the DataFrame
     valid_cols: List[str] = [col for col in cols_to_keep if col in df.columns]
 

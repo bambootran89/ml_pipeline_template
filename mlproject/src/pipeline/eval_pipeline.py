@@ -111,7 +111,10 @@ class EvalPipeline(BasePipeline):
             Preprocessed dataset.
         """
         df_raw: pd.DataFrame = self.preprocessor.load_raw_data()
-        fea_df: pd.DataFrame = self._transform_data(df_raw)
+
+        fea_df: pd.DataFrame = self._transform_data(
+            self.preprocessor.get_select_df(df_raw, include_target=False)
+        )
 
         return self._attach_targets_if_needed(df_raw, fea_df)
 
@@ -224,5 +227,4 @@ class EvalPipeline(BasePipeline):
             metrics = self.evaluator.evaluate(y_test, preds)
             safe_metrics = flatten_metrics_for_mlflow(metrics)
             self.mlflow_manager.log_metrics(safe_metrics)
-
         return metrics
