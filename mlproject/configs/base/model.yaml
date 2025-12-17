@@ -15,3 +15,7 @@ model_registry:
       module: "mlproject.src.models.catboost_wrapper"
       class: "CatBoostWrapper"
       datamodule_type: "ml"
+  kmean:
+      module: "mlproject.src.models.kmean_wrapper"
+      class: "KMeansWrapper"
+      datamodule_type: "ml"

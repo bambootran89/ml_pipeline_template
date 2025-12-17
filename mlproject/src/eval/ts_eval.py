@@ -1,4 +1,4 @@
-from typing import Dict, Union
+from typing import Any, Dict, Union
 
 import numpy as np
 
@@ -52,7 +52,12 @@ class TimeSeriesEvaluator(RegressionEvaluator):
         )
         return self._aggregate(metric)
 
-    def evaluate(self, y_true, y_pred) -> Dict[str, Union[float, np.ndarray]]:
+    def evaluate(
+        self,
+        y_true,
+        y_pred,
+        **kwargs: Any,
+    ) -> Dict[str, Union[float, np.ndarray]]:
         """
         Compute regression + time-series-specific metrics.
 
@@ -64,6 +69,7 @@ class TimeSeriesEvaluator(RegressionEvaluator):
             dict: Dictionary with keys ["mae","mse","rmse","r2","mape","smape"]
                   and per-output metrics if multivariate
         """
+        _ = kwargs
         metrics = super().evaluate(y_true, y_pred)
         metrics.update(
             {

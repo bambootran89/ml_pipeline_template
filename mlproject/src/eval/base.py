@@ -15,7 +15,10 @@ class BaseEvaluator:
         - Input as numpy arrays, torch tensors, or lists
     """
 
-    def __init__(self, aggregate: Optional[str] = "mean"):
+    def __init__(
+        self,
+        aggregate: Optional[str] = "mean",
+    ):
         """
         Args:
             aggregate: Aggregation strategy for multivariate outputs:
@@ -40,7 +43,12 @@ class BaseEvaluator:
             return float(np.median(metric))
         return metric
 
-    def evaluate(self, y_true: Any, y_pred: Any) -> Dict[str, Any]:
+    def evaluate(
+        self,
+        y_true: Any,
+        y_pred: Any,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
         """
         Generic evaluation interface.
         Must be implemented in subclasses.

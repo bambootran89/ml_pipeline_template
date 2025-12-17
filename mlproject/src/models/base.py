@@ -36,6 +36,14 @@ class BaseModelWrapper(ABC):
         self.model: Optional[Any] = None
         self.n_targets = self.cfg.get("n_targets", 1)
 
+    def get_model(
+        self,
+    ):
+        """
+        return model
+        """
+        return self.model
+
     @abstractmethod
     def build(self, model_type: str):
         """Build or initialize model."""

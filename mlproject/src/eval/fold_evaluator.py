@@ -1,6 +1,7 @@
 from typing import Any, Tuple
 
 from mlproject.src.eval.classification_eval import ClassificationEvaluator
+from mlproject.src.eval.clustering_eval import ClusteringEvaluator
 from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 
@@ -18,8 +19,12 @@ class FoldEvaluator:
             self.evaluator = ClassificationEvaluator()
         elif eval_type == "regression":
             self.evaluator = RegressionEvaluator()
-        else:
+        elif eval_type == "timeseries":
             self.evaluator = TimeSeriesEvaluator()
+        elif eval_type == "clustering":
+            self.evaluator = ClusteringEvaluator()
+        else:
+            raise ValueError(f"don't support this type{eval_type}")
 
     def evaluate(self, wrapper: Any, test_data: Tuple):
         """
@@ -39,5 +44,7 @@ class FoldEvaluator:
         """
         x_test, y_test = test_data
         preds = wrapper.predict(x_test)
-        metrics = self.evaluator.evaluate(y_test, preds)
+        metrics = self.evaluator.evaluate(
+            y_test, preds, x=x_test, model=wrapper.get_model()
+        )
         return {k: float(v) for k, v in metrics.items()}

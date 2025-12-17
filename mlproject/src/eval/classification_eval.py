@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 from sklearn.metrics import (
@@ -25,6 +25,7 @@ class ClassificationEvaluator(BaseEvaluator):
         self,
         y_true: np.ndarray,
         y_pred: np.ndarray,
+        **kwargs: Any,
     ) -> Dict[str, float]:
         """
         Compute classification metrics.
@@ -48,6 +49,7 @@ class ClassificationEvaluator(BaseEvaluator):
                 - recall
                 - roc_auc (only if probabilities are provided)
         """
+        _ = kwargs
         self._validate_inputs(y_true, y_pred)
 
         y_pred_label: np.ndarray
