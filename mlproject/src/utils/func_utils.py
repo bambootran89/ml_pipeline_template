@@ -284,9 +284,8 @@ def select_columns(
         elif isinstance(target_cols, (list, tuple)):
             cols_to_keep.extend(target_cols)
     # Keep only columns that actually exist in the DataFrame
-    valid_cols: List[str] = list(
-        set([col for col in cols_to_keep if col in df.columns])
-    )
+    df_cols = set(df.columns)
+    valid_cols: List[str] = list({col for col in cols_to_keep if col in df_cols})
 
     if not valid_cols:
         # Strategy: return original DF to avoid hard failure and aid debugging

@@ -164,7 +164,7 @@ class MLModelWrapper(BaseModelWrapper):
         if self.n_targets == 1:
             return out
         else:
-            out = out.reshape(len(out), -1, self.n_targets)
+            return out.reshape(len(out), -1, self.n_targets)
 
     def save(self, save_dir: str):
         """Save estimator + metadata with joblib."""
