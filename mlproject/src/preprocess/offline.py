@@ -8,73 +8,75 @@ import pandas as pd
 from omegaconf import DictConfig
 
 from mlproject.src.preprocess.transform_manager import TransformManager
-from mlproject.src.utils.func_utils import load_data_csv, select_columns
+from mlproject.src.utils.func_utils import (
+    load_data_csv,
+    normalize_preprocessing_steps,
+    select_columns,
+)
 
 ARTIFACT_DIR = "mlproject/artifacts/preprocessing"
 
 
 class OfflinePreprocessor:
     """
-    Offline preprocessing orchestrator for training pipelines.
+    Offline preprocessing orchestrator.
 
-    Responsibilities:
-    - Loading raw data from disk
-    - Selecting a leakage-safe training subset
-    - Fitting preprocessing artifacts via TransformManager
-    - Applying fitted transformations to the full dataset
-
-    Design principles:
-    - No preprocessing logic lives here
-    - All transformations are delegated to TransformManager
-    - Training and inference behavior is deterministic and reproducible
+    Responsibilities
+    ----------------
+    - Load raw data
+    - Select leakage-safe training subset
+    - Fit preprocessing artifacts
+    - Apply fitted transforms to full dataset
     """
 
     cfg: DictConfig
     is_train: bool
-    steps: Dict[str, Dict[str, Any]]
+    steps: List[Dict[str, Any]]
     data_path: str
     artifacts_dir: str
     transform_manager: TransformManager
 
     def __init__(self, cfg: DictConfig, is_train: bool = True) -> None:
         """
-        Initialize the offline preprocessor.
+        Initialize offline preprocessor.
 
         Parameters
         ----------
         cfg : DictConfig
-            Global experiment configuration.
+            Experiment configuration.
         is_train : bool, default=True
-            Whether the pipeline is running in training mode.
+            Training or inference mode.
         """
         self.cfg = cfg
         self.is_train = is_train
-        self.steps = {
-            item["name"]: item
-            for item in self.cfg.get("preprocessing", {}).get("steps", [])
-        }
+
+        self.steps = normalize_preprocessing_steps(cfg)
+
         self.data_path = cfg.data.path
-        self.artifacts_dir = self.cfg.get("preprocessing", {}).get(
+        self.artifacts_dir = cfg.get("preprocessing", {}).get(
             "artifacts_dir", ARTIFACT_DIR
         )
+
         self.transform_manager = TransformManager(artifacts_dir=self.artifacts_dir)
+        self.transform_manager.steps = self.steps
 
     def load_raw_data(self) -> pd.DataFrame:
         """
-        Load raw dataset from CSV or generate synthetic data.
+        Load raw dataset from disk or generate synthetic data.
 
         Returns
         -------
         pd.DataFrame
-            Raw dataset with datetime index.
+            Raw dataset.
         """
         data_cfg = self.cfg.get("data", {})
         path = data_cfg.get("path")
         if not path:
-            raise ValueError("`data.path` must be specified in config.")
+            raise ValueError("`data.path` must be specified")
 
         data_type = data_cfg.get("type", "timeseries").lower()
         index_col = data_cfg.get("index_col")
+
         if data_type == "timeseries" and not index_col:
             index_col = "date"
         if data_type == "tabular":
@@ -82,108 +84,127 @@ class OfflinePreprocessor:
 
         if not os.path.exists(path):
             return self._load_synthetic(index_col)
-        return load_data_csv(path, index_col=index_col, data_type=data_type)
+
+        return load_data_csv(
+            path,
+            index_col=index_col,
+            data_type=data_type,
+        )
 
     def select_train_subset(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Select the training subset for fitting preprocessing artifacts.
+        Select training subset for fitting transforms.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Full dataset ordered by time.
+            Full dataset.
 
         Returns
         -------
         pd.DataFrame
             Training subset.
-
-        Raises
-        ------
-        ValueError
-            If training subset is invalid.
         """
         if df.empty:
             raise ValueError("Input DataFrame is empty")
 
         split_cfg = self.cfg.preprocessing.split
-        train_ratio: float = float(split_cfg.train)
+        train_ratio = float(split_cfg.train)
+
         if not 0.0 < train_ratio < 1.0:
             raise ValueError(f"Invalid train split ratio: {train_ratio}")
 
         train_size = int(len(df) * train_ratio)
         if train_size <= 0:
-            raise ValueError("Training subset size is zero.")
+            raise ValueError("Training subset size is zero")
 
         if self.cfg.data.type == "tabular":
-            df_shuffled = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
-            return df_shuffled.iloc[:train_size].copy()
-        return df.iloc[:train_size]
+            df = df.sample(frac=1.0, random_state=42).reset_index(drop=True)
+
+        return df.iloc[:train_size].copy()
 
     def get_select_df(
-        self, df: pd.DataFrame, include_target: bool = True
+        self,
+        df: pd.DataFrame,
+        include_target: bool = True,
     ) -> pd.DataFrame:
         """
-        Docstring for get_select_df
-
-        :param self: Description
-        :param df: Description
-        :type df: pd.DataFrame
-        :param include_target: Description
-        :type include_target: bool
-        :return: Description
-        :rtype: DataFrame
-        """
-        return select_columns(self.cfg, df, include_target=include_target)
-
-    def fit_manager(self, train_df: pd.DataFrame) -> None:
-        """
-        Fit all preprocessing components using training data.
+        Select feature/target columns safely.
 
         Parameters
         ----------
-        train_df : pd.DataFrame
-            Training subset.
+        df : pd.DataFrame
+            Input dataset.
+        include_target : bool, default=True
+            Whether to include target column.
+
+        Returns
+        -------
+        pd.DataFrame
+            Selected dataframe.
         """
-        print("[OfflinePreprocessor] Fitting preprocessing artifacts")
-
-        fillna_method: str = self.steps.get("fill_missing", {}).get("method", "mean")
-        default_cols = list(train_df.columns)
-        fillna_columns: List[str] = self.steps.get("fill_missing", {}).get(
-            "columns", default_cols
-        )
-        self.transform_manager.fit_fillna(
-            train_df, columns=fillna_columns, method=fillna_method
+        return select_columns(
+            self.cfg,
+            df,
+            include_target=include_target,
         )
 
-        categorical_cols: List[str] = self.steps.get("label_encoding", {}).get(
-            "columns", []
-        )
-        if categorical_cols:
-            self.transform_manager.fit_label_encoding(
-                train_df, columns=categorical_cols
-            )
+    def fit_manager(self, train_df: pd.DataFrame) -> None:
+        """
+        Fit preprocessing artifacts using training data.
 
-        numerical_cols: List[str] = self.steps.get("normalize", {}).get("columns", [])
-        if not numerical_cols:
-            numerical_cols = train_df.select_dtypes(
-                include=[np.number]
-            ).columns.tolist()
+        Stateful transformations are fitted first.
+        Stateless transformations are applied sequentially
+        to keep the pipeline order consistent.
+        """
+        df_work = train_df.copy()
 
-        scaler_method: str = self.steps.get("normalize", {}).get("method", "zscore")
-        self.transform_manager.fit_scaler(
-            train_df, columns=numerical_cols, method=scaler_method
-        )
+        # =========================
+        # 1. STATEFUL TRANSFORMS
+        # =========================
+        for step_cfg in self.steps:
+            step_name = step_cfg.get("name")
+            if not isinstance(step_name, str):
+                raise ValueError("Each preprocessing step must define a string `name`")
+
+            if step_name == "fill_missing":
+                self.transform_manager.fit_fillna(
+                    df_work,
+                    columns=step_cfg.get("columns", list(df_work.columns)),
+                    method=step_cfg.get("method", "mean"),
+                )
+
+            elif step_name == "label_encoding":
+                self.transform_manager.fit_label_encoding(
+                    df_work,
+                    columns=step_cfg.get("columns", []),
+                )
+
+            elif step_name == "normalize":
+                self.transform_manager.fit_scaler(
+                    df_work,
+                    columns=step_cfg.get("columns", []),
+                    method=step_cfg.get("method", "zscore"),
+                )
+            elif step_name in [
+                "clip",
+                "log",
+                "abs",
+                "round",
+                "binary",
+                "exponential",
+                "udf",
+            ]:
+                self.transform_manager.stateless_transform(df_work, step_cfg)
+
+            else:
+                raise ValueError(f"Unknown transform step: {step_name}")
 
         self.transform_manager.save()
-        print("[OfflinePreprocessor] Preprocessing artifacts saved")
 
-    def transform_full_dataset(
-        self,
-        df: pd.DataFrame,
-    ) -> pd.DataFrame:
+    def transform_full_dataset(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Apply fitted preprocessing pipeline to full dataset.
+        Apply fitted transforms to full dataset.
 
         Parameters
         ----------
@@ -195,39 +216,49 @@ class OfflinePreprocessor:
         pd.DataFrame
             Transformed dataset.
         """
-        print("[OfflinePreprocessor] Applying preprocessing transforms")
-
         return self.transform_manager.transform(df)
 
     def run(self) -> pd.DataFrame:
         """
-        Execute the full offline preprocessing pipeline.
+        Execute offline preprocessing pipeline.
 
         Returns
         -------
         pd.DataFrame
-            Fully processed dataset.
+            Processed dataset.
         """
         df = self.load_raw_data()
         df = self.get_select_df(df, include_target=True)
+
         if self.is_train:
             train_df = self.select_train_subset(df)
             self.fit_manager(train_df)
-        return self.transform_full_dataset(
-            df,
-        )
+
+        return self.transform_full_dataset(df)
 
     def log_artifacts_to_mlflow(self) -> None:
-        """
-        Deprecated hook for compatibility.
-
-        Preprocessing artifacts are logged via MLflow PyFunc in training pipeline.
-        """
+        """Deprecated compatibility hook."""
         return None
 
-    def _load_synthetic(self, index_col: str) -> pd.DataFrame:
-        """Generate synthetic dataset."""
-        idx = pd.date_range("2020-01-01", periods=200, freq="H")
+    def _load_synthetic(self, index_col: str | None) -> pd.DataFrame:
+        """
+        Generate synthetic fallback dataset.
+
+        Parameters
+        ----------
+        index_col : str or None
+            Index column name.
+
+        Returns
+        -------
+        pd.DataFrame
+            Synthetic dataset.
+        """
+        idx = pd.date_range(
+            "2020-01-01",
+            periods=200,
+            freq="H",
+        )
         df = pd.DataFrame(
             {
                 "HUFL": np.sin(np.arange(len(idx)) / 24)

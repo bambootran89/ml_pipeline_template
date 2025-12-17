@@ -5,18 +5,20 @@ These helpers standardize tensor/array dimensionality for traditional
 machine-learning models and provide automatic inference of model
 input/output dimensions.
 """
+from __future__ import annotations
 
 import logging
 import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, cast
 
 import mlflow
 import numpy as np
 import pandas as pd
 from mlflow.tracking import MlflowClient
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 logger = logging.getLogger(__name__)
 
@@ -402,3 +404,48 @@ def get_env_path(var_name: str, default: str) -> Path:
         Resolved absolute path.
     """
     return Path(os.getenv(var_name, default)).resolve()
+
+
+def normalize_preprocessing_steps(
+    cfg: DictConfig,
+) -> List[Dict[str, Any]]:
+    """
+    Normalize preprocessing steps from OmegaConf config.
+
+    Converts `preprocessing.steps` into a validated list of plain
+    Python dictionaries for safe downstream usage.
+    """
+    raw_steps = cfg.get("preprocessing", {}).get("steps", [])
+
+    if not isinstance(raw_steps, (list, ListConfig)):
+        raise TypeError("preprocessing.steps must be a list or OmegaConf ListConfig")
+
+    steps: List[Dict[str, Any]] = []
+
+    for idx, step in enumerate(raw_steps):
+        if isinstance(step, DictConfig):
+            step_dict_raw = OmegaConf.to_container(
+                step,
+                resolve=True,
+            )
+        elif isinstance(step, dict):
+            step_dict_raw = step
+        else:
+            raise TypeError(
+                "Each preprocessing step must be dict or DictConfig, "
+                f"got {type(step)} at index {idx}"
+            )
+
+        if not isinstance(step_dict_raw, dict):
+            raise TypeError(f"Step at index {idx} could not be converted to dict")
+
+        if "name" not in step_dict_raw:
+            raise ValueError(
+                f"Preprocessing step at index {idx} must contain key 'name'"
+            )
+
+        # 🔑 mypy-safe cast after validation
+        step_dict = cast(Dict[str, Any], step_dict_raw)
+        steps.append(step_dict)
+
+    return steps
