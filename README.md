@@ -7,7 +7,9 @@
 [![Hydra](https://img.shields.io/badge/Hydra-Configuration-blue)](https://hydra.cc/)
 ![Docker](https://img.shields.io/badge/deployment-Docker%20%7C%20K8s-2496ED)
 
-A robust, modular, and extensible machine learning framework designed for Data Science Project. This project bridges the gap between research code and production systems by enforcing strict separation of concerns, reproducibility, and MLOps best practices.
+A robust, modular, and extensible machine learning framework for end-to-end data science workflows.
+It bridges the gap between experimental research code and production-ready systems through **explicit architectural boundaries**, **reproducible pipelines**, and **first-class MLOps practices**.
+
 
 ---
 # Getting Started
@@ -112,7 +114,7 @@ kubectl apply -f k8s/service-api.yaml
 ----
 
 ## Documentation
-- [Architecture](docs/quickstart.md)
+- [Architecture](docs/architecture.md)
 - [Training-Safe Preprocessing & Data Transformation](docs/preprocessing.md)
 - [Model Integration Guide](docs/adding_new_model.md)
 - [Directory Structure](docs/directorystructure.md)

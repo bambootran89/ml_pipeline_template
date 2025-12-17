@@ -60,13 +60,13 @@ This design treats **preprocessing + model = one inseparable versioned unit**, m
 ## Training & Tuning Pipeline (Offline Workflow)
 The training pipeline is orchestrated by Hydra and powered by a robust factory pattern. It supports Nested Cross-Validation, Hyperparameter Tuning (Optuna), and automatic artifact logging to MLflow.
 
-[Offline Workflow](docs/offlineworkflow.md)
+[Offline Workflow](offlineworkflow.md)
 
 - Factory Pattern: Seamlessly switch between XGBoost, TFT, or NLinear via config model: name.
 ## Inference & Serving Pipeline (Online Workflow)
 The serving layer is designed to be stateless and reproducible. It strictly uses the artifacts (Models & Scalers) generated during the training phase to ensure the Training-Serving Skew is minimized.
 
-[Online Workflow](docs/onlineworkflow.md)
+[Online Workflow](onlineworkflow.md)
 
 
 ## Key Features
