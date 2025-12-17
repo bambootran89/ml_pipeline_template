@@ -1,4 +1,4 @@
-# Production-Grade Time-Series ML Pipeline
+# Production-Grade ML Pipeline
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
 [![MLflow](https://img.shields.io/badge/MLflow-Tracking-blue)](https://mlflow.org/)
