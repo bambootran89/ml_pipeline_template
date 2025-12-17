@@ -65,7 +65,6 @@ class DataModuleFactory(DynamicFactoryBase):
 
         data_module_class = cls._get_class_from_config(config_entry)
 
-        target_col = cfg.data.get("target_columns", [""])[0]
         input_chunk = cfg.experiment.hyperparams.get("input_chunk_length", -1)
         output_chunk = cfg.experiment.hyperparams.get("output_chunk_length", -1)
 
@@ -81,7 +80,6 @@ class DataModuleFactory(DynamicFactoryBase):
         return data_module_class(
             df=df,
             cfg=cfg_init,
-            target_column=target_col,
             input_chunk=input_chunk,
             output_chunk=output_chunk,
         )

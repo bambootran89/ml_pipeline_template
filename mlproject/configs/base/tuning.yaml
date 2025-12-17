@@ -2,7 +2,6 @@
 
 tuning:
   # CV Strategy
-  cv_strategy: "expanding"  # "expanding" or "sliding"
   n_splits: 3
   test_size: 20
   train_size: 60  # Only for sliding window

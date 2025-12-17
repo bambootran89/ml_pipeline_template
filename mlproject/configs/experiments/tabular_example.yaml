@@ -81,7 +81,7 @@ data:
     - Survived
 
   # Selected feature columns
-  feature_cols:
+  features:
     - "Pclass"  # 1, 2, 3
     - "Age"     # 22.0, 38.0...
     - "SibSp"   # 1, 0...

@@ -9,7 +9,7 @@ defaults:
 data:
   path: "mlproject/data/ETTh1.csv"   # optional demo
   index_col: "date"
-  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  target_columns: ["HUFL","MUFL",]
   features: ["HUFL", "MUFL", "mobility_inflow"]
   return_type: pandas
   type: timeseries
@@ -23,6 +23,7 @@ experiment:
     # Initial guess (will be overridden by tuning)
     input_chunk_length: 24
     output_chunk_length: 6
+    n_targets: 2
     args:
       iterations: 1000
       learning_rate: 0.05
@@ -38,7 +39,6 @@ tuning:
   n_trials: 30
   n_splits: 3
   test_size: 24
-  cv_strategy: "expanding"
   optimize_metric: "mae_mean"
   direction: "minimize"
   n_jobs: 1

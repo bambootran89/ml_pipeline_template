@@ -145,7 +145,7 @@ defaults:
 data:
   path: "mlproject/data/ETTh1.csv"   # optional demo
   index_col: "date"
-  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  target_columns: ["HUFL","MUFL",]
   features: ["HUFL", "MUFL", "mobility_inflow"]
   return_type: pandas
   type: timeseries
@@ -174,7 +174,6 @@ tuning:
   n_trials: 30
   n_splits: 3
   test_size: 24
-  cv_strategy: "expanding"
   optimize_metric: "mae_mean"
   direction: "minimize"
   n_jobs: 1

@@ -4,11 +4,12 @@ defaults:
   - ../base/training.yaml
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
+  - ../base/tuning.yaml
 
 data:
   path: "mlproject/data/ETTh1.csv"   # optional demo
   index_col: "date"
-  target_columns: ["HUFL","MUFL","HULL","LULL"]
+  target_columns: ["HUFL","MUFL"]
   features: ["HUFL", "MUFL", "mobility_inflow"]
   return_type: pandas
   type: timeseries
@@ -21,6 +22,7 @@ experiment:
   hyperparams:
     input_chunk_length: 24
     n_features: 3
+    n_targets: 2
     output_chunk_length: 6
     n_epochs: 20
     batch_size: 16

@@ -82,7 +82,6 @@ class CrossValidationPipeline(BasePipeline):
         hyperparams: Dict[str, Any] = approach.get("hyperparams", {})
         model_type: str = approach["model_type"].lower()
         fold_metrics: List[Dict[str, float]] = []
-
         for i, df_fold in enumerate(folds):
             metrics = self._fold_runner.run_fold(
                 df_fold=df_fold,

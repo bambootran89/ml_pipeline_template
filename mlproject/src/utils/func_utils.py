@@ -269,7 +269,7 @@ def select_columns(
     """
     data_cfg = cfg.get("data", {})
 
-    feature_cols: Sequence[str] = data_cfg.get("feature_cols") or []
+    feature_cols: Sequence[str] = data_cfg.get("features") or []
 
     # Backward compatibility: if feature_cols is not defined, keep original DF
     if not feature_cols:
@@ -279,19 +279,19 @@ def select_columns(
 
     if include_target:
         target_cols = list(data_cfg.get("target_columns", []))
-
         if isinstance(target_cols, str):
             cols_to_keep.append(target_cols)
         elif isinstance(target_cols, (list, tuple)):
             cols_to_keep.extend(target_cols)
     # Keep only columns that actually exist in the DataFrame
-    valid_cols: List[str] = [col for col in cols_to_keep if col in df.columns]
+    valid_cols: List[str] = list(
+        set([col for col in cols_to_keep if col in df.columns])
+    )
 
     if not valid_cols:
         # Strategy: return original DF to avoid hard failure and aid debugging
         return df
-
-    return df.loc[:, valid_cols]
+    return df.loc[:, sorted(valid_cols)]
 
 
 def load_model_from_registry(model_name: str, version: str = "latest"):

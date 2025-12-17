@@ -38,15 +38,16 @@ class XGBWrapper(MLModelWrapper):
 
         self.ensure_built()
         x_reshaped = flatten_timeseries(x)
-
+        y_reshaped = flatten_timeseries(y)
         # Tạo eval_set nếu có validation data
         fit_params = kwargs.copy()
         if x_val is not None and y_val is not None:
             x_val_reshaped = flatten_timeseries(x_val)
-            fit_params["eval_set"] = [(x_val_reshaped, y_val)]
+            y_val_reshaped = flatten_timeseries(y_val)
+            fit_params["eval_set"] = [(x_val_reshaped, y_val_reshaped)]
             fit_params["verbose"] = False
         model = cast(BaseEstimator, self.model)
-        model.fit(x_reshaped, y, sample_weight=sample_weight, **fit_params)
+        model.fit(x_reshaped, y_reshaped, sample_weight=sample_weight, **fit_params)
 
     def predict(self, x: Any, **kwargs: Any) -> Any:
         """
@@ -73,4 +74,8 @@ class XGBWrapper(MLModelWrapper):
             x_arr = x_arr.reshape(1, -1)
 
         preds = self.model.predict(x_arr)
+        if self.n_targets == 1:
+            return preds
+        else:
+            preds = preds.reshape(len(preds), -1, self.n_targets)
         return np.asarray(preds)

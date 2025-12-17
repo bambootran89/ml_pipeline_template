@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -32,7 +32,6 @@ class BaseDataModule:
         self,
         df: pd.DataFrame,
         cfg: dict,
-        target_column: str,
         input_chunk: int,
         output_chunk: int,
     ) -> None:
@@ -41,7 +40,6 @@ class BaseDataModule:
         Args:
             df (pd.DataFrame): Input dataframe containing features and target.
             cfg (dict): Configuration dictionary.
-            target_column (str): Column name of the prediction target.
             input_chunk (int): Length of input sequence.
             output_chunk (int): Length of output sequence.
 
@@ -53,23 +51,22 @@ class BaseDataModule:
 
         self.df = df
         self.cfg = cfg
-        self.target_column = target_column
+
         self.input_chunk = input_chunk
         self.output_chunk = output_chunk
         data_cfg = self.cfg.get("data", {})
+        self.target_columns = data_cfg.get("target_columns", [])
         data_type = data_cfg.get(
             "type",
             "tabular",
         )
         self.data_type = data_type
-        self.target_cols = data_cfg.get("target_columns", [])
         self.x_train: np.ndarray
         self.y_train: np.ndarray
         self.x_val: np.ndarray
         self.y_val: np.ndarray
         self.x_test: np.ndarray
         self.y_test: np.ndarray
-
         self._prepare_data()
 
     def setup(self) -> None:
@@ -92,7 +89,7 @@ class BaseDataModule:
 
         if self.data_type == "timeseries":
             x, y = self._create_windows(
-                target_col=self.target_column,
+                target_cols=self.target_columns,
                 input_chunk=self.input_chunk,
                 output_chunk=self.output_chunk,
             )
@@ -100,8 +97,8 @@ class BaseDataModule:
             df_shuffled = self.df.sample(frac=1.0, random_state=42).reset_index(
                 drop=True
             )
-            y = df_shuffled[self.target_cols].values
-            x = df_shuffled.drop(columns=self.target_cols).values
+            y = df_shuffled[self.target_columns].values
+            x = df_shuffled.drop(columns=self.target_columns).values
 
         if len(x) == 0:
             raise ValueError("Windowing produced zero samples. Check input length.")
@@ -121,7 +118,7 @@ class BaseDataModule:
 
     def _create_windows(
         self,
-        target_col: str,
+        target_cols: List,
         input_chunk: int,
         output_chunk: int,
         stride: int = 1,
@@ -129,7 +126,7 @@ class BaseDataModule:
         """Convert the dataframe into sliding windows.
 
         Args:
-            target_col (str): Name of the target variable.
+            target_cols (list): list of the target variable.
             input_chunk (int): Input sequence length.
             output_chunk (int): Output horizon length.
             stride (int, optional): Window stride. Defaults to 1.
@@ -153,7 +150,7 @@ class BaseDataModule:
         for end_idx in range(input_chunk, n - output_chunk + 1, stride):
             start_idx = end_idx - input_chunk
             x_win = self.df.iloc[start_idx:end_idx].values
-            y_win = self.df.iloc[end_idx : end_idx + output_chunk][target_col].values
+            y_win = self.df.iloc[end_idx : end_idx + output_chunk][target_cols].values
             x_windows.append(x_win)
             y_windows.append(y_win)
 

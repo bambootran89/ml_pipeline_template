@@ -50,8 +50,9 @@ class NLinearWrapper(DLModelWrapperBase):
         print(f"building {model_type}")
         hidden = self.cfg.get("hidden", 128)
         n_features = self.cfg.get("n_features", 4)
+
         input_dim = self.cfg.get("input_chunk_length", 24) * n_features
-        output_dim = self.cfg.get("output_chunk_length", 6)
+        output_dim = self.cfg.get("output_chunk_length", 6) * self.n_targets
         self.model = FallbackNLinear(input_dim, output_dim, hidden=hidden)
         self.model_type = model_type
 
@@ -73,6 +74,7 @@ class NLinearWrapper(DLModelWrapperBase):
         x, y = batch
         x_t = torch.tensor(x, dtype=torch.float32, device=device)
         y_t = torch.tensor(y, dtype=torch.float32, device=device)
+        y_t = y_t.reshape(y_t.size(0), -1)
 
         preds = self.model(x_t)
         loss = loss_fn(preds, y_t)
@@ -104,4 +106,5 @@ class NLinearWrapper(DLModelWrapperBase):
         with torch.no_grad():
             t = torch.tensor(x, dtype=torch.float32)
             out = self.model(t)
+            out = out.reshape(out.size(0), -1, self.n_targets)
             return out.cpu().numpy()

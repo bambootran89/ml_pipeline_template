@@ -20,8 +20,8 @@ import pytest
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
-from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.datamodule.base import BaseDataModule
+from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.datamodule.tsdl import TSDLDataModule
 
 
@@ -175,7 +175,6 @@ class TestTSDLDataModule:
         dm = TSDLDataModule(
             df=synthetic_data,
             cfg=dl_config,
-            target_column="HUFL",
             input_chunk=5,
             output_chunk=2,
         )
@@ -191,7 +190,6 @@ class TestTSDLDataModule:
         dm = TSDLDataModule(
             df=synthetic_data,
             cfg=dl_config,
-            target_column="HUFL",
             input_chunk=5,
             output_chunk=2,
         )
@@ -201,7 +199,7 @@ class TestTSDLDataModule:
         assert x_batch.ndim == 3
         assert x_batch.shape[1] == 5
         assert x_batch.shape[2] == 3
-        assert y_batch.ndim == 2
+        assert y_batch.ndim == 3
         assert y_batch.shape[1] == 2
 
     def test_test_windows(self, synthetic_data: pd.DataFrame, dl_config: DictConfig):
@@ -209,7 +207,6 @@ class TestTSDLDataModule:
         dm = TSDLDataModule(
             df=synthetic_data,
             cfg=dl_config,
-            target_column="HUFL",
             input_chunk=5,
             output_chunk=2,
         )
@@ -223,7 +220,6 @@ class TestTSDLDataModule:
         dm = TSDLDataModule(
             df=synthetic_data,
             cfg=dl_config,
-            target_column="HUFL",
             input_chunk=5,
             output_chunk=2,
         )
@@ -245,7 +241,6 @@ class TestTSBaseDataModule:
         dm = BaseDataModule(
             df=synthetic_data,
             cfg=OmegaConf.to_container(ml_config, resolve=True),
-            target_column="HUFL",
             input_chunk=5,
             output_chunk=2,
         )
@@ -260,7 +255,6 @@ class TestTSBaseDataModule:
         dm = BaseDataModule(
             df=synthetic_data,
             cfg=OmegaConf.to_container(ml_config, resolve=True),
-            target_column="HUFL",
             input_chunk=5,
             output_chunk=2,
         )
@@ -274,7 +268,6 @@ class TestTSBaseDataModule:
         dm = BaseDataModule(
             df=synthetic_data,
             cfg=OmegaConf.to_container(ml_config, resolve=True),
-            target_column="HUFL",
             input_chunk=5,
             output_chunk=2,
         )

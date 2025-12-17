@@ -17,7 +17,6 @@ class TSDLDataModule(BaseDataModule):
         self,
         df,
         cfg,
-        target_column: str,
         input_chunk: int,
         output_chunk: int,
     ) -> None:
@@ -26,11 +25,10 @@ class TSDLDataModule(BaseDataModule):
         Args:
             df (pd.DataFrame): Dataset.
             cfg (dict): Configuration dictionary.
-            target_column (str): Name of the prediction target column.
             input_chunk (int): Length of input sequence.
             output_chunk (int): Length of output sequence.
         """
-        super().__init__(df, cfg, target_column, input_chunk, output_chunk)
+        super().__init__(df, cfg, input_chunk, output_chunk)
         self.train_loader: Optional[DataLoader] = None
         self.val_loader: Optional[DataLoader] = None
 

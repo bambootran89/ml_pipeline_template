@@ -46,14 +46,10 @@ class TuningPipeline(BasePipeline):
         self.splitter: TimeSeriesFoldSplitter
 
         tuning_cfg = self.cfg.get("tuning", {})
-        cv_strategy = tuning_cfg.get("cv_strategy", "expanding")
         n_splits = tuning_cfg.get("n_splits", 3)
         test_size = tuning_cfg.get("test_size", 20)
 
-        if cv_strategy == "expanding":
-            self.splitter = TimeSeriesFoldSplitter(n_splits, test_size)
-        else:
-            raise ValueError(f"Unknown cv_strategy: {cv_strategy}")
+        self.splitter = TimeSeriesFoldSplitter(n_splits, test_size)
 
     def preprocess(self) -> Any:
         """

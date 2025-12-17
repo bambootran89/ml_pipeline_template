@@ -157,8 +157,7 @@ class OfflinePreprocessor:
         Stateless transformations are applied sequentially
         to keep the pipeline order consistent.
         """
-        df_work = train_df.copy()
-
+        df_work = self.get_select_df(train_df, include_target=True)
         # =========================
         # 1. STATEFUL TRANSFORMS
         # =========================
@@ -216,6 +215,7 @@ class OfflinePreprocessor:
         pd.DataFrame
             Transformed dataset.
         """
+        df = self.get_select_df(df, include_target=True)
         return self.transform_manager.transform(df)
 
     def run(self) -> pd.DataFrame:

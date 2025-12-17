@@ -70,7 +70,7 @@ class TFTWrapper(DLModelWrapperBase):
         hidden = self.cfg.get("hidden_size", 64)
         layers = self.cfg.get("num_layers", 1)
         input_dim = self.cfg.get("n_features", 4)
-        output_dim = self.cfg.get("output_chunk_length", 6)
+        output_dim = self.cfg.get("output_chunk_length", 6) * self.n_targets
 
         self.model = TFTFallback(
             input_dim=input_dim,
@@ -136,6 +136,7 @@ class TFTWrapper(DLModelWrapperBase):
         self.model.train()
 
         x, y = batch
+        y = y.reshape(y.shape[0], -1)
         x = self._ensure_float(x).to(device)
         y = self._ensure_float(y).to(device)
 
@@ -184,4 +185,6 @@ class TFTWrapper(DLModelWrapperBase):
         self.model.eval()
         with torch.no_grad():
             out = self.model(t)
+
+            out = out.reshape(out.size(0), -1, self.n_targets)
             return out.cpu().numpy()

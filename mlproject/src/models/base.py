@@ -34,6 +34,7 @@ class BaseModelWrapper(ABC):
             raise TypeError("cfg must be dict or DictConfig")
         self.model_type: str = ""
         self.model: Optional[Any] = None
+        self.n_targets = self.cfg.get("n_targets", 1)
 
     @abstractmethod
     def build(self, model_type: str):
@@ -149,16 +150,21 @@ class MLModelWrapper(BaseModelWrapper):
         self.ensure_built()
 
         x_reshaped = flatten_timeseries(x)
+        y_reshaped = flatten_timeseries(y)
 
         model = cast(BaseEstimator, self.model)
-        model.fit(x_reshaped, y, sample_weight=sample_weight, **kwargs)
+        model.fit(x_reshaped, y_reshaped, sample_weight=sample_weight, **kwargs)
 
     def predict(self, x, **kwargs):
         """Predict with sklearn estimator."""
         self.ensure_built()
         x_reshaped = flatten_timeseries(x)
 
-        return self.model.predict(x_reshaped, **kwargs)
+        out = self.model.predict(x_reshaped, **kwargs)
+        if self.n_targets == 1:
+            return out
+        else:
+            out = out.reshape(len(out), -1, self.n_targets)
 
     def save(self, save_dir: str):
         """Save estimator + metadata with joblib."""
