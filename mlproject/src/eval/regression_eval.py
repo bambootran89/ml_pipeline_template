@@ -1,4 +1,4 @@
-from typing import Dict, Union
+from typing import Any, Dict, Union
 
 import numpy as np
 
@@ -76,7 +76,12 @@ class RegressionEvaluator(BaseEvaluator):
         metric = 1 - ss_res / np.where(ss_tot != 0, ss_tot, 1)
         return self._aggregate(metric)
 
-    def evaluate(self, y_true, y_pred) -> Dict[str, Union[float, np.ndarray]]:
+    def evaluate(
+        self,
+        y_true,
+        y_pred,
+        **kwargs: Any,
+    ) -> Dict[str, Union[float, np.ndarray]]:
         """
         Compute all regression metrics.
 
@@ -87,6 +92,7 @@ class RegressionEvaluator(BaseEvaluator):
         Returns:
             dict: Dictionary with keys ["mae","mse","rmse","r2"] and per-output metrics
         """
+        _ = kwargs
         return {
             "mae": self.mae(y_true, y_pred),
             "mse": self.mse(y_true, y_pred),

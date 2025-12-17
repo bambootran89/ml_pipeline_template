@@ -216,7 +216,8 @@ class OfflinePreprocessor:
             Transformed dataset.
         """
         df = self.get_select_df(df, include_target=True)
-        return self.transform_manager.transform(df)
+        df = self.transform_manager.transform(df)
+        return df
 
     def run(self) -> pd.DataFrame:
         """

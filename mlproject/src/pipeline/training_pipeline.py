@@ -6,6 +6,7 @@ from omegaconf import DictConfig
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
 from mlproject.src.eval.classification_eval import ClassificationEvaluator
+from mlproject.src.eval.clustering_eval import ClusteringEvaluator
 from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.models.model_factory import ModelFactory
@@ -42,8 +43,12 @@ class TrainingPipeline(BasePipeline):
             self.evaluator = ClassificationEvaluator()
         elif eval_type == "regression":
             self.evaluator = RegressionEvaluator()
-        else:
+        elif eval_type == "timeseries":
             self.evaluator = TimeSeriesEvaluator()
+        elif eval_type == "clustering":
+            self.evaluator = ClusteringEvaluator()
+        else:
+            raise ValueError(f"don't support this type {eval_type}")
 
     def preprocess(self) -> Any:
         """
@@ -83,9 +88,10 @@ class TrainingPipeline(BasePipeline):
             _, _, _, _, x_test, y_test = dm.get_data()  # TSMLDataModule
         else:
             raise AttributeError("DataModule must support retrieving test data")
-
         preds = wrapper.predict(x_test)
-        metrics = self.evaluator.evaluate(y_test, preds)
+        metrics = self.evaluator.evaluate(
+            y_test, preds, x=x_test, model=wrapper.get_model()
+        )
         print(metrics)
         return metrics
 
@@ -202,9 +208,9 @@ class TrainingPipeline(BasePipeline):
         )
 
         with self.mlflow_manager.start_run(run_name=run_name):
-            transform_manager: Optional[
-                TransformManager
-            ] = self.preprocessor.transform_manager
+            transform_manager: Optional[TransformManager] = (
+                self.preprocessor.transform_manager
+            )
 
             active_run = mlflow.active_run()
             if active_run is None:

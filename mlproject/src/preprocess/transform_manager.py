@@ -462,7 +462,9 @@ class TransformManager:
                 value = float(df[col].median())
             else:
                 modes = df[col].mode()
-                value = float(modes.iloc[0]) if not modes.empty else 0.0
+                value = modes.iloc[0] if not modes.empty else 0.0
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    value = float(value)
 
             self.fillna_stats[col] = {
                 "method": method,
