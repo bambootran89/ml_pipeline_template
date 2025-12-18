@@ -127,9 +127,13 @@ class OptunaTuner(BaseTuner):
 
             # Log aggregated metrics
             self.mlflow_manager.log_metrics(agg_metrics)
-
             # Return averaged metric for Optuna
-            return float(agg_metrics.get(self.metric_name, 0.0))
+            value = agg_metrics.get(self.metric_name, 0.0)
+            if value is None:
+                raise ValueError(
+                    f"don't have this metrics: {self.metric_name}, we only have {agg_metrics.keys()}"
+                )
+            return float(value)
 
     def tune(
         self,

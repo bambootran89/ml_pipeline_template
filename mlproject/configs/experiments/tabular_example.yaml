@@ -107,7 +107,7 @@ evaluation:
 
 tuning:
   n_trials: 30
-  metric: val_f1
+  metric: f1_mean
   direction: maximize
   storage: sqlite:///mlflow.db
 
