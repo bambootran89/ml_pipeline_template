@@ -14,7 +14,7 @@ class ConfigValidator:
 
     REQUIRED_KEYS = {
         "experiment": ["name", "type", "model"],
-        "data": ["path", "features"],
+        "data": ["features"],
         "preprocessing": ["steps"],
     }
 

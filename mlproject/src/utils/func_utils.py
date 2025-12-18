@@ -239,6 +239,69 @@ def load_data_csv(
     return df
 
 
+def load_raw_data(
+    cfg: Any,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Load raw dataset from disk or generate synthetic data.
+
+    Returns
+    -------
+    pd.DataFrame
+        Raw dataset.
+    """
+    c_cfg = cfg if cfg else {}
+    data_cfg = c_cfg.get("data", {})
+    path = data_cfg.get("path")
+    train_path = data_cfg.get("train_path")
+    val_path = data_cfg.get("val_path")
+    test_path = data_cfg.get("test_path")
+
+    data_type = data_cfg.get("type", "timeseries").lower()
+    index_col = data_cfg.get("index_col")
+
+    if data_type == "timeseries" and not index_col:
+        index_col = "date"
+    if data_type == "tabular":
+        index_col = None
+
+    if path:
+        return (
+            load_data_csv(
+                path,
+                index_col=index_col,
+                data_type=data_type,
+            ),
+            pd.DataFrame(),
+            pd.DataFrame(),
+            pd.DataFrame(),
+        )
+    else:
+        if not train_path:
+            raise ValueError("`data.train_path` must be specified")
+        train_df = load_data_csv(
+            train_path,
+            index_col=index_col,
+            data_type=data_type,
+        )
+        if not test_path:
+            raise ValueError("`data.train_path` must be specified")
+        test_df = load_data_csv(
+            train_path,
+            index_col=index_col,
+            data_type=data_type,
+        )
+        if not val_path:
+            val_df = test_df.copy()
+        else:
+            val_df = load_data_csv(
+                val_path,
+                index_col=index_col,
+                data_type=data_type,
+            )
+        return (pd.DataFrame(), train_df, val_df, test_df)
+
+
 def select_columns(
     cfg: Any,
     df: pd.DataFrame,

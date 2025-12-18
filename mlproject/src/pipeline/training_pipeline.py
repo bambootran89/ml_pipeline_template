@@ -57,7 +57,7 @@ class TrainingPipeline(BasePipeline):
         Returns:
             Preprocessed dataset object.
         """
-        df = self.preprocessor.run()
+        df = self.preprocessor.fit_and_transform()
         return df
 
     def _init_model(self, approach: Dict[str, Any]):

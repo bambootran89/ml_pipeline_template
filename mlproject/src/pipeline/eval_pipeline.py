@@ -23,7 +23,7 @@ from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
-from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
+from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow, load_raw_data
 from mlproject.src.utils.mlflow_utils import (
     load_companion_preprocessor_from_model,
     load_model_from_registry_safe,
@@ -110,7 +110,7 @@ class EvalPipeline(BasePipeline):
         pd.DataFrame
             Preprocessed dataset.
         """
-        df_raw: pd.DataFrame = self.preprocessor.load_raw_data()
+        _, _, _, df_raw = load_raw_data(self.cfg)
 
         fea_df: pd.DataFrame = self._transform_data(
             self.preprocessor.get_select_df(df_raw, include_target=False)

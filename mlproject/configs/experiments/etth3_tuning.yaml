@@ -4,14 +4,7 @@ defaults:
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
   - ../base/tuning.yaml
-
-data:
-  path: "mlproject/data/ETTh1.csv"   # optional demo
-  index_col: "date"
-  target_columns: ["HUFL","MUFL",]
-  features: ["HUFL", "MUFL", "mobility_inflow"]
-  return_type: pandas
-  type: timeseries
+  - ../base/data.yaml
 
 preprocessing:
   steps:
