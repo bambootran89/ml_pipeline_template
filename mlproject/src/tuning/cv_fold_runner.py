@@ -108,7 +108,6 @@ class FoldRunner:
 
         if is_tuning and hasattr(trainer, "artifacts_dir"):
             trainer.artifacts_dir = None
-
         datamodule = DataModuleFactory.build(self.cfg, df_processed)
         datamodule.setup()
 

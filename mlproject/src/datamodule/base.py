@@ -129,8 +129,11 @@ class BaseDataModule:
             print("Data Module uses dataset columns to split dataframe(df)")
             cols = list(set(self.features + self.target_columns))
             train_df = self.df[self.df["dataset"] == "train"][cols].sort_index()
-            val_df = self.df[self.df["dataset"] == "val"][cols].sort_index()
             test_df = self.df[self.df["dataset"] == "test"][cols].sort_index()
+            val_df = self.df[self.df["dataset"] == "val"][cols].sort_index()
+            if len(val_df) == 0:
+                val_df = test_df.copy()
+
             if self.data_type == "timeseries":
                 self.x_train, self.y_train = self._create_windows(
                     train_df,

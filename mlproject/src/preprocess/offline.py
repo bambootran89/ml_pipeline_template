@@ -115,7 +115,7 @@ class OfflinePreprocessor:
             include_target=include_target,
         )
 
-    def fit_manager(self, train_df: pd.DataFrame) -> None:
+    def fit_manager(self, df: pd.DataFrame) -> None:
         """
         Fit preprocessing artifacts using training data.
 
@@ -123,7 +123,10 @@ class OfflinePreprocessor:
         Stateless transformations are applied sequentially
         to keep the pipeline order consistent.
         """
-        df_work = self.get_select_df(train_df, include_target=True)
+
+        df_work = self.get_select_df(df, include_target=True)
+        if "dataset" in df.columns:
+            df_work["dataset"] = df["dataset"]
         # 1. STATEFUL TRANSFORMS
         for step_cfg in self.steps:
             step_name = step_cfg.get("name")
@@ -179,9 +182,11 @@ class OfflinePreprocessor:
         pd.DataFrame
             Transformed dataset.
         """
-        df = self.get_select_df(df, include_target=True)
-        df = self.transform_manager.transform(df)
-        return df
+        this_df = self.get_select_df(df, include_target=True)
+        if "dataset" in df.columns:
+            this_df["dataset"] = df["dataset"]
+        this_df = self.transform_manager.transform(this_df)
+        return this_df
 
     def fit_and_transform(self) -> pd.DataFrame:
         """

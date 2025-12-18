@@ -1,11 +1,21 @@
 defaults:
-  - ../base/preprocessing.yaml
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
   - ../base/data.yaml
   - ../base/tuning.yaml
+preprocessing:
+  steps:
+    - name: fill_missing
+      method: ffill
+    - name: normalize
+      method: zscore
+  split:
+    train: 0.8
+    val: 0.0
+    test: 0.2
+  artifacts_dir: "mlproject/artifacts/preprocessing"
 
 data:
   path: "mlproject/data/ETTh1.csv"   # optional demo

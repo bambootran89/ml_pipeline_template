@@ -118,8 +118,13 @@ class BaseSplitter:
 
         folds: List[pd.DataFrame] = []
 
-        for _, fold_idx in split_iter:
-            fold_df = df.iloc[fold_idx].reset_index(drop=True)
+        for train_idx, test_idx in split_iter:
+            # Train set: K-1 folds
+            train_df = df.iloc[train_idx].reset_index(drop=True)
+            train_df["dataset"] = "train"
+            # Test set: 1 fold
+            test_df = df.iloc[test_idx].reset_index(drop=True)
+            test_df["dataset"] = "test"
+            fold_df = pd.concat([train_df, test_df], axis=0)
             folds.append(fold_df)
-
         return folds
