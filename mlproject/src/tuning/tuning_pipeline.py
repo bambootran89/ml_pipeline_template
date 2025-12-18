@@ -1,18 +1,19 @@
 #!/usr/bin/env python
 """
-Tuning Pipeline: orchestrates hyperparameter tuning and final retraining.
+Tuning pipeline orchestrating hyperparameter search and final model retraining.
 
-Workflow:
-    1. Run hyperparameter tuning (Optuna or Ray Tune).
-    2. Retrieve best hyperparameters from the tuner.
-    3. Retrain the model on the full dataset using best hyperparameters.
-    4. Register the final model in MLflow Model Registry.
+Workflow overview:
+    1. Run Optuna-based hyperparameter tuning using time-series CV.
+    2. Extract the best hyperparameters from the tuning study.
+    3. Retrain the model using the full dataset with the best parameters.
+    4. Register the retrained model into MLflow Model Registry.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, cast
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
+from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
@@ -23,113 +24,103 @@ from mlproject.src.utils.config_loader import ConfigLoader
 
 class TuningPipeline(BasePipeline):
     """
-    End-to-end pipeline for hyperparameter tuning and full retraining.
-
-    Example:
-        >>> pipeline = TuningPipeline("configs/experiments/etth1.yaml")
-        >>> best_params = pipeline.run()
+    End-to-end tuning workflow combining:
+        - Hyperparameter optimization
+        - Best-parameter extraction
+        - Final model retraining
+        - Model registration in MLflow
     """
 
-    def __init__(self, cfg_path: str = "") -> None:
+    def __init__(self, cfg_path: str = ""):
         """
-        Initialize the tuning pipeline.
+        Initialize tuning pipeline.
 
         Args:
-            cfg_path: Path to the experiment configuration YAML file.
+            cfg_path:
+                Path to the experiment configuration YAML file.
         """
+        self.cfg_path = cfg_path
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
 
         self.mlflow_manager = MLflowManager(self.cfg)
-
-        # Use common base class type for splitter to satisfy MyPy
-        self.splitter: TimeSeriesFoldSplitter
-
-        tuning_cfg = self.cfg.get("tuning", {})
-        n_splits = tuning_cfg.get("n_splits", 3)
-        test_size = tuning_cfg.get("test_size", 20)
-
-        self.splitter = TimeSeriesFoldSplitter(n_splits, test_size)
-
-    def preprocess(self) -> Any:
-        """
-        Load and preprocess raw data before tuning.
-
-        Returns:
-            Any: Output from the offline preprocessing pipeline.
-        """
-
-    def run_approach(self, approach: Dict[str, Any], data: Any) -> None:
-        """Not applicable in tuning pipeline."""
-        raise NotImplementedError("Use run() for tuning workflow.")
-
-    def _load_tuner(self, tuner_type: str) -> OptunaTuner:
-        """
-        Lazily load tuner class without violating import placement rules.
-
-        Args:
-            tuner_type: 'optuna' or 'ray'
-
-        Returns:
-            Instance of tuner.
-        """
-        metric_name = self.cfg.get("tuning", {}).get("optimize_metric", "mae_mean")
-        direction = self.cfg.get("tuning", {}).get("direction", "minimize")
-
-        if tuner_type == "optuna":
-            return OptunaTuner(
-                cfg=self.cfg,
-                splitter=self.splitter,
-                mlflow_manager=self.mlflow_manager,
-                metric_name=metric_name,
-                direction=direction,
+        cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(self.cfg, resolve=True))
+        # Build CV splitter. Parameters may be overridden in YAML config.
+        self.splitter: BaseSplitter
+        eval_type = self.cfg.get("data", {}).get("type", "timeseries")
+        if eval_type == "timeseries":
+            self.splitter = TimeSeriesFoldSplitter(
+                cfg_dict,
+                n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
+            )
+        else:
+            self.splitter = BaseSplitter(
+                cfg_dict,
+                n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
             )
 
-        raise ValueError(f"Unknown tuner_type: {tuner_type}")
-
-    def run(
-        self, data: Optional[Any] = None, tuner_type: str = "optuna"
-    ) -> Dict[str, Any]:
+    def preprocess(self):
         """
-        Execute the full hyperparameter tuning workflow.
-
-        Args:
-            data: Optional preprocessed dataset. If None, preprocessing is run.
-            tuner_type: Backend tuner type. Either 'optuna' or 'ray'.
+        Load and preprocess the dataset for tuning and retraining.
 
         Returns:
-            dict: Best hyperparameters found during tuning.
+            Processed dataset produced by offline preprocessing workflow.
         """
-        _ = data
 
-        tuner = self._load_tuner(tuner_type)
+    def run_approach(self, approach: Dict[str, Any], data):
+        """
+        Not used for tuning workflow.
 
-        tuning_cfg = self.cfg.get("tuning", {})
-        n_trials = tuning_cfg.get("n_trials", 20)
-        timeout = tuning_cfg.get("timeout")
-        n_jobs = tuning_cfg.get("n_jobs", 1)
+        Raises:
+            NotImplementedError:
+                Always raised because tuning uses `run()`.
+        """
+        raise NotImplementedError("Use run() for tuning workflow.")
 
-        result = tuner.tune(
-            n_trials=n_trials,
-            timeout=timeout,
-            n_jobs=n_jobs,
-        )
+    def run(self, data=None):
+        # START PARENT RUN HERE
+        # Run name: Hparam_Tuning_Experiment
+        with self.mlflow_manager.start_run(run_name="Hparam_Tuning_Experiment"):
+            print(
+                "[MLflow] Started Parent Run: \
+                  Hparam_Tuning_Experiment"
+            )
 
-        best_params = result["best_params"]
+            # Step 2: Initialize the tuner
+            tuner = OptunaTuner(
+                cfg=self.cfg,
+                splitter=self.splitter,
+                mlflow_manager=self.mlflow_manager,  # Pass manager to tuner
+                metric_name=self.cfg.get("tuning", {}).get(
+                    "optimize_metric", "mae_mean"
+                ),
+                direction="minimize",
+            )
+
+            # Step 3: Run tuning (Trials will be nested children)
+            n_trials = self.cfg.get("tuning", {}).get("n_trials", 20)
+
+            # Pass aggregated metrics of best trial to parent run (optional but good)
+            result = tuner.tune(n_trials=n_trials)
+            best_params = result["best_params"]
+
+            # Log best params to Parent Run for quick view
+            self.mlflow_manager.log_params(best_params)
+
+        # Step 4: Update experiment hyperparameters
         self.cfg.experiment.hyperparams.update(best_params)
 
-        print("\n" + "=" * 60)
+        # Step 5: Retrain model using best parameters
+        # This is OUTSIDE the tuning run, so it will create its own standalone run
+        # (or you can nest it if you prefer, but usually Retrain is a separate run)
+        print(f"\n{'=' * 60}")
         print("  RETRAINING WITH BEST HYPERPARAMETERS")
-        print("=" * 60 + "\n")
+        print(f"{'=' * 60}\n")
 
-        training_pipeline = TrainingPipeline("")
-        training_pipeline.cfg = self.cfg
-        training_pipeline.mlflow_manager = self.mlflow_manager
+        training_pipeline = TrainingPipeline(self.cfg_path)
+
+        # This will log the FINAL MODEL (artifacts enabled by default in
+        # TrainingPipeline)
         training_pipeline.run(data)
-
-        print("\n" + "=" * 60)
-        print("  TUNING PIPELINE COMPLETED")
-        print("  Best model registered to MLflow Registry")
-        print("=" * 60 + "\n")
 
         return best_params

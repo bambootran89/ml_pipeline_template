@@ -208,9 +208,9 @@ class TrainingPipeline(BasePipeline):
         )
 
         with self.mlflow_manager.start_run(run_name=run_name):
-            transform_manager: Optional[TransformManager] = (
-                self.preprocessor.transform_manager
-            )
+            transform_manager: Optional[
+                TransformManager
+            ] = self.preprocessor.transform_manager
 
             active_run = mlflow.active_run()
             if active_run is None:

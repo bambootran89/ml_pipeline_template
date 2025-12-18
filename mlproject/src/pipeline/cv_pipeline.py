@@ -14,8 +14,8 @@ from omegaconf import DictConfig
 
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.pipeline.engines.cv_fold_runner import FoldRunner
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.tuning.cv_fold_runner import FoldRunner
 
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 # os.environ["OMP_NUM_THREADS"] = "1"

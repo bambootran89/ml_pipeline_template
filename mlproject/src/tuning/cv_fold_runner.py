@@ -6,7 +6,7 @@ from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.trainer.trainer_factory import TrainerFactory
 
-from ...eval.fold_evaluator import FoldEvaluator
+from ..eval.fold_evaluator import FoldEvaluator
 
 
 class FoldRunner:
