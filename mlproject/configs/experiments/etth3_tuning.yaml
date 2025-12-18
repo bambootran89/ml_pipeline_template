@@ -1,5 +1,4 @@
 defaults:
-  - ../base/preprocessing.yaml
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
@@ -13,6 +12,18 @@ data:
   features: ["HUFL", "MUFL", "mobility_inflow"]
   return_type: pandas
   type: timeseries
+
+preprocessing:
+  steps:
+    - name: fill_missing
+      method: ffill
+    - name: normalize
+      method: zscore
+  split:
+    train: 0.8
+    val: 0.0
+    test: 0.2
+  artifacts_dir: "mlproject/artifacts/preprocessing"
 
 experiment:
   name: "xgboost_tuning"

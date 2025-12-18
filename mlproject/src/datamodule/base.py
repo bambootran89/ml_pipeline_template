@@ -103,8 +103,13 @@ class BaseDataModule:
         if len(x) == 0:
             raise ValueError("Windowing produced zero samples. Check input length.")
 
+        r_train = split_cfg.get("train", 0.7)
+        r_test = split_cfg.get("test", 0.2)
+        r_val = split_cfg.get("val", 0.1)
+        assert r_test > 0
+        assert (r_test + r_train + r_val) <= 1
         n = len(x)
-        n_train = int(n * split_cfg["train"])
+        n_train = int(n * r_train)
         n_val = int(n * split_cfg["val"])
 
         self.x_train = x[:n_train]
@@ -115,6 +120,10 @@ class BaseDataModule:
 
         self.x_test = x[n_train + n_val :]
         self.y_test = y[n_train + n_val :]
+
+        if r_val == 0:
+            self.x_val = self.x_test
+            self.y_val = self.y_test
 
     def _create_windows(
         self,
