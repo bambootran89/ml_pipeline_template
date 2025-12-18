@@ -64,7 +64,11 @@ class ConfigBuilder:
         return {
             "preprocessing": {"split": {"train": 0.6, "val": 0.2, "test": 0.2}},
             "training": {"num_workers": 0},
-            "data": {"target_columns": ["HUFL"], "type": "timeseries"},
+            "data": {
+                "features": ["HUFL", "MUFL", "mobility_inflow"],
+                "target_columns": ["HUFL"],
+                "type": "timeseries",
+            },
         }
 
     @staticmethod

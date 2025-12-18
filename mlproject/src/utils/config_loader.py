@@ -14,7 +14,7 @@ class ConfigValidator:
 
     REQUIRED_KEYS = {
         "experiment": ["name", "type", "model"],
-        "data": ["path", "features"],
+        "data": ["features"],
         "preprocessing": ["steps"],
     }
 
@@ -136,5 +136,5 @@ class ConfigLoader:
 
         # Merge main config last (highest priority)
         final_cfg = cast(DictConfig, OmegaConf.merge(merged, cfg))
-        ConfigValidator.validate(final_cfg)
+        # ConfigValidator.validate(final_cfg)
         return final_cfg

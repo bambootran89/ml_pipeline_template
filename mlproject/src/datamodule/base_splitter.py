@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import pandas as pd
 from sklearn.model_selection import KFold, StratifiedKFold
 
-from mlproject.src.utils.func_utils import load_data_csv
+from mlproject.src.utils.func_utils import load_raw_data
 
 
 class BaseSplitter:
@@ -35,7 +35,9 @@ class BaseSplitter:
 
         self.target_columns = self._resolve_target_columns()
 
-    def _load_data(self, data_type) -> pd.DataFrame:
+    def _load_data(
+        self,
+    ) -> pd.DataFrame:
         """
         Load the DataFrame from disk, parse datetime index, and sort.
 
@@ -46,11 +48,12 @@ class BaseSplitter:
             FileNotFoundError: If the CSV file path is invalid.
             ValueError: If index column is missing.
         """
-        path = self.df_cfg.get("path")
-        index_col = self.df_cfg.get("index_col")
 
-        df = load_data_csv(path, index_col, data_type)
-        df = df.sort_index()
+        df, train_df, val_df, _ = load_raw_data(self.cfg)
+        if len(df) > 0:
+            df = df.sort_index()
+        else:
+            df = pd.concat([train_df, val_df], axis=0).sort_index()
         return df
 
     def _resolve_target_columns(self) -> Sequence[str]:
@@ -90,7 +93,7 @@ class BaseSplitter:
             A list of DataFrames, each representing one fold.
             All original columns (including target) are preserved.
         """
-        df = self._load_data("tabular")
+        df = self._load_data()
         if self.stratify:
             y = self._resolve_stratify_y(df)
             if y is None:
@@ -115,8 +118,13 @@ class BaseSplitter:
 
         folds: List[pd.DataFrame] = []
 
-        for _, fold_idx in split_iter:
-            fold_df = df.iloc[fold_idx].reset_index(drop=True)
+        for train_idx, test_idx in split_iter:
+            # Train set: K-1 folds
+            train_df = df.iloc[train_idx].reset_index(drop=True)
+            train_df["dataset"] = "train"
+            # Test set: 1 fold
+            test_df = df.iloc[test_idx].reset_index(drop=True)
+            test_df["dataset"] = "test"
+            fold_df = pd.concat([train_df, test_df], axis=0)
             folds.append(fold_df)
-
         return folds

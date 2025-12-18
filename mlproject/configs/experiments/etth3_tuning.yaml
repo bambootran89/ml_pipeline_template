@@ -1,18 +1,31 @@
 defaults:
-  - ../base/preprocessing.yaml
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
   - ../base/tuning.yaml
+  - ../base/data.yaml
 
 data:
   path: "mlproject/data/ETTh1.csv"   # optional demo
   index_col: "date"
-  target_columns: ["HUFL","MUFL",]
+  target_columns: ["HUFL","MUFL"]
   features: ["HUFL", "MUFL", "mobility_inflow"]
   return_type: pandas
   type: timeseries
+
+
+preprocessing:
+  steps:
+    - name: fill_missing
+      method: ffill
+    - name: normalize
+      method: zscore
+  split:
+    train: 0.8
+    val: 0.0
+    test: 0.2
+  artifacts_dir: "mlproject/artifacts/preprocessing"
 
 experiment:
   name: "xgboost_tuning"

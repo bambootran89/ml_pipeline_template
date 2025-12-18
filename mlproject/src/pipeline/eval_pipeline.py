@@ -17,13 +17,14 @@ from omegaconf import DictConfig
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
 from mlproject.src.eval.classification_eval import ClassificationEvaluator
+from mlproject.src.eval.clustering_eval import ClusteringEvaluator
 from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
-from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
+from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow, load_raw_data
 from mlproject.src.utils.mlflow_utils import (
     load_companion_preprocessor_from_model,
     load_model_from_registry_safe,
@@ -110,13 +111,20 @@ class EvalPipeline(BasePipeline):
         pd.DataFrame
             Preprocessed dataset.
         """
-        df_raw: pd.DataFrame = self.preprocessor.load_raw_data()
+        df, _, _, df_raw = load_raw_data(self.cfg)
+        is_use_dataset = True
+        if len(df) > 0:
+            df_raw = df.copy()
+            is_use_dataset = False
 
         fea_df: pd.DataFrame = self._transform_data(
             self.preprocessor.get_select_df(df_raw, include_target=False)
         )
+        df = self._attach_targets_if_needed(df_raw, fea_df)
+        if is_use_dataset:
+            df["dataset"] = "test"
 
-        return self._attach_targets_if_needed(df_raw, fea_df)
+        return df
 
     def _transform_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -185,11 +193,15 @@ class EvalPipeline(BasePipeline):
 
         if eval_type == "classification":
             return ClassificationEvaluator()
-
-        if eval_type == "regression":
+        elif eval_type == "regression":
             return RegressionEvaluator()
 
-        return TimeSeriesEvaluator()
+        elif eval_type == "clustering":
+            return ClusteringEvaluator()
+        elif eval_type == "timeseries":
+            return TimeSeriesEvaluator()
+        else:
+            raise ValueError(f"Don't support this type {eval_type}")
 
     def run_approach(self, approach: Any, data: pd.DataFrame) -> dict:
         """

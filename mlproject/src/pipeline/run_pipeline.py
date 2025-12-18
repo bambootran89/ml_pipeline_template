@@ -23,12 +23,12 @@ from omegaconf import OmegaConf
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
-from mlproject.src.pipeline.engines.tuning_pipeline import TuningPipeline
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.tuning.tuning_pipeline import TuningPipeline
 from mlproject.src.utils.config_loader import ConfigLoader
 
 # ====================================================

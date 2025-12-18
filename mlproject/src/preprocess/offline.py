@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, List
 
 import numpy as np
@@ -9,7 +8,7 @@ from omegaconf import DictConfig
 
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.utils.func_utils import (
-    load_data_csv,
+    load_raw_data,
     normalize_preprocessing_steps,
     select_columns,
 )
@@ -51,45 +50,12 @@ class OfflinePreprocessor:
         self.is_train = is_train
 
         self.steps = normalize_preprocessing_steps(cfg)
-
-        self.data_path = cfg.data.path
         self.artifacts_dir = cfg.get("preprocessing", {}).get(
             "artifacts_dir", ARTIFACT_DIR
         )
 
         self.transform_manager = TransformManager(artifacts_dir=self.artifacts_dir)
         self.transform_manager.steps = self.steps
-
-    def load_raw_data(self) -> pd.DataFrame:
-        """
-        Load raw dataset from disk or generate synthetic data.
-
-        Returns
-        -------
-        pd.DataFrame
-            Raw dataset.
-        """
-        data_cfg = self.cfg.get("data", {})
-        path = data_cfg.get("path")
-        if not path:
-            raise ValueError("`data.path` must be specified")
-
-        data_type = data_cfg.get("type", "timeseries").lower()
-        index_col = data_cfg.get("index_col")
-
-        if data_type == "timeseries" and not index_col:
-            index_col = "date"
-        if data_type == "tabular":
-            index_col = None
-
-        if not os.path.exists(path):
-            return self._load_synthetic(index_col)
-
-        return load_data_csv(
-            path,
-            index_col=index_col,
-            data_type=data_type,
-        )
 
     def select_train_subset(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -149,7 +115,7 @@ class OfflinePreprocessor:
             include_target=include_target,
         )
 
-    def fit_manager(self, train_df: pd.DataFrame) -> None:
+    def fit_manager(self, df: pd.DataFrame) -> None:
         """
         Fit preprocessing artifacts using training data.
 
@@ -157,10 +123,11 @@ class OfflinePreprocessor:
         Stateless transformations are applied sequentially
         to keep the pipeline order consistent.
         """
-        df_work = self.get_select_df(train_df, include_target=True)
-        # =========================
+
+        df_work = self.get_select_df(df, include_target=True)
+        if "dataset" in df.columns:
+            df_work["dataset"] = df["dataset"]
         # 1. STATEFUL TRANSFORMS
-        # =========================
         for step_cfg in self.steps:
             step_name = step_cfg.get("name")
             if not isinstance(step_name, str):
@@ -201,7 +168,7 @@ class OfflinePreprocessor:
 
         self.transform_manager.save()
 
-    def transform_full_dataset(self, df: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Apply fitted transforms to full dataset.
 
@@ -215,11 +182,13 @@ class OfflinePreprocessor:
         pd.DataFrame
             Transformed dataset.
         """
-        df = self.get_select_df(df, include_target=True)
-        df = self.transform_manager.transform(df)
-        return df
+        this_df = self.get_select_df(df, include_target=True)
+        if "dataset" in df.columns:
+            this_df["dataset"] = df["dataset"]
+        this_df = self.transform_manager.transform(this_df)
+        return this_df
 
-    def run(self) -> pd.DataFrame:
+    def fit_and_transform(self) -> pd.DataFrame:
         """
         Execute offline preprocessing pipeline.
 
@@ -228,14 +197,26 @@ class OfflinePreprocessor:
         pd.DataFrame
             Processed dataset.
         """
-        df = self.load_raw_data()
+        df, train_df, val_df, test_df = load_raw_data(self.cfg)
         df = self.get_select_df(df, include_target=True)
+        train_df = self.get_select_df(train_df, include_target=True)
+        val_df = self.get_select_df(val_df, include_target=True)
+        test_df = self.get_select_df(test_df, include_target=True)
 
-        if self.is_train:
+        if len(train_df) == 0:
             train_df = self.select_train_subset(df)
-            self.fit_manager(train_df)
-
-        return self.transform_full_dataset(df)
+        self.fit_manager(train_df)
+        if len(df) > 0:
+            return self.transform(df)
+        else:
+            train_df = self.transform(train_df)
+            train_df["dataset"] = "train"
+            val_df = self.transform(val_df)
+            val_df["dataset"] = "val"
+            test_df = self.transform(test_df)
+            test_df["dataset"] = "test"
+            df = pd.concat([train_df, val_df, test_df], axis=0)
+            return df
 
     def log_artifacts_to_mlflow(self) -> None:
         """Deprecated compatibility hook."""

@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -51,11 +51,11 @@ class BaseDataModule:
 
         self.df = df
         self.cfg = cfg
-
         self.input_chunk = input_chunk
         self.output_chunk = output_chunk
         data_cfg = self.cfg.get("data", {})
         self.target_columns = data_cfg.get("target_columns", [])
+        self.features = data_cfg.get("features", [])
         data_type = data_cfg.get(
             "type",
             "tabular",
@@ -82,43 +82,91 @@ class BaseDataModule:
         Raises:
             ValueError: If no windows can be created.
         """
-        split_cfg = self.cfg.get("preprocessing", {}).get(
-            "split",
-            {"train": 0.6, "val": 0.2, "test": 0.2},
-        )
-
-        if self.data_type == "timeseries":
-            x, y = self._create_windows(
-                target_cols=self.target_columns,
-                input_chunk=self.input_chunk,
-                output_chunk=self.output_chunk,
+        if "dataset" not in self.df.columns:
+            print("Data Module uses split param to split dataframn (df)")
+            split_cfg = self.cfg.get("preprocessing", {}).get(
+                "split",
+                {"train": 0.6, "val": 0.2, "test": 0.2},
             )
+            if self.data_type == "timeseries":
+                x, y = self._create_windows(
+                    self.df.sort_index(),
+                    input_chunk=self.input_chunk,
+                    output_chunk=self.output_chunk,
+                )
+            else:
+                df_shuffled = self.df.sample(frac=1.0, random_state=42).reset_index(
+                    drop=True
+                )
+                y = df_shuffled[self.target_columns].values
+                x = df_shuffled.drop(columns=self.target_columns).values
+
+            if len(x) == 0:
+                raise ValueError("Windowing produced zero samples. Check input length.")
+
+            r_train = split_cfg.get("train", 0.7)
+            r_test = split_cfg.get("test", 0.2)
+            r_val = split_cfg.get("val", 0.1)
+            assert r_test > 0
+            assert (r_test + r_train + r_val) <= 1
+            n = len(x)
+            n_train = int(n * r_train)
+            n_val = int(n * split_cfg["val"])
+
+            self.x_train = x[:n_train]
+            self.y_train = y[:n_train]
+
+            self.x_val = x[n_train : n_train + n_val]
+            self.y_val = y[n_train : n_train + n_val]
+
+            self.x_test = x[n_train + n_val :]
+            self.y_test = y[n_train + n_val :]
+
+            if r_val == 0:
+                self.x_val = self.x_test
+                self.y_val = self.y_test
         else:
-            df_shuffled = self.df.sample(frac=1.0, random_state=42).reset_index(
-                drop=True
-            )
-            y = df_shuffled[self.target_columns].values
-            x = df_shuffled.drop(columns=self.target_columns).values
+            print("Data Module uses dataset columns to split dataframe(df)")
+            cols = list(set(self.features + self.target_columns))
+            train_df = self.df[self.df["dataset"] == "train"][cols].sort_index()
+            test_df = self.df[self.df["dataset"] == "test"][cols].sort_index()
+            val_df = self.df[self.df["dataset"] == "val"][cols].sort_index()
+            if len(val_df) == 0:
+                val_df = test_df.copy()
 
-        if len(x) == 0:
-            raise ValueError("Windowing produced zero samples. Check input length.")
-
-        n = len(x)
-        n_train = int(n * split_cfg["train"])
-        n_val = int(n * split_cfg["val"])
-
-        self.x_train = x[:n_train]
-        self.y_train = y[:n_train]
-
-        self.x_val = x[n_train : n_train + n_val]
-        self.y_val = y[n_train : n_train + n_val]
-
-        self.x_test = x[n_train + n_val :]
-        self.y_test = y[n_train + n_val :]
+            if self.data_type == "timeseries":
+                self.x_train, self.y_train = self._create_windows(
+                    train_df,
+                    input_chunk=self.input_chunk,
+                    output_chunk=self.output_chunk,
+                )
+                self.x_val, self.y_val = self._create_windows(
+                    val_df,
+                    input_chunk=self.input_chunk,
+                    output_chunk=self.output_chunk,
+                )
+                self.x_test, self.y_test = self._create_windows(
+                    test_df,
+                    input_chunk=self.input_chunk,
+                    output_chunk=self.output_chunk,
+                )
+            else:
+                self.x_train, self.y_train = (
+                    train_df[self.features].values,
+                    train_df[self.target_columns].values,
+                )
+                self.x_val, self.y_val = (
+                    val_df[self.features].values,
+                    val_df[self.target_columns].values,
+                )
+                self.x_test, self.y_test = (
+                    test_df[self.features].values,
+                    test_df[self.target_columns].values,
+                )
 
     def _create_windows(
         self,
-        target_cols: List,
+        df: pd.DataFrame,
         input_chunk: int,
         output_chunk: int,
         stride: int = 1,
@@ -126,7 +174,7 @@ class BaseDataModule:
         """Convert the dataframe into sliding windows.
 
         Args:
-            target_cols (list): list of the target variable.
+            df (pd.DataFrame): dataframe
             input_chunk (int): Input sequence length.
             output_chunk (int): Output horizon length.
             stride (int, optional): Window stride. Defaults to 1.
@@ -141,24 +189,23 @@ class BaseDataModule:
             - Input window is fully inside dataframe.
             - Output horizon fits within dataframe.
         """
-        features = self.df.columns.tolist()
-        n = len(self.df)
+        n = len(df)
 
         x_windows: list[np.ndarray] = []
         y_windows: list[np.ndarray] = []
-
         for end_idx in range(input_chunk, n - output_chunk + 1, stride):
             start_idx = end_idx - input_chunk
-            x_win = self.df.iloc[start_idx:end_idx].values
-            y_win = self.df.iloc[end_idx : end_idx + output_chunk][target_cols].values
+            x_win = df.iloc[start_idx:end_idx][self.features].values
+            y_win = df.iloc[end_idx : end_idx + output_chunk][
+                self.target_columns
+            ].values
             x_windows.append(x_win)
             y_windows.append(y_win)
 
         if not x_windows:
-            return (
-                np.zeros((0, input_chunk, len(features)), dtype=float),
-                np.zeros((0, output_chunk), dtype=float),
-            )
+            x_shape = (1, self.input_chunk, len(self.features))
+            y_shape = (1, self.output_chunk)
+            return np.empty(x_shape), np.empty(y_shape)
 
         return np.stack(x_windows), np.stack(y_windows)
 

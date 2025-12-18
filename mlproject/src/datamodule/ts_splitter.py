@@ -60,7 +60,7 @@ class TimeSeriesFoldSplitter(BaseSplitter):
             RuntimeError: If data is not loaded before folding.
         """
 
-        df = self._load_data("timeseries")
+        df = self._load_data()
         n_samples = len(df)
 
         min_train_size = self.input_len

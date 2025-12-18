@@ -6,7 +6,7 @@ from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.trainer.trainer_factory import TrainerFactory
 
-from ...eval.fold_evaluator import FoldEvaluator
+from ..eval.fold_evaluator import FoldEvaluator
 
 
 class FoldRunner:
@@ -68,7 +68,7 @@ class FoldRunner:
             cfg=self.cfg,
         )
         preprocessor.fit_manager(df_fold)
-        df_processed = preprocessor.transform_full_dataset(df_fold)
+        df_processed = preprocessor.transform(df_fold)
         return df_processed, preprocessor
 
     def _build_components(
@@ -108,7 +108,6 @@ class FoldRunner:
 
         if is_tuning and hasattr(trainer, "artifacts_dir"):
             trainer.artifacts_dir = None
-
         datamodule = DataModuleFactory.build(self.cfg, df_processed)
         datamodule.setup()
 
