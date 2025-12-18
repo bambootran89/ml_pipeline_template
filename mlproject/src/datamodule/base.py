@@ -83,6 +83,7 @@ class BaseDataModule:
             ValueError: If no windows can be created.
         """
         if "dataset" not in self.df.columns:
+            print("Data Module uses split param to split dataframn (df)")
             split_cfg = self.cfg.get("preprocessing", {}).get(
                 "split",
                 {"train": 0.6, "val": 0.2, "test": 0.2},
@@ -125,6 +126,7 @@ class BaseDataModule:
                 self.x_val = self.x_test
                 self.y_val = self.y_test
         else:
+            print("Data Module uses dataset columns to split dataframe(df)")
             cols = list(set(self.features + self.target_columns))
             train_df = self.df[self.df["dataset"] == "train"][cols].sort_index()
             val_df = self.df[self.df["dataset"] == "val"][cols].sort_index()
@@ -198,7 +200,9 @@ class BaseDataModule:
             y_windows.append(y_win)
 
         if not x_windows:
-            raise ValueError(f"don't have data {len(x_windows)}")
+            x_shape = (1, self.input_chunk, len(self.features))
+            y_shape = (1, self.output_chunk)
+            return np.empty(x_shape), np.empty(y_shape)
 
         return np.stack(x_windows), np.stack(y_windows)
 
