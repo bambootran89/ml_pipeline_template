@@ -1,22 +1,27 @@
 # @package _global_
+
+# -------------------------------------------------------------------
 # 1. Defaults override
 # Remove default TimeSeries data configuration
+# -------------------------------------------------------------------
 defaults:
   - override /base/data: null
   - ../base/model.yaml
   - ../base/training.yaml
   - ../base/tuning.yaml
 
+# -------------------------------------------------------------------
 # 2. MLflow tracking & model registry
+# -------------------------------------------------------------------
 mlflow:
   tracking_uri: mlruns
-  experiment_name: Tabular_Titanic_Experiment
-  run_name_prefix: xgboost_cls
+  experiment_name: Tabular_Titanic_Kmean
+  run_name_prefix: kmean_cls
   enabled: true
 
   registry:
     enabled: true
-    model_name: titanic_xgboost_model
+    model_name: titanic_kmean_model
 
   artifacts:
     log_model: true
@@ -29,7 +34,10 @@ mlflow:
     enabled: true
     log_models: false
 
+
+# -------------------------------------------------------------------
 # 3. Preprocessing configuration
+# -------------------------------------------------------------------
 preprocessing:
   steps:
     - name: fill_missing
@@ -37,37 +45,41 @@ preprocessing:
       columns:  # Optional, mặc định là tất cả numeric columns
         - Age
         - Fare
+    - name: fill_missing
+      method: mode
+      columns:
+        - Sex
+        - Embarked
+        - Pclass
     # Step 2: Label encoding cho categorical
     - name: label_encoding
       columns:
         - Sex
         - Embarked
         - Pclass
-
     # Step 3: Scale numerical features
     - name: normalize
       method: zscore
       columns:
         - Age
         - Fare
-      save_artifact: true
+
 
   # Dataset split ratios (used for non-CV pipelines)
   split:
-    train: 0.7
-    val: 0.1
-    test: 0.2
+    train: 0.8
+    val: 0.2
+    test: 0.0
 
   artifacts_dir: mlproject/artifacts/preprocessing
 
+
+# -------------------------------------------------------------------
 # 4. Data configuration (Tabular)
+# -------------------------------------------------------------------
 data:
   type: tabular
   path: mlproject/data/titanic.csv
-
-  # Target column(s) must be a list
-  target_columns:
-    - Survived
 
   # Selected feature columns
   features:
@@ -81,51 +93,52 @@ data:
   # Number of folds for cross-validation
   n_folds: 5
 
+
+# -------------------------------------------------------------------
 # 5. Model configuration (XGBoost - Binary Classification)
+# -------------------------------------------------------------------
 model:
-  name: xgboost
+  name: kmean
   params:
-    objective: binary:logistic
-    eval_metric: auc
-    n_estimators: 100
+    n_clusters: 3
+    init_method: k-means++
+    random_state: 42
+    max_iter: 100
     max_depth: 6
-    learning_rate: 0.05
+    tol: 1e-4
 
     # macOS stability setting
     n_jobs: 1
 
 
+# -------------------------------------------------------------------
 # 6. Evaluation & hyperparameter tuning
+# -------------------------------------------------------------------
 evaluation:
-  type: classification
+  type: clustering
   metrics:
-    - accuracy
-    - f1
-    - roc_auc
-    - precision
-    - recall
+    - inertia
+    - silhouette_score
 
 tuning:
   n_trials: 30
-  metric: val_f1
-  direction: maximize
+  metric: val_inertia
+  direction: minimize
   storage: sqlite:///mlflow.db
 
 
 # 7. Experiment metadata
 experiment:
-  name: 'Tabular_Titanic_Experiment'
-  type: 'classification'
-  model: "xgboost"
+  name: 'Tabular_Titanic_Kmean'
+  type: 'clustering'
+  model: "kmean"
   model_type: "ml"
   hyperparams:
-    input_chunk_length: 24
-    output_chunk_length: 6
-    type: "clasification"
+    type: "clustering"
     args:
-      n_estimators: 100
+      n_clusters: 3
+      init_method: k-means++
+      random_state: 42
+      max_iter: 100
       max_depth: 6
-      learning_rate: 0.05
-      objective: "binary:logistic"
-      eval_metric: "auc"
-      early_stopping_round: 15
+      tol: 1e-4

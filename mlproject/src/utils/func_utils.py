@@ -5,6 +5,7 @@ These helpers standardize tensor/array dimensionality for traditional
 machine-learning models and provide automatic inference of model
 input/output dimensions.
 """
+
 from __future__ import annotations
 
 import logging
