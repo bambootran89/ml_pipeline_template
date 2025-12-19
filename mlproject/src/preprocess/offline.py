@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
 
 import pandas as pd
 from omegaconf import DictConfig
 
+from mlproject.src.datamodule.dataset_resolver import resolve_datasets_from_cfg
 from mlproject.src.preprocess.transform_manager import TransformManager
-from mlproject.src.utils.func_utils import load_raw_data, resolve_feature_target_columns
 
 ARTIFACT_DIR = "mlproject/artifacts/preprocessing"
 
@@ -53,6 +53,60 @@ class OfflinePreprocessor:
         )
         self.steps = self.transform_manager.steps
 
+    def resolve_feature_target_columns(
+        self,
+        df: pd.DataFrame,
+        include_target: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Select a subset of columns from the DataFrame based on configuration.
+
+        The selection logic is:
+        - Feature columns are taken from ``cfg.data.feature_cols``.
+        - Target columns are taken from ``cfg.data.target_columns`` if
+        ``include_target`` is True.
+        - Only columns that actually exist in the DataFrame are kept.
+        - If no valid columns can be resolved, the original DataFrame is returned
+        for backward compatibility and easier debugging.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input DataFrame.
+        include_target : bool, default=True
+            Whether to include target columns in the output.
+
+        Returns
+        -------
+        pd.DataFrame
+            Filtered DataFrame containing only selected columns, or the original
+            DataFrame if no valid columns are found.
+        """
+        data_cfg = self.cfg.get("data", {})
+
+        feature_cols: Sequence[str] = data_cfg.get("features") or []
+
+        # Backward compatibility: if feature_cols is not defined, keep original DF
+        if not feature_cols:
+            return df
+
+        cols_to_keep: List[str] = list(feature_cols)
+
+        if include_target:
+            target_cols = list(data_cfg.get("target_columns", []))
+            if isinstance(target_cols, str):
+                cols_to_keep.append(target_cols)
+            elif isinstance(target_cols, (list, tuple)):
+                cols_to_keep.extend(target_cols)
+        # Keep only columns that actually exist in the DataFrame
+        df_cols = set(df.columns)
+        valid_cols: List[str] = list({col for col in cols_to_keep if col in df_cols})
+
+        if not valid_cols:
+            # Strategy: return original DF to avoid hard failure and aid debugging
+            return df
+        return df.loc[:, sorted(valid_cols)]
+
     def select_train_subset(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Select training subset for fitting transforms.
@@ -94,7 +148,7 @@ class OfflinePreprocessor:
         to keep the pipeline order consistent.
         """
 
-        df_work = resolve_feature_target_columns(self.cfg, df, include_target=True)
+        df_work = self.resolve_feature_target_columns(df, include_target=True)
         if "dataset" in df.columns:
             df_work["dataset"] = df["dataset"]
         # 1. STATEFUL TRANSFORMS
@@ -152,7 +206,7 @@ class OfflinePreprocessor:
         pd.DataFrame
             Transformed dataset.
         """
-        this_df = resolve_feature_target_columns(self.cfg, df, include_target=True)
+        this_df = self.resolve_feature_target_columns(df, include_target=True)
         if "dataset" in df.columns:
             this_df["dataset"] = df["dataset"]
         this_df = self.transform_manager.transform(this_df)
@@ -167,13 +221,11 @@ class OfflinePreprocessor:
         pd.DataFrame
             Processed dataset.
         """
-        df, train_df, val_df, test_df = load_raw_data(self.cfg)
-        df = resolve_feature_target_columns(self.cfg, df, include_target=True)
-        train_df = resolve_feature_target_columns(
-            self.cfg, train_df, include_target=True
-        )
-        val_df = resolve_feature_target_columns(self.cfg, val_df, include_target=True)
-        test_df = resolve_feature_target_columns(self.cfg, test_df, include_target=True)
+        df, train_df, val_df, test_df = resolve_datasets_from_cfg(self.cfg)
+        df = self.resolve_feature_target_columns(df, include_target=True)
+        train_df = self.resolve_feature_target_columns(train_df, include_target=True)
+        val_df = self.resolve_feature_target_columns(val_df, include_target=True)
+        test_df = self.resolve_feature_target_columns(test_df, include_target=True)
 
         if len(train_df) == 0:
             train_df = self.select_train_subset(df)

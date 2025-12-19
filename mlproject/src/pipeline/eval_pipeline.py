@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
+from mlproject.src.datamodule.dataset_resolver import resolve_datasets_from_cfg
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
 from mlproject.src.eval.classification_eval import ClassificationEvaluator
@@ -24,11 +25,7 @@ from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
-from mlproject.src.utils.func_utils import (
-    flatten_metrics_for_mlflow,
-    load_raw_data,
-    resolve_feature_target_columns,
-)
+from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
 from mlproject.src.utils.mlflow_utils import (
     load_companion_preprocessor_from_model,
     load_model_from_registry_safe,
@@ -115,15 +112,13 @@ class EvalPipeline(BasePipeline):
         pd.DataFrame
             Preprocessed dataset.
         """
-        df, _, _, df_raw = load_raw_data(self.cfg)
+        df, _, _, df_raw = resolve_datasets_from_cfg(self.cfg)
         is_use_dataset = True
         if len(df) > 0:
             df_raw = df.copy()
             is_use_dataset = False
 
-        fea_df: pd.DataFrame = self._transform_data(
-            resolve_feature_target_columns(self.cfg, df_raw, include_target=False)
-        )
+        fea_df: pd.DataFrame = self._transform_data(df_raw)
         df = self._attach_targets_if_needed(df_raw, fea_df)
         if is_use_dataset:
             df["dataset"] = "test"
@@ -151,7 +146,7 @@ class EvalPipeline(BasePipeline):
         else:
             print("[EvalPipeline] Using local preprocessing fallback")
             self.preprocessor.transform_manager.load(self.cfg)
-            return self.preprocessor.transform_manager.transform(df)
+            return self.preprocessor.transform(df)
 
     def _attach_targets_if_needed(
         self, df_raw: pd.DataFrame, fea_df: pd.DataFrame

@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import pandas as pd
 from sklearn.model_selection import KFold, StratifiedKFold
 
-from mlproject.src.utils.func_utils import load_raw_data
+from mlproject.src.datamodule.dataset_resolver import resolve_datasets_from_cfg
 
 
 class BaseSplitter:
@@ -49,7 +49,7 @@ class BaseSplitter:
             ValueError: If index column is missing.
         """
 
-        df, train_df, val_df, _ = load_raw_data(self.cfg)
+        df, train_df, val_df, _ = resolve_datasets_from_cfg(self.cfg)
         if len(df) > 0:
             df = df.sort_index()
         else:
