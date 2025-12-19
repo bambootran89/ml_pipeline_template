@@ -22,6 +22,7 @@ style:
 	${PYTHON} -m  autoflake --in-place --remove-unused-variables --remove-all-unused-imports -r mlproject/
 	${PYTHON} -m  autopep8 --in-place --aggressive --aggressive --aggressive -r mlproject/
 	flake8 ./${MAIN_FOLDER}/
+	${PYTHON} -m pylint ./${MAIN_FOLDER}/
 
 test:
 	${PYTHON} -m flake8 ./${MAIN_FOLDER}/

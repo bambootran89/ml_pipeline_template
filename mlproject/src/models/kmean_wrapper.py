@@ -38,11 +38,12 @@ class KMeansWrapper(MLModelWrapper):
             Any:
                 Initialized `sklearn.cluster.KMeans` instance.
         """
-        n_clusters: int = self.cfg.get("n_clusters", 8)
-        init_method: str = self.cfg.get("init", "k-means++")
-        random_state: int = self.cfg.get("random_state", 42)
-        max_iter: int = self.cfg.get("max_iter", 300)
-        tol: float = self.cfg.get("tol", 1e-4)
+        args = self.cfg.get("args", {})
+        n_clusters: int = args.get("n_clusters", 8)
+        init_method: str = args.get("init", "k-means++")
+        random_state: int = args.get("random_state", 42)
+        max_iter: int = args.get("max_iter", 300)
+        tol: float = args.get("tol", 1e-4)
         self.model_type = model_type
         self.model = KMeans(
             n_clusters=n_clusters,
