@@ -121,6 +121,7 @@ class PreprocessingService:
 
         # Fallback: Load local TransformManager
         self.preprocessor = TransformManager(
+            self.cfg,
             artifacts_dir=self.cfg.training.artifacts_dir,
         )
         self.preprocessor.load(cfg=self.cfg)

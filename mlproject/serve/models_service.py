@@ -87,7 +87,7 @@ class ModelsService:
 
         print("[Service] Loading Local TransformManager...")
         self.local_transform_manager = TransformManager(
-            artifacts_dir=self.cfg.training.artifacts_dir
+            self.cfg, artifacts_dir=self.cfg.training.artifacts_dir
         )
         if self.local_transform_manager is not None:
             try:

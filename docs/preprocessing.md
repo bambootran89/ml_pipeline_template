@@ -106,7 +106,7 @@ The workflow is divided into **Training (Fit & Save)** and **Inference (Load & T
 from mlproject.src.preprocess.transform_manager import TransformManager
 
 # --- Training Phase ---
-tm = TransformManager(artifacts_dir="artifacts/")
+tm = TransformManager(cfg, artifacts_dir="artifacts/")
 
 # Fit on training data and save state
 tm.fit(train_df, config)

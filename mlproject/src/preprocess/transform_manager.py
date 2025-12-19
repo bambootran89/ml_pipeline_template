@@ -16,15 +16,12 @@ from __future__ import annotations
 
 import os
 import pickle
-from typing import Any, Dict, List, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict, Union, cast
 
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig, ListConfig, OmegaConf
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
-
-from mlproject.src.utils.func_utils import normalize_preprocessing_steps
-
-# from mlproject.src.utils.func_utils import sync_artifacts_from_registry
 
 ScalerType = Union[StandardScaler, MinMaxScaler]
 
@@ -57,7 +54,7 @@ class TransformManager:
         Columns used when fitting the scaler.
     """
 
-    def __init__(self, artifacts_dir: str) -> None:
+    def __init__(self, cfg: DictConfig, artifacts_dir: str) -> None:
         """
         Initialize the TransformManager.
 
@@ -72,7 +69,7 @@ class TransformManager:
         self.label_encoders: Dict[str, LabelEncoder] = {}
         self.scaler: Optional[ScalerType] = None
         self.scaler_columns: Optional[List[str]] = None
-        self.steps: List[Dict[str, Any]] = []
+        self.steps: List[Dict[str, Any]] = self.normalize_preprocessing_steps(cfg)
 
     def transform(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -680,6 +677,53 @@ class TransformManager:
                 f,
             )
 
+    def normalize_preprocessing_steps(
+        self,
+        cfg: DictConfig,
+    ) -> List[Dict[str, Any]]:
+        """
+        Normalize preprocessing steps from OmegaConf config.
+
+        Converts `preprocessing.steps` into a validated list of plain
+        Python dictionaries for safe downstream usage.
+        """
+        raw_steps = cfg.get("preprocessing", {}).get("steps", [])
+
+        if not isinstance(raw_steps, (list, ListConfig)):
+            raise TypeError(
+                "preprocessing.steps must be a list or OmegaConf ListConfig"
+            )
+
+        steps: List[Dict[str, Any]] = []
+
+        for idx, step in enumerate(raw_steps):
+            if isinstance(step, DictConfig):
+                step_dict_raw = OmegaConf.to_container(
+                    step,
+                    resolve=True,
+                )
+            elif isinstance(step, dict):
+                step_dict_raw = step
+            else:
+                raise TypeError(
+                    "Each preprocessing step must be dict or DictConfig, "
+                    f"got {type(step)} at index {idx}"
+                )
+
+            if not isinstance(step_dict_raw, dict):
+                raise TypeError(f"Step at index {idx} could not be converted to dict")
+
+            if "name" not in step_dict_raw:
+                raise ValueError(
+                    f"Preprocessing step at index {idx} must contain key 'name'"
+                )
+
+            # mypy-safe cast after validation
+            step_dict = cast(Dict[str, Any], step_dict_raw)
+            steps.append(step_dict)
+
+        return steps
+
     def load(self, cfg) -> None:
         """
         Load all transform states from disk.
@@ -688,7 +732,7 @@ class TransformManager:
         if self.is_load:
             return
 
-        self.steps = normalize_preprocessing_steps(cfg)
+        self.steps = self.normalize_preprocessing_steps(cfg)
         path = os.path.join(self.artifacts_dir, "fillna_stats.pkl")
         print(f"Loading artifacts {path}")
         if os.path.exists(path):

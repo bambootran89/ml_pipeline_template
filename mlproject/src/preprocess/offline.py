@@ -2,16 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
 from mlproject.src.preprocess.transform_manager import TransformManager
-from mlproject.src.utils.func_utils import (
-    load_raw_data,
-    normalize_preprocessing_steps,
-    select_columns,
-)
+from mlproject.src.utils.func_utils import load_raw_data, resolve_feature_target_columns
 
 ARTIFACT_DIR = "mlproject/artifacts/preprocessing"
 
@@ -49,13 +44,14 @@ class OfflinePreprocessor:
         self.cfg = cfg
         self.is_train = is_train
 
-        self.steps = normalize_preprocessing_steps(cfg)
         self.artifacts_dir = cfg.get("preprocessing", {}).get(
             "artifacts_dir", ARTIFACT_DIR
         )
 
-        self.transform_manager = TransformManager(artifacts_dir=self.artifacts_dir)
-        self.transform_manager.steps = self.steps
+        self.transform_manager = TransformManager(
+            self.cfg, artifacts_dir=self.artifacts_dir
+        )
+        self.steps = self.transform_manager.steps
 
     def select_train_subset(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -89,32 +85,6 @@ class OfflinePreprocessor:
 
         return df.iloc[:train_size].copy()
 
-    def get_select_df(
-        self,
-        df: pd.DataFrame,
-        include_target: bool = True,
-    ) -> pd.DataFrame:
-        """
-        Select feature/target columns safely.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Input dataset.
-        include_target : bool, default=True
-            Whether to include target column.
-
-        Returns
-        -------
-        pd.DataFrame
-            Selected dataframe.
-        """
-        return select_columns(
-            self.cfg,
-            df,
-            include_target=include_target,
-        )
-
     def fit_manager(self, df: pd.DataFrame) -> None:
         """
         Fit preprocessing artifacts using training data.
@@ -124,7 +94,7 @@ class OfflinePreprocessor:
         to keep the pipeline order consistent.
         """
 
-        df_work = self.get_select_df(df, include_target=True)
+        df_work = resolve_feature_target_columns(self.cfg, df, include_target=True)
         if "dataset" in df.columns:
             df_work["dataset"] = df["dataset"]
         # 1. STATEFUL TRANSFORMS
@@ -182,7 +152,7 @@ class OfflinePreprocessor:
         pd.DataFrame
             Transformed dataset.
         """
-        this_df = self.get_select_df(df, include_target=True)
+        this_df = resolve_feature_target_columns(self.cfg, df, include_target=True)
         if "dataset" in df.columns:
             this_df["dataset"] = df["dataset"]
         this_df = self.transform_manager.transform(this_df)
@@ -198,10 +168,12 @@ class OfflinePreprocessor:
             Processed dataset.
         """
         df, train_df, val_df, test_df = load_raw_data(self.cfg)
-        df = self.get_select_df(df, include_target=True)
-        train_df = self.get_select_df(train_df, include_target=True)
-        val_df = self.get_select_df(val_df, include_target=True)
-        test_df = self.get_select_df(test_df, include_target=True)
+        df = resolve_feature_target_columns(self.cfg, df, include_target=True)
+        train_df = resolve_feature_target_columns(
+            self.cfg, train_df, include_target=True
+        )
+        val_df = resolve_feature_target_columns(self.cfg, val_df, include_target=True)
+        test_df = resolve_feature_target_columns(self.cfg, test_df, include_target=True)
 
         if len(train_df) == 0:
             train_df = self.select_train_subset(df)
@@ -217,39 +189,3 @@ class OfflinePreprocessor:
             test_df["dataset"] = "test"
             df = pd.concat([train_df, val_df, test_df], axis=0)
             return df
-
-    def log_artifacts_to_mlflow(self) -> None:
-        """Deprecated compatibility hook."""
-        return None
-
-    def _load_synthetic(self, index_col: str | None) -> pd.DataFrame:
-        """
-        Generate synthetic fallback dataset.
-
-        Parameters
-        ----------
-        index_col : str or None
-            Index column name.
-
-        Returns
-        -------
-        pd.DataFrame
-            Synthetic dataset.
-        """
-        idx = pd.date_range(
-            "2020-01-01",
-            periods=200,
-            freq="H",
-        )
-        df = pd.DataFrame(
-            {
-                "HUFL": np.sin(np.arange(len(idx)) / 24)
-                + np.random.randn(len(idx)) * 0.1,
-                "MUFL": np.cos(np.arange(len(idx)) / 24)
-                + np.random.randn(len(idx)) * 0.1,
-                "mobility_inflow": np.random.rand(len(idx)) * 10,
-            },
-            index=idx,
-        )
-        df.index.name = index_col
-        return df
