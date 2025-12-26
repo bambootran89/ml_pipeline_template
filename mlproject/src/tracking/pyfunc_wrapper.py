@@ -2,6 +2,7 @@
 Universal MLflow PyFunc wrapper module enabling PyFunc packaging for arbitrary
 model or preprocessing artifacts.
 """
+
 from __future__ import annotations
 
 from typing import Any

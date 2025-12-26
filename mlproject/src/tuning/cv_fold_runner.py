@@ -5,7 +5,7 @@ from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.trainer.factory import TrainerFactory
-
+from omegaconf import DictConfig
 from .fold_evaluator import FoldEvaluator
 
 
@@ -18,7 +18,7 @@ class FoldRunner:
     modular helper components to keep the fold pipeline maintainable.
     """
 
-    def __init__(self, cfg: Any, mlflow_manager: MLflowManager):
+    def __init__(self, cfg: DictConfig, mlflow_manager: MLflowManager):
         self.cfg = cfg
         self.mlflow_log_all = False
         self.evaluator = FoldEvaluator(cfg)

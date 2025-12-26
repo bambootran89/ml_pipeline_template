@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any, Tuple
 
 import pandas as pd
-
+from omegaconf import DictConfig, OmegaConf
 from mlproject.src.dataio.entrypoint import load_dataset
 
 
 def resolve_datasets_from_cfg(
-    cfg: Any,
+    cfg: DictConfig,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Resolve and load raw datasets from configuration.
@@ -20,8 +20,8 @@ def resolve_datasets_from_cfg(
     It performs orchestration only and delegates actual I/O
     to the dataio layer.
     """
-    cfg = cfg or {}
-    data_cfg = cfg.get("data", {})
+    cfg = cfg if cfg is not None else OmegaConf.create()
+    data_cfg = cfg.get("data", OmegaConf.create())
 
     path = data_cfg.get("path")
     train_path = data_cfg.get("train_path")

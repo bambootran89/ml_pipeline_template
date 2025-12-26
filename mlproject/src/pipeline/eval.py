@@ -14,8 +14,8 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.resolver import resolve_datasets_from_cfg
 from mlproject.src.datamodule.factory import DataModuleFactory
+from mlproject.src.datamodule.resolver import resolve_datasets_from_cfg
 from mlproject.src.eval.base import BaseEvaluator
 from mlproject.src.eval.classification import ClassificationEvaluator
 from mlproject.src.eval.clustering import ClusteringEvaluator
