@@ -22,7 +22,6 @@ import pandas as pd
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv import CrossValidationPipeline
-
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval import EvalPipeline
 from mlproject.src.pipeline.serve import TestPipeline
