@@ -23,6 +23,7 @@ from omegaconf import OmegaConf
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
+
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
@@ -45,20 +46,20 @@ def run_training(cfg_path: str) -> None:
     pipeline.run()
 
 
-def run_evaluation(cfg_path: str) -> None:
+def run_evaluation(cfg_path: str, alias: str) -> None:
     """Execute evaluation-only workflow."""
-    pipeline = EvalPipeline(cfg_path)
+    pipeline = EvalPipeline(cfg_path, alias=alias)
     pipeline.run()
 
 
-def run_testing(cfg_path: str, input_path: str) -> None:
+def run_testing(cfg_path: str, input_path: str, alias: str) -> None:
     """
     Execute serving-time inference on a provided CSV file.
     """
     if not input_path:
         raise ValueError("Test mode requires --input <file.csv>")
 
-    pipeline = TestPipeline(cfg_path)
+    pipeline = TestPipeline(cfg_path, alias=alias)
 
     raw_df = pd.read_csv(input_path)
     assert "date" in raw_df.columns, "Input CSV must contain a 'date' column."
@@ -139,6 +140,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="CSV path to use only for test mode.",
     )
 
+    parser.add_argument(
+        "--alias",
+        type=str,
+        default="latest",
+        help="latest, production, staging",
+    )
+
     return parser
 
 
@@ -150,9 +158,13 @@ def main() -> None:
     if args.mode == "train":
         run_training(args.config)
     elif args.mode == "eval":
-        run_evaluation(args.config)
+        run_evaluation(args.config, args.alias)
     elif args.mode == "test":
-        run_testing(args.config, args.input)
+        run_testing(
+            args.config,
+            args.input,
+            args.alias,
+        )
     elif args.mode == "cv":
         run_cross_validation(args.config)
     elif args.mode == "tune":
@@ -166,9 +178,9 @@ def main_run(mode: str, cfg_path: str = "", input_path: str = "") -> None:
     if mode == "train":
         run_training(cfg_path)
     elif mode == "eval":
-        run_evaluation(cfg_path)
+        run_evaluation(cfg_path, alias="latest")
     elif mode == "test":
-        run_testing(cfg_path, input_path)
+        run_testing(cfg_path, input_path, alias="latest")
     elif mode == "cv":
         run_cross_validation(cfg_path)
     elif mode == "tune":

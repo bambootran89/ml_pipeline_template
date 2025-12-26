@@ -33,7 +33,7 @@ class EvalPipeline(BasePipeline):
     Evaluation pipeline for models stored in MLflow Model Registry.
     """
 
-    def __init__(self, cfg_path: str = "") -> None:
+    def __init__(self, cfg_path: str = "", alias: str = "lastest") -> None:
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
 
@@ -55,9 +55,11 @@ class EvalPipeline(BasePipeline):
             # Load artifacts đồng nhất
             model_name: str = self.cfg.experiment["model"].lower()
             self.preprocessor_model = self.mlflow_manager.load_component(
-                f"{model_name}_preprocessor"
+                name=f"{model_name}_preprocessor", alias=alias
             )
-            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
+            self.model = self.mlflow_manager.load_component(
+                name=f"{model_name}_model", alias=alias
+            )
 
     def preprocess(self) -> pd.DataFrame:
         """

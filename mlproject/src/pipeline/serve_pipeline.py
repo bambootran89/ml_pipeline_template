@@ -27,7 +27,7 @@ class TestPipeline(BasePipeline):
     This pipeline does not use DataModule, dataset splits, or batching logic.
     """
 
-    def __init__(self, cfg_path: str = "") -> None:
+    def __init__(self, cfg_path: str = "", alias: str = "latest") -> None:
         """
         Initialize pipeline and load configuration.
 
@@ -48,9 +48,11 @@ class TestPipeline(BasePipeline):
             # Load artifacts đồng nhất
             model_name: str = self.cfg.experiment["model"].lower()
             self.preprocessor_model = self.mlflow_manager.load_component(
-                f"{model_name}_preprocessor"
+                name=f"{model_name}_preprocessor", alias=alias
             )
-            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
+            self.model = self.mlflow_manager.load_component(
+                name=f"{model_name}_model", alias=alias
+            )
 
     def preprocess(self, data: Any = None) -> Any:
         """

@@ -55,6 +55,16 @@ Run a standard training experiment:
 python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/etth1.yaml
 ```
 
+Run a eval experiment.  (alias: latest, production, staging)
+```bash
+python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth1.yaml --alias latest
+```
+
+Run a serving. (alias: latest, production, staging)
+```bash
+python -m mlproject.src.pipeline.run_pipeline test --config mlproject/configs/experiments/etth1.yaml --alias latest --input sample_input.csv
+```
+
 # Workflows & Capabilities
 ## 1. Cross-Validation (Backtesting)
 Validates model stability across time folds.

@@ -43,9 +43,11 @@ class ModelsService:
             # Load artifacts đồng nhất
             model_name: str = self.cfg.experiment["model"].lower()
             self.preprocessor_model = self.mlflow_manager.load_component(
-                f"{model_name}_preprocessor"
+                name=f"{model_name}_preprocessor", alias="production"
             )
-            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
+            self.model = self.mlflow_manager.load_component(
+                name=f"{model_name}_model", alias="production"
+            )
 
     def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
         """Build model input window from preprocessed DataFrame."""

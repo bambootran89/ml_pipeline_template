@@ -96,9 +96,8 @@ class PreprocessingService:
             # Load artifacts đồng nhất
             model_name: str = self.cfg.experiment["model"].lower()
             self.preprocessor = self.mlflow_manager.load_component(
-                f"{model_name}_preprocessor"
+                name=f"{model_name}_preprocessor", alias="production"
             )
-            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
 
         # Fallback: Load local TransformManager
         self.preprocessor = TransformManager(
@@ -211,7 +210,9 @@ class ModelService:
         """Load model from MLflow or fallback to local artifacts."""
         if self.mlflow_manager.enabled:
             model_name: str = self.cfg.experiment["model"].lower()
-            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
+            self.model = self.mlflow_manager.load_component(
+                name=f"{model_name}_model", alias="production"
+            )
             if self.model is not None:
                 self.model_loaded = True
             return
