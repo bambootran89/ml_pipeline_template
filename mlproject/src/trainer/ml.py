@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from mlproject.src.trainer.base_trainer import BaseTrainer
+from mlproject.src.trainer.base import BaseTrainer
 
 
 class MLTrainer(BaseTrainer):

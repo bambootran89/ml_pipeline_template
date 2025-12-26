@@ -14,7 +14,7 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.trainer.trainer_factory import TrainerFactory
+from mlproject.src.trainer.factory import TrainerFactory
 
 
 class BasePipeline(ABC):

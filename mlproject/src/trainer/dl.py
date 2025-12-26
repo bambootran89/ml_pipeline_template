@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from mlproject.src.trainer.base_trainer import BaseTrainer
+from mlproject.src.trainer.base import BaseTrainer
 
 
 def infer_dims_from_batch(xb: Any, yb: Any) -> tuple[int, int]:

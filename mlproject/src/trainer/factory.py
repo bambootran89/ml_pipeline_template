@@ -1,6 +1,6 @@
 from typing import Any, Dict, cast
 
-from mlproject.src.trainer.base_trainer import BaseTrainer
+from mlproject.src.trainer.base import BaseTrainer
 from mlproject.src.utils.factory_base import DynamicFactoryBase
 
 
@@ -11,11 +11,11 @@ class TrainerFactory(DynamicFactoryBase):
 
     TRAINER_REGISTRY: Dict[str, Dict[str, str]] = {
         "dl": {
-            "module": "mlproject.src.trainer.dl_trainer",
+            "module": "mlproject.src.trainer.dl",
             "class": "DeepLearningTrainer",
         },
         "ml": {
-            "module": "mlproject.src.trainer.ml_trainer",
+            "module": "mlproject.src.trainer.ml",
             "class": "MLTrainer",
         },
     }
@@ -58,13 +58,8 @@ class TrainerFactory(DynamicFactoryBase):
         if not isinstance(save_dir, str):
             raise ValueError("TrainerFactory.create requires 'save_dir' (str).")
 
-        if model_type == "ml":  # ML Models
-            entry = {"module": "mlproject.src.trainer.ml_trainer", "class": "MLTrainer"}
-        elif model_type == "dl":  # DL Models
-            entry = {
-                "module": "mlproject.src.trainer.dl_trainer",
-                "class": "DeepLearningTrainer",
-            }
+        if model_type in ["ml", "dl"]:
+            entry = cls.TRAINER_REGISTRY[model_type]
         else:
             raise ValueError(f"Unknown model name: {model_name}")
         trainer_class = cls._get_class_from_config(entry)
