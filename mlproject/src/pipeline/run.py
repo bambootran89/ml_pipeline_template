@@ -20,14 +20,14 @@ from typing import Any, Dict, cast
 import pandas as pd
 from omegaconf import OmegaConf
 
+from mlproject.src.datamodule.splitters.base import BaseSplitter
+from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv import CrossValidationPipeline
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval import EvalPipeline
 from mlproject.src.pipeline.serve import TestPipeline
 from mlproject.src.pipeline.training import TrainingPipeline
 from mlproject.src.pipeline.tuning import TuningPipeline
-from mlproject.src.tuning.splitters.base import BaseSplitter
-from mlproject.src.tuning.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.utils.config_loader import ConfigLoader
 
 # ====================================================

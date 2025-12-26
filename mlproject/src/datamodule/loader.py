@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Tuple
+from typing import Tuple
 
 import pandas as pd
 from omegaconf import DictConfig, OmegaConf
+
 from mlproject.src.dataio.entrypoint import load_dataset
 
 

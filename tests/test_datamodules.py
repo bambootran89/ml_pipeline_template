@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 
 from mlproject.src.datamodule.base import BaseDataModule
 from mlproject.src.datamodule.factory import DataModuleFactory
-from mlproject.src.datamodule.time_series_dl import TSDLDataModule
+from mlproject.src.datamodule.ts_sequence_dm import TSDLDataModule
 
 
 class DataGenerator:

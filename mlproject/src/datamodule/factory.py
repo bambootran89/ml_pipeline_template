@@ -17,7 +17,7 @@ class DataModuleFactory(DynamicFactoryBase):
 
     DATAMODULE_REGISTRY = {
         "dl": {
-            "module": "mlproject.src.datamodule.time_series_dl",
+            "module": "mlproject.src.datamodule.ts_sequence_dm",
             "class": "TSDLDataModule",
         },
         "ml": {

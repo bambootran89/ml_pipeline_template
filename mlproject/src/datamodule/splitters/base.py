@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import pandas as pd
 from sklearn.model_selection import KFold, StratifiedKFold
 
-from mlproject.src.datamodule.resolver import resolve_datasets_from_cfg
+from mlproject.src.datamodule.loader import resolve_datasets_from_cfg
 
 
 class BaseSplitter:

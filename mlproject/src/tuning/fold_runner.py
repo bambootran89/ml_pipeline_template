@@ -1,11 +1,13 @@
 from typing import Any, Tuple
 
+from omegaconf import DictConfig
+
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.trainer.factory import TrainerFactory
-from omegaconf import DictConfig
+
 from .fold_evaluator import FoldEvaluator
 
 
