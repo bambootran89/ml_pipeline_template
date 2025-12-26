@@ -13,7 +13,7 @@ import pandas as pd
 from omegaconf import DictConfig
 
 from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.tuning.cv_fold_runner import FoldRunner
+from mlproject.src.tuning.fold_runner import FoldRunner
 from mlproject.src.tuning.splitters.base import BaseSplitter
 
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "True"

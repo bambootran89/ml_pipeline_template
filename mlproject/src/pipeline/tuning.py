@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.pipeline.training import TrainingPipeline
-from mlproject.src.tuning.optuna_tuner import OptunaTuner
+from mlproject.src.tuning.optuna import OptunaTuner
 from mlproject.src.tuning.splitters.base import BaseSplitter
 from mlproject.src.tuning.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.utils.config_loader import ConfigLoader

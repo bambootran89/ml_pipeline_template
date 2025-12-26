@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 
 from mlproject.src.pipeline.cv import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.tuning.base_tuner import BaseTuner
+from mlproject.src.tuning.base import BaseTuner
 from mlproject.src.tuning.splitters.timeseries import TimeSeriesFoldSplitter
 
 
