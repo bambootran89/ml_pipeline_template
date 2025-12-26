@@ -5,7 +5,6 @@ import os
 import signal
 from typing import Any, Dict, List, Optional
 
-import mlflow
 import numpy as np
 import pandas as pd
 import ray
@@ -19,7 +18,6 @@ from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.func_utils import get_env_path
-from mlproject.src.utils.mlflow_utils import load_model_from_registry_safe
 
 ARTIFACTS_DIR: str = get_env_path(
     "ARTIFACTS_DIR",
@@ -93,31 +91,14 @@ class PreprocessingService:
         if self.ready:
             return
 
-        # Wait for ModelService to initialize and get run_id
-        run_id: Optional[str] = None
-        while run_id is None:
-            try:
-                run_id = await self.model_handle.get_run_id.remote()
-            except Exception:
-                # Model might not be initialized yet, wait before retry
-                await asyncio.sleep(1)
-
-        print(
-            f"[PreprocessingService] Retrieved Run ID: {run_id}. Loading artifacts..."
-        )
-
-        # Try loading MLflow companion preprocessor first
-        if self.mlflow_manager.enabled and run_id:
-            try:
-                pp_uri = f"runs:/{run_id}/preprocessing_pipeline"
-                self.preprocessor = mlflow.pyfunc.load_model(pp_uri)
-                self.ready = True
-                print("[PreprocessingService] Loaded MLflow companion preprocessor")
-                return
-            except Exception as exc:
-                print(
-                    f"[PreprocessingService] Companion preprocessor load failed: {exc}"
-                )
+        if self.mlflow_manager.enabled:
+            # self.model = self._load_model_from_mlflow()
+            # Load artifacts đồng nhất
+            model_name: str = self.cfg.experiment["model"].lower()
+            self.preprocessor = self.mlflow_manager.load_component(
+                f"{model_name}_preprocessor"
+            )
+            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
 
         # Fallback: Load local TransformManager
         self.preprocessor = TransformManager(
@@ -163,7 +144,7 @@ class PreprocessingService:
 
         loop = asyncio.get_running_loop()
         assert self.preprocessor is not None
-        return await loop.run_in_executor(None, self.preprocessor.predict, df)
+        return await loop.run_in_executor(None, self.preprocessor.transform, df)
 
 
 @serve.deployment(health_check_period_s=10, health_check_timeout_s=30)
@@ -229,31 +210,14 @@ class ModelService:
     def _load_model(self) -> None:
         """Load model from MLflow or fallback to local artifacts."""
         if self.mlflow_manager.enabled:
-            self._try_load_mlflow_model()
-        if not self.model_loaded:
-            self._load_local_model()
-
-    def _try_load_mlflow_model(self) -> None:
-        """Attempt loading model from MLflow registry."""
-        pyfunc_model = load_model_from_registry_safe(
-            self.cfg, default_model_name="ts_forecast_model"
-        )
-        if pyfunc_model is None:
+            model_name: str = self.cfg.experiment["model"].lower()
+            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
+            if self.model is not None:
+                self.model_loaded = True
             return
 
-        # pyfunc_model là PyFuncModel từ mlflow.pyfunc.load_model()
-        self.model = pyfunc_model
-
-        # Extract run_id từ model metadata
-        if hasattr(pyfunc_model, "metadata") and hasattr(
-            pyfunc_model.metadata, "run_id"
-        ):
-            self.run_id = pyfunc_model.metadata.run_id
-        else:
-            self.run_id = None
-
-        self.model_loaded = True
-        print(f"[ModelService] Loaded MLflow model, run_id={self.run_id}")
+        self._load_local_model()
+        return
 
     def _load_local_model(self) -> None:
         """Load model from local artifacts directory."""

@@ -195,18 +195,10 @@ class FoldRunner:
         run_name = f"{model_name}{run_suffix}"
 
         with self.mlflow_manager.start_run(run_name=run_name, nested=True):
-            self.mlflow_manager.log_metrics(metrics)
+            self.mlflow_manager.log_metadata(metrics=metrics)
             _ = model_trained
             _ = x_sample
             _ = preprocessor
-            # It takes time to log, now I skip this log
-            # preprocessor.log_artifacts_to_mlflow()
-
-            # self.mlflow_manager.log_model(
-            #     model_wrapper=model_trained,
-            #     artifact_path="model",
-            #     input_example=x_sample,
-            # )
 
     def run_fold(
         self,

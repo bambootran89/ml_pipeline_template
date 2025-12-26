@@ -1,64 +1,78 @@
+"""
+Universal MLflow PyFunc wrapper module enabling PyFunc packaging for arbitrary
+model or preprocessing artifacts.
+"""
+from __future__ import annotations
+
 from typing import Any
 
-import numpy as np
-import pandas as pd
+import mlflow.pyfunc
 from mlflow.pyfunc import PythonModel
 
 
-class MLflowModelWrapper(PythonModel):
+class ArtifactPyFuncWrapper(PythonModel):
     """
-    MLflow PyFunc wrapper for serving arbitrary model wrappers.
+    Generic MLflow PyFunc wrapper to package arbitrary Python artifacts.
 
-    Converts inputs to float32 numpy arrays before passing to the underlying model.
-    Suitable for any model implementing a predict() method.
-
-    Attributes:
-        model_wrapper (Any): Model object implementing predict().
+    This wrapper delegates inference to a specified method (e.g., `predict`
+    for models or `transform` for preprocessors) and allows retrieval of the
+    original unwrapped artifact.
     """
 
-    def __init__(self, model_wrapper: Any):
+    def __init__(self, artifact: Any, predict_method: str = "predict") -> None:
         """
         Initialize the PyFunc wrapper.
 
         Args:
-            model_wrapper (Any): Object implementing predict().
+            artifact: The underlying Python object to wrap.
+            predict_method: Name of the method to invoke during inference.
         """
-        self.model_wrapper = model_wrapper
+        self.artifact: Any = artifact
+        self.predict_method: str = predict_method
+
+    def load_context(
+        self, context: mlflow.pyfunc.PythonModelContext  # type: ignore[name-defined]
+    ) -> None:
+        """
+        Load MLflow context. Reserved for future extension.
+
+        Args:
+            context: MLflow model context supplied at model load time.
+        """
+
+    def predict_stream(self, *args: Any, **kwargs: Any) -> Any:
+        """No-op override to satisfy pylint abstract method requirement."""
 
     def predict(
-        self, context: Any, model_input: Any, params: dict[str, Any] | None = None
+        self,
+        context: mlflow.pyfunc.PythonModelContext,  # type: ignore[name-defined]
+        model_input: Any,
+        params: Any = None,
     ) -> Any:
         """
-        Execute model prediction using standardized input.
-
-        Converts pandas DataFrame inputs to numpy arrays of dtype float32,
-        then forwards to the wrapped model's predict method.
+        Delegate inference to the wrapped artifact's specified method.
 
         Args:
-            context (Any): MLflow context (unused).
-            model_input (Any): Raw input data for prediction.
-            params (dict[str, Any] | None): Optional parameters (unused).
+            context: MLflow model context supplied at inference time.
+            model_input: Input data passed to the artifact method.
 
         Returns:
-            Any: Predictions from the wrapped model.
+            Output produced by the delegated artifact method.
         """
-        if isinstance(model_input, pd.DataFrame):
-            model_input = model_input.values
+        _ = context
+        _ = params
+        method = getattr(self.artifact, self.predict_method, None)
+        if method is None:
+            raise AttributeError(
+                f"Artifact method '{self.predict_method}' not found on wrapped object."
+            )
+        return method(model_input)
 
-        model_input = np.asarray(model_input, dtype=np.float32)
-        return self.model_wrapper.predict(model_input)
-
-    def predict_stream(
-        self, context: Any, model_input: Any, params: dict[str, Any] | None = None
-    ) -> Any:
+    def get_raw_artifact(self) -> Any:
         """
-        Implement abstract method predict_stream to satisfy PythonModel.
+        Retrieve the original unwrapped artifact.
 
-        Simply calls self.predict; MLflow streaming input is passed as model_input.
-
-        Args:
-            context (Any): MLflow context (unused)
-            model_input (Any): Streaming input
-            params (dict[str, Any] | None): Optional parameters (unused)
+        Returns:
+            The underlying Python artifact originally supplied to the wrapper.
         """
-        return self.predict(context, model_input, params)
+        return self.artifact

@@ -1,6 +1,5 @@
 from typing import Any, Dict, Optional
 
-import mlflow
 from omegaconf import DictConfig
 
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
@@ -14,7 +13,6 @@ from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.tracking.pyfunc_preprocess import log_preprocessing_model
 from mlproject.src.trainer.trainer_factory import TrainerFactory
 from mlproject.src.utils.config_loader import ConfigLoader
 
@@ -94,20 +92,6 @@ class TrainingPipeline(BasePipeline):
         )
         print(metrics)
         return metrics
-
-    def _get_sample_input(self, dm):
-        """
-        Retrieve a small sample input for model logging.
-
-        Returns:
-            Numpy array with first few test inputs.
-        """
-        if hasattr(dm, "get_test_windows"):
-            x_test, _ = dm.get_test_windows()
-            return x_test[:5]
-        else:
-            _, _, _, _, x_test, _ = dm.get_data()
-            return x_test[:5]
 
     def run_approach(self, approach: Dict[str, Any], data: Any) -> Dict[str, float]:
         """
@@ -203,43 +187,27 @@ class TrainingPipeline(BasePipeline):
                 Dictionary of evaluation metrics logged to MLflow.
         """
         run_name: str = f"{model_name}_run"
-        registry_name: Optional[str] = (
-            self.cfg.get("mlflow", {}).get("registry", {}).get("model_name")
-        )
 
-        with self.mlflow_manager.start_run(run_name=run_name):
+        with self.mlflow_manager.start_run(run_name=run_name) as logger:
             transform_manager: Optional[
                 TransformManager
             ] = self.preprocessor.transform_manager
 
-            active_run = mlflow.active_run()
-            if active_run is None:
-                raise RuntimeError(
-                    "[TrainingPipeline] No active MLflow run found while "
-                    "logging preprocessing."
-                )
-
-            run_id: str = active_run.info.run_id
-
-            if transform_manager is not None:
-                log_preprocessing_model(
-                    transform_manager=transform_manager,
-                    run_id=run_id,
-                    artifact_path="preprocessing_pipeline",
-                )
+            # Log Preprocessor (với interface thống nhất)
+            logger.log_component(
+                obj=transform_manager,
+                name=f"{model_name}_preprocessor",
+                artifact_type="preprocess",
+            )
 
             metrics: Dict[str, float] = self._execute_training(
                 trainer, dm, wrapper, hyperparams
             )
-            self.mlflow_manager.log_metrics(metrics)
-
-            sample_input = self._get_sample_input(dm)
-
-            self.mlflow_manager.log_model(
-                model_wrapper=wrapper,
-                artifact_path="model",
-                input_example=sample_input,
-                registered_model_name=registry_name,
+            # Log Model
+            logger.log_component(
+                obj=wrapper, name=f"{model_name}_model", artifact_type="model"
             )
+
+            logger.log_metadata(params=hyperparams, metrics=metrics)
 
             return metrics

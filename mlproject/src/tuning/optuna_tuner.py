@@ -111,7 +111,6 @@ class OptunaTuner(BaseTuner):
         assert self.mlflow_manager is not None
         with self.mlflow_manager.start_run(run_name=run_name, nested=True):
             # Log parameters
-            self.mlflow_manager.log_params(hyperparams)
 
             # Preprocess data
             approach = {
@@ -126,7 +125,7 @@ class OptunaTuner(BaseTuner):
             )
 
             # Log aggregated metrics
-            self.mlflow_manager.log_metrics(agg_metrics)
+            self.mlflow_manager.log_metadata(params=hyperparams, metrics=agg_metrics)
             # Return averaged metric for Optuna
             value = agg_metrics.get(self.metric_name)
             if value is None:

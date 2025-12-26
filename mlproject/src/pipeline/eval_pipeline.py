@@ -26,10 +26,6 @@ from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
-from mlproject.src.utils.mlflow_utils import (
-    load_companion_preprocessor_from_model,
-    load_model_from_registry_safe,
-)
 
 
 class EvalPipeline(BasePipeline):
@@ -55,49 +51,13 @@ class EvalPipeline(BasePipeline):
         self.evaluator: BaseEvaluator = self._build_evaluator()
 
         if self.mlflow_manager.enabled:
-            self.model = self._load_model_from_mlflow()
-
-    def _load_model_from_mlflow(self) -> Any:
-        """
-        Load the prediction model from MLflow Model Registry and resolve its
-        companion preprocessing model if available.
-
-        This method performs the following steps:
-        1. Loads the latest version of the prediction model from the MLflow
-        Model Registry using the configured model name.
-        2. Attempts to load the associated preprocessing PyFunc model using
-        the run_id stored in the prediction model metadata.
-        3. Falls back to local preprocessing logic if the companion
-        preprocessing model cannot be resolved.
-
-        Returns
-        -------
-        Any
-            Loaded MLflow prediction model.
-
-        Raises
-        ------
-        RuntimeError
-            If the prediction model cannot be loaded from the MLflow
-            Model Registry.
-        """
-        model = load_model_from_registry_safe(
-            cfg=self.cfg,
-            default_model_name=self.model_name,
-        )
-
-        if model is None:
-            raise RuntimeError("Failed to load model from MLflow Registry")
-
-        self.preprocessor_model = load_companion_preprocessor_from_model(model)
-
-        if self.preprocessor_model is None:
-            print(
-                "[EvalPipeline] WARNING: Companion preprocessor not found. "
-                "Using local preprocessing."
+            # self.model = self._load_model_from_mlflow()
+            # Load artifacts đồng nhất
+            model_name: str = self.cfg.experiment["model"].lower()
+            self.preprocessor_model = self.mlflow_manager.load_component(
+                f"{model_name}_preprocessor"
             )
-
-        return model
+            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
 
     def preprocess(self) -> pd.DataFrame:
         """
@@ -142,7 +102,7 @@ class EvalPipeline(BasePipeline):
 
         if self.preprocessor_model is not None:
             print("[EvalPipeline] Using MLflow preprocessing model")
-            return self.preprocessor_model.predict(df)
+            return self.preprocessor_model.transform(df)
         else:
             print("[EvalPipeline] Using local preprocessing fallback")
             self.preprocessor.transform_manager.load(self.cfg)
@@ -237,5 +197,5 @@ class EvalPipeline(BasePipeline):
             preds = self.model.predict(x_test)
             metrics = self.evaluator.evaluate(y_test, preds)
             safe_metrics = flatten_metrics_for_mlflow(metrics)
-            self.mlflow_manager.log_metrics(safe_metrics)
+            self.mlflow_manager.log_metadata(metrics=safe_metrics)
         return metrics

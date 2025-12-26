@@ -18,10 +18,6 @@ from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
-from mlproject.src.utils.mlflow_utils import (
-    load_companion_preprocessor_from_model,
-    load_model_from_registry_safe,
-)
 
 
 class TestPipeline(BasePipeline):
@@ -47,50 +43,14 @@ class TestPipeline(BasePipeline):
         self.model: Any = None
         self.preprocessor_model: Any | None = None
 
-        self.model = self._load_model_from_mlflow(self.cfg.get("experiment"))
-
-    def _load_model_from_mlflow(self, approach_cfg: DictConfig) -> Any | None:
-        """
-        Load the prediction model from MLflow Model Registry for inference and
-        resolve its companion preprocessing model if available.
-
-        The method attempts to:
-        1. Load the latest version of the prediction model specified by
-        ``approach_cfg.model`` from the MLflow Model Registry.
-        2. Load the associated preprocessing PyFunc model using the ``run_id``
-        stored in the prediction model metadata.
-        3. Gracefully fall back to local preprocessing logic if the companion
-        preprocessing model cannot be loaded.
-
-        Parameters
-        ----------
-        approach_cfg : DictConfig
-            Model configuration containing the model name and hyperparameters.
-
-        Returns
-        -------
-        Any | None
-            Loaded MLflow prediction model, or ``None`` if the model cannot be
-            loaded from the MLflow Model Registry.
-        """
-        model = load_model_from_registry_safe(
-            cfg=self.cfg,
-            default_model_name=approach_cfg.model,
-        )
-
-        if model is None:
-            print("[TestPipeline] MLflow model load failed")
-            return None
-
-        self.preprocessor_model = load_companion_preprocessor_from_model(model)
-
-        if self.preprocessor_model is None:
-            print(
-                "[TestPipeline] Companion preprocessor not available. "
-                "Using local fallback."
+        if self.mlflow_manager.enabled:
+            # self.model = self._load_model_from_mlflow()
+            # Load artifacts đồng nhất
+            model_name: str = self.cfg.experiment["model"].lower()
+            self.preprocessor_model = self.mlflow_manager.load_component(
+                f"{model_name}_preprocessor"
             )
-
-        return model
+            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
 
     def preprocess(self, data: Any = None) -> Any:
         """
@@ -103,7 +63,7 @@ class TestPipeline(BasePipeline):
             Preprocessed DataFrame or None if no data provided.
         """
         if self.preprocessor_model is not None:
-            return self.preprocessor_model.predict(data)
+            return self.preprocessor_model.transform(data)
         else:
             self.preprocessor.transform_manager.load(cfg=self.cfg)
             return self.preprocessor.transform_manager.transform(data)

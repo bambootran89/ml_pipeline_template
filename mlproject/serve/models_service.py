@@ -7,17 +7,12 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from mlproject.serve.schemas import PredictRequest
-from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
-from mlproject.src.utils.mlflow_utils import (
-    load_companion_preprocessor_from_model,
-    load_model_from_registry_safe,
-)
 
 
 class ModelsService:
@@ -43,57 +38,14 @@ class ModelsService:
         self.preprocessor_model = None
         self.local_transform_manager = None
         self.mlflow_manager = MLflowManager(self.cfg)
-        self.load_model()
-
-    def load_model(self) -> None:
-        """Load prediction model and companion preprocessor."""
         if self.mlflow_manager.enabled:
-            model = load_model_from_registry_safe(
-                cfg=self.cfg,
-                default_model_name=self.cfg.get("mlflow", {})
-                .get("registry", {})
-                .get("model_name", "ts_forecast_model"),
+            # self.model = self._load_model_from_mlflow()
+            # Load artifacts đồng nhất
+            model_name: str = self.cfg.experiment["model"].lower()
+            self.preprocessor_model = self.mlflow_manager.load_component(
+                f"{model_name}_preprocessor"
             )
-
-            if model is not None:
-                self.model = model
-                self.preprocessor_model = load_companion_preprocessor_from_model(model)
-                return
-
-            print(
-                "[ModelsService] MLflow load failed. Falling back to local artifacts."
-            )
-
-        self._load_model_from_local()
-
-    def _load_model_from_local(self) -> None:
-        """Load model from local artifacts."""
-        if not self.cfg.get("approaches"):
-            print("[ModelsService] No approaches configured.")
-            return
-
-        approach = self.cfg.approaches[0]
-        name = approach["model"].lower()
-        hp = approach.get("hyperparams", {})
-
-        if isinstance(hp, DictConfig):
-            hp = OmegaConf.to_container(hp, resolve=True)
-
-        self.model = ModelFactory.load(
-            name,
-            hp,
-            self.cfg.training.artifacts_dir,
-        )
-
-        print("[Service] Loading Local TransformManager...")
-        self.local_transform_manager = TransformManager(
-            self.cfg, artifacts_dir=self.cfg.training.artifacts_dir
-        )
-        if self.local_transform_manager is not None:
-            try:
-                self.local_transform_manager.load(self.cfg)
-            except FileNotFoundError:
-                print("[Service] Warning: Local preprocessing artifacts not found.")
+            self.model = self.mlflow_manager.load_component(f"{model_name}_model")
 
     def _prepare_input_window(self, df: pd.DataFrame) -> np.ndarray:
         """Build model input window from preprocessed DataFrame."""
@@ -131,7 +83,7 @@ class ModelsService:
         """
         if self.preprocessor_model is not None:
             print("[Preprocess] Using MLflow PyFunc preprocessor.")
-            return self.preprocessor_model.predict(data)
+            return self.preprocessor_model.transform(data)
 
         if self.local_transform_manager is not None:
             print("[Preprocess] Using local preprocessor fallback.")

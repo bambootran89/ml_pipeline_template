@@ -105,7 +105,7 @@ class TuningPipeline(BasePipeline):
             best_params = result["best_params"]
 
             # Log best params to Parent Run for quick view
-            self.mlflow_manager.log_params(best_params)
+            self.mlflow_manager.log_metadata(params=best_params)
 
         # Step 4: Update experiment hyperparameters
         self.cfg.experiment.hyperparams.update(best_params)
