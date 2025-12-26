@@ -3,10 +3,10 @@ from typing import Any, Dict, Optional
 from omegaconf import DictConfig
 
 from mlproject.src.eval.base import BaseEvaluator
-from mlproject.src.eval.classification_eval import ClassificationEvaluator
-from mlproject.src.eval.clustering_eval import ClusteringEvaluator
-from mlproject.src.eval.regression_eval import RegressionEvaluator
-from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
+from mlproject.src.eval.classification import ClassificationEvaluator
+from mlproject.src.eval.clustering import ClusteringEvaluator
+from mlproject.src.eval.regression import RegressionEvaluator
+from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.preprocess.transform_manager import TransformManager
@@ -75,7 +75,7 @@ class TrainingPipeline(BasePipeline):
         )
         return metrics
 
-    def run_approach(self, approach: Dict[str, Any], data: Any) -> Dict[str, float]:
+    def run_exp(self, data: Any) -> Dict[str, float]:
         """
         Execute a full training approach with optional MLflow logging.
 
@@ -103,8 +103,8 @@ class TrainingPipeline(BasePipeline):
                 Dictionary of evaluation metrics produced by the training run.
         """
         df = data
-        hyperparams: Dict[str, Any] = approach.get("hyperparams", {})
-        dm, wrapper, trainer = self._get_components(approach, df)
+        hyperparams: Dict[str, Any] = self.exp.get("hyperparams", {})
+        dm, wrapper, trainer = self._get_components(df)
         dm.setup()
 
         if self.mlflow_manager:

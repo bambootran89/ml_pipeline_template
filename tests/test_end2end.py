@@ -1,4 +1,4 @@
-from mlproject.src.pipeline.run_pipeline import main_run
+from mlproject.src.pipeline.run import main_run
 
 
 def test_run_pipeline_smoke():

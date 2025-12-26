@@ -17,10 +17,10 @@ from omegaconf import DictConfig
 from mlproject.src.datamodule.dataset_resolver import resolve_datasets_from_cfg
 from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
-from mlproject.src.eval.classification_eval import ClassificationEvaluator
-from mlproject.src.eval.clustering_eval import ClusteringEvaluator
-from mlproject.src.eval.regression_eval import RegressionEvaluator
-from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
+from mlproject.src.eval.classification import ClassificationEvaluator
+from mlproject.src.eval.clustering import ClusteringEvaluator
+from mlproject.src.eval.regression import RegressionEvaluator
+from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
@@ -129,8 +129,6 @@ class EvalPipeline(BasePipeline):
 
         return pd.concat([fea_df, tar_df], axis=1)
 
-    # Evaluation
-
     def _build_evaluator(self) -> BaseEvaluator:
         """
         Build evaluator based on configuration.
@@ -154,14 +152,12 @@ class EvalPipeline(BasePipeline):
         else:
             raise ValueError(f"Don't support this type {eval_type}")
 
-    def run_approach(self, approach: Any, data: pd.DataFrame) -> dict:
+    def run_exp(self, data: pd.DataFrame) -> dict:
         """
         Evaluate model on test dataset.
 
         Parameters
         ----------
-        approach : Any
-            Experiment configuration.
         data : pd.DataFrame
             Preprocessed dataset.
 

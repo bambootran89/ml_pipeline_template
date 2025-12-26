@@ -1,9 +1,9 @@
 from typing import Any, Tuple
 
-from mlproject.src.eval.classification_eval import ClassificationEvaluator
-from mlproject.src.eval.clustering_eval import ClusteringEvaluator
-from mlproject.src.eval.regression_eval import RegressionEvaluator
-from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
+from mlproject.src.eval.classification import ClassificationEvaluator
+from mlproject.src.eval.clustering import ClusteringEvaluator
+from mlproject.src.eval.regression import RegressionEvaluator
+from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 
 
 class FoldEvaluator:

@@ -8,11 +8,11 @@ Responsibilities:
 - Run forward prediction and return outputs.
 """
 
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import pandas as pd
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
@@ -89,9 +89,9 @@ class TestPipeline(BasePipeline):
         window: np.ndarray = df.iloc[-seq_len:].values
         return window[np.newaxis, :].astype(np.float32)
 
-    def run_approach(self, approach: Dict[str, Any], data: pd.DataFrame) -> np.ndarray:
+    def run_exp(self, data: pd.DataFrame) -> np.ndarray:
         """
-        Execute model inference for a given approach.
+        Execute model inference for a given exp.
 
         Steps:
         1. Preprocess raw data.
@@ -106,14 +106,9 @@ class TestPipeline(BasePipeline):
         Returns:
             Numpy array of predictions.
         """
-        if isinstance(approach, DictConfig):
-            approach = OmegaConf.to_container(approach, resolve=True)
-
-        if not isinstance(approach, dict):
-            raise TypeError(f"Expected approach to be dict, got {type(approach)}")
 
         df_transformed: pd.DataFrame = self.preprocess(data)
-        input_chunk_length: int = approach.get("hyperparams", {}).get(
+        input_chunk_length: int = self.exp.get("hyperparams", {}).get(
             "input_chunk_length", 24
         )
         x_input: np.ndarray = self._prepare_input_window(

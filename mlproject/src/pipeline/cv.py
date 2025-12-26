@@ -47,7 +47,7 @@ class CrossValidationPipeline(BasePipeline):
         """
         return None
 
-    def run_approach(self, approach: Dict[str, Any], data: Any) -> Any:
+    def run_exp(self, data: Any) -> Any:
         """Not supported for cross-validation pipeline.
 
         Raises:
@@ -57,7 +57,6 @@ class CrossValidationPipeline(BasePipeline):
 
     def run_cv(
         self,
-        approach: Dict[str, Any],
         data: Any = None,
         is_tuning: bool = False,
     ) -> Dict[str, float]:
@@ -75,9 +74,9 @@ class CrossValidationPipeline(BasePipeline):
 
         # Generate folds from splitter
         folds = self.splitter.generate_folds()
-        model_name: str = approach["model"].lower()
-        hyperparams: Dict[str, Any] = approach.get("hyperparams", {})
-        model_type: str = approach["model_type"].lower()
+        model_name: str = self.exp["model"].lower()
+        hyperparams: Dict[str, Any] = self.exp.get("hyperparams", {})
+        model_type: str = self.exp["model_type"].lower()
         fold_metrics: List[Dict[str, float]] = []
         for i, df_fold in enumerate(folds):
             metrics = self._fold_runner.run_fold(

@@ -16,8 +16,7 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.pipeline.training_pipeline import TrainingPipeline
-from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.pipeline.training import TrainingPipeline
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
 from mlproject.src.utils.config_loader import ConfigLoader
 
@@ -43,7 +42,6 @@ class TuningPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
 
-        self.mlflow_manager = MLflowManager(self.cfg)
         cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(self.cfg, resolve=True))
         # Build CV splitter. Parameters may be overridden in YAML config.
         self.splitter: BaseSplitter
@@ -67,7 +65,7 @@ class TuningPipeline(BasePipeline):
             Processed dataset produced by offline preprocessing workflow.
         """
 
-    def run_approach(self, approach: Dict[str, Any], data):
+    def run_exp(self, data):
         """
         Not used for tuning workflow.
 

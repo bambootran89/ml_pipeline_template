@@ -22,13 +22,13 @@ from omegaconf import OmegaConf
 
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
-from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
+from mlproject.src.pipeline.cv import CrossValidationPipeline
 
 # === moved all imports to top to fix pylint C0415 ===
-from mlproject.src.pipeline.eval_pipeline import EvalPipeline
-from mlproject.src.pipeline.serve_pipeline import TestPipeline
-from mlproject.src.pipeline.training_pipeline import TrainingPipeline
-from mlproject.src.tuning.tuning_pipeline import TuningPipeline
+from mlproject.src.pipeline.eval import EvalPipeline
+from mlproject.src.pipeline.serve import TestPipeline
+from mlproject.src.pipeline.training import TrainingPipeline
+from mlproject.src.pipeline.tuning import TuningPipeline
 from mlproject.src.utils.config_loader import ConfigLoader
 
 # ====================================================
@@ -93,13 +93,7 @@ def run_cross_validation(cfg_path: str) -> None:
 
     cv_pipeline = CrossValidationPipeline(cfg, splitter)
 
-    approach = {
-        "model": cfg.experiment.model,
-        "model_type": cfg.experiment.model_type,
-        "hyperparams": dict(cfg.experiment.hyperparams),
-    }
-
-    cv_pipeline.run_cv(approach)
+    cv_pipeline.run_cv()
 
 
 def run_tuning(cfg_path: str) -> None:

@@ -2,7 +2,7 @@ from typing import Any, Dict, Union
 
 import numpy as np
 
-from mlproject.src.eval.regression_eval import RegressionEvaluator
+from mlproject.src.eval.regression import RegressionEvaluator
 
 
 class TimeSeriesEvaluator(RegressionEvaluator):

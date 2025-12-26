@@ -52,30 +52,30 @@ mlflow ui --port 5000
 ```
 Run a standard training experiment:
 ```bash
-python -m mlproject.src.pipeline.run_pipeline train --config mlproject/configs/experiments/etth1.yaml
+python -m mlproject.src.pipeline.run train --config mlproject/configs/experiments/etth1.yaml
 ```
 
 Run a eval experiment.  (alias: latest, production, staging)
 ```bash
-python -m mlproject.src.pipeline.run_pipeline eval --config mlproject/configs/experiments/etth1.yaml --alias latest
+python -m mlproject.src.pipeline.run eval --config mlproject/configs/experiments/etth1.yaml --alias latest
 ```
 
 Run a serving. (alias: latest, production, staging)
 ```bash
-python -m mlproject.src.pipeline.run_pipeline test --config mlproject/configs/experiments/etth1.yaml --alias latest --input sample_input.csv
+python -m mlproject.src.pipeline.run test --config mlproject/configs/experiments/etth1.yaml --alias latest --input sample_input.csv
 ```
 
 # Workflows & Capabilities
 ## 1. Cross-Validation (Backtesting)
 Validates model stability across time folds.
 ```bash
-python -m mlproject.src.pipeline.run_pipeline cv --config mlproject/configs/experiments/etth2.yaml
+python -m mlproject.src.pipeline.run cv --config mlproject/configs/experiments/etth2.yaml
 ```
 
 ## 2. Hyperparameter Tuning (Optuna)
 Runs Bayesian Optimization to find best parameters, then auto-retrains the best model.
 ```bash
-python -m mlproject.src.pipeline.run_pipeline tune --config mlproject/configs/experiments/etth3_tuning.yaml
+python -m mlproject.src.pipeline.run tune --config mlproject/configs/experiments/etth3_tuning.yaml
 ```
 ## 3. Serving (Inference)
 Deploys the model using FastAPI.

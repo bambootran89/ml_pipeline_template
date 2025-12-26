@@ -41,9 +41,9 @@ class BasePipeline(ABC):
 
         self.mlflow_manager = MLflowManager(self.cfg)
 
-        exp: Dict[str, Any] = OmegaConf.select(self.cfg, "experiment") or {}
-        model = exp.get("model")
-        mtype = exp.get("model_type")
+        self.exp: Dict[str, Any] = OmegaConf.select(self.cfg, "experiment") or {}
+        model = self.exp.get("model")
+        mtype = self.exp.get("model_type")
 
         self.model_name = str(model).lower() if model else "undefined"
         self.model_type = str(mtype).lower() if mtype else "undefined"
@@ -52,15 +52,14 @@ class BasePipeline(ABC):
 
     def _get_components(
         self,
-        approach: Dict[str, Any],
         df: Optional[pd.DataFrame] = None,
     ) -> Tuple[Any, Any, Any]:
         """
         Initialize core components using cached pipeline metadata.
         """
-        print(f"[Pipeline] Approach keys: {list(approach.keys())}")
+        print(f"[Pipeline] Approach keys: {list(self.exp.keys())}")
 
-        if "model" not in approach or "model_type" not in approach:
+        if "model" not in self.exp or "model_type" not in self.exp:
             print("[Pipeline] Missing required keys")
             raise KeyError("approach must contain 'model' and 'model_type'")
 
@@ -90,9 +89,8 @@ class BasePipeline(ABC):
         """Run preprocessing and return DataFrame."""
 
     @abstractmethod
-    def run_approach(
+    def run_exp(
         self,
-        approach: Dict[str, Any],
         data: pd.DataFrame,
     ) -> Any:
         """Execute a single experiment approach."""
@@ -106,12 +104,7 @@ class BasePipeline(ABC):
             data = self.preprocess()
             print(f"[Pipeline] Shape: {data.shape}")
 
-        exp = OmegaConf.select(self.cfg, "experiment")
-        if exp is None:
-            print("[Pipeline] No experiment config found")
-            raise RuntimeError("experiment config not found")
-
-        print(f"[Pipeline] Run -> '{exp.get('name', 'Unnamed')}'")
+        print(f"[Pipeline] Run -> '{self.exp.get('name', 'Unnamed')}'")
         print(f"[Pipeline] Use -> model='{self.model_name}', type='{self.model_type}'")
 
-        self.run_approach(dict(exp), data)
+        self.run_exp(data)
