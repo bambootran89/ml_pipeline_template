@@ -15,14 +15,14 @@ Usage examples:
 """
 
 import argparse
-from typing import Any, Dict, cast
+from typing import cast
 
 import pandas as pd
-from omegaconf import OmegaConf
 
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv import CrossValidationPipeline
+
 # === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval import EvalPipeline
 from mlproject.src.pipeline.serve import TestPipeline
@@ -73,20 +73,19 @@ def run_cross_validation(cfg_path: str) -> None:
     """
     cfg = ConfigLoader.load(cfg_path)
 
-    cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
     splitter: BaseSplitter
     eval_type = cfg.get("data", {}).get("type", "timeseries")
     if eval_type == "timeseries":
         splitter = cast(
             BaseSplitter,
             TimeSeriesFoldSplitter(
-                cfg_dict,
+                cfg,
                 n_splits=cfg.get("tuning", {}).get("n_splits", 3),
             ),
         )
     else:
         splitter = BaseSplitter(
-            cfg_dict,
+            cfg,
             n_splits=cfg.get("tuning", {}).get("n_splits", 3),
         )
 

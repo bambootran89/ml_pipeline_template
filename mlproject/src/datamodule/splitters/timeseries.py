@@ -1,6 +1,7 @@
-from typing import Any, Dict, List
+from typing import List
 
 import pandas as pd
+from omegaconf import DictConfig, OmegaConf
 
 from .base import BaseSplitter
 
@@ -27,7 +28,7 @@ class TimeSeriesFoldSplitter(BaseSplitter):
         n_samples: Total number of rows in the time series.
     """
 
-    def __init__(self, cfg: Dict[str, Any], n_splits: int) -> None:
+    def __init__(self, cfg: DictConfig, n_splits: int) -> None:
         """
         Initialize the splitter from configuration and number of folds.
 
@@ -37,7 +38,7 @@ class TimeSeriesFoldSplitter(BaseSplitter):
         """
         super().__init__(cfg=cfg, n_splits=n_splits)
 
-        self.experiment_cfg = cfg.get("experiment", {})
+        self.experiment_cfg = cfg.get("experiment", OmegaConf.create())
 
         hp_cfg = self.experiment_cfg.get("hyperparams", {})
         self.input_len = int(hp_cfg.get("input_chunk_length", 24))

@@ -9,9 +9,8 @@ Workflow overview:
     4. Register the retrained model into MLflow Model Registry.
 """
 
-from typing import Any, Dict, cast
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
@@ -42,18 +41,17 @@ class TuningPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
 
-        cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(self.cfg, resolve=True))
         # Build CV splitter. Parameters may be overridden in YAML config.
         self.splitter: BaseSplitter
         eval_type = self.cfg.get("data", {}).get("type", "timeseries")
         if eval_type == "timeseries":
             self.splitter = TimeSeriesFoldSplitter(
-                cfg_dict,
+                self.cfg,
                 n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
             )
         else:
             self.splitter = BaseSplitter(
-                cfg_dict,
+                self.cfg,
                 n_splits=self.cfg.get("tuning", {}).get("n_splits", 3),
             )
 

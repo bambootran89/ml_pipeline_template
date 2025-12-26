@@ -111,9 +111,9 @@ class TrainingPipeline(BasePipeline):
             run_name: str = f"{self.model_name}_run"
 
             with self.mlflow_manager.start_run(run_name=run_name) as logger:
-                transform_manager: Optional[TransformManager] = (
-                    self.preprocessor.transform_manager
-                )
+                transform_manager: Optional[
+                    TransformManager
+                ] = self.preprocessor.transform_manager
 
                 # Log Preprocessor (với interface thống nhất)
                 logger.log_component(

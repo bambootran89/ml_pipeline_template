@@ -1,6 +1,7 @@
-from typing import Any, Dict, List, Optional, Sequence
+from typing import List, Optional, Sequence
 
 import pandas as pd
+from omegaconf import DictConfig, OmegaConf
 from sklearn.model_selection import KFold, StratifiedKFold
 
 from mlproject.src.datamodule.loader import resolve_datasets_from_cfg
@@ -17,7 +18,7 @@ class BaseSplitter:
     Target columns are used ONLY for stratified splitting when enabled.
     """
 
-    def __init__(self, cfg: Dict[str, Any], n_splits: int) -> None:
+    def __init__(self, cfg: DictConfig, n_splits: int) -> None:
         """
         Initialize the splitter from configuration and number of folds.
 
@@ -25,8 +26,8 @@ class BaseSplitter:
             cfg: Dictionary-like configuration object.
             n_splits: Number of folds to generate.
         """
-        self.cfg = cfg
-        self.df_cfg = cfg.get("data", {})
+        self.cfg = cfg if cfg is not None else OmegaConf.create()
+        self.df_cfg = cfg.get("data", OmegaConf.create())
 
         self.n_splits = int(n_splits)
         self.shuffle = bool(self.df_cfg.get("shuffle", True))
