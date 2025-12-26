@@ -13,7 +13,6 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
-from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 
 
@@ -72,8 +71,7 @@ def main() -> None:
             n_splits=args.n_splits,
         )
 
-    mlflow_manager = MLflowManager(cfg)
-    cv_pipeline = CrossValidationPipeline(cfg, splitter, mlflow_manager)
+    cv_pipeline = CrossValidationPipeline(cfg, splitter)
 
     # Run cross-validation
     print(f"\nRunning {args.n_splits}-fold cross-validation...")

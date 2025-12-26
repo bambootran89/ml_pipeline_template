@@ -14,7 +14,6 @@ from omegaconf import DictConfig
 
 from mlproject.src.datamodule.base_splitter import BaseSplitter
 from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.cv_fold_runner import FoldRunner
 
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
@@ -28,7 +27,6 @@ class CrossValidationPipeline(BasePipeline):
         self,
         cfg: DictConfig,
         splitter: BaseSplitter,
-        mlflow_manager: MLflowManager,
     ) -> None:
         """Initialize the cross-validation pipeline.
 
@@ -39,8 +37,7 @@ class CrossValidationPipeline(BasePipeline):
         """
         super().__init__(cfg)
         self.splitter = splitter
-        self.mlflow_manager = mlflow_manager
-        self._fold_runner = FoldRunner(cfg, mlflow_manager)
+        self._fold_runner = FoldRunner(cfg, self.mlflow_manager)
 
     def preprocess(self) -> pd.DataFrame:
         """No-op preprocessing for CV pipeline.

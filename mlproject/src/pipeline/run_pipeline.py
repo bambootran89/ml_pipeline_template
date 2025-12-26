@@ -28,7 +28,6 @@ from mlproject.src.pipeline.cv_pipeline import CrossValidationPipeline
 from mlproject.src.pipeline.eval_pipeline import EvalPipeline
 from mlproject.src.pipeline.serve_pipeline import TestPipeline
 from mlproject.src.pipeline.training_pipeline import TrainingPipeline
-from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.tuning_pipeline import TuningPipeline
 from mlproject.src.utils.config_loader import ConfigLoader
 
@@ -74,7 +73,6 @@ def run_cross_validation(cfg_path: str) -> None:
     Execute time-series cross-validation using ExpandingWindowSplitter.
     """
     cfg = ConfigLoader.load(cfg_path)
-    mlflow_manager = MLflowManager(cfg)
 
     cfg_dict = cast(Dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
     splitter: BaseSplitter
@@ -93,7 +91,7 @@ def run_cross_validation(cfg_path: str) -> None:
             n_splits=cfg.get("tuning", {}).get("n_splits", 3),
         )
 
-    cv_pipeline = CrossValidationPipeline(cfg, splitter, mlflow_manager)
+    cv_pipeline = CrossValidationPipeline(cfg, splitter)
 
     approach = {
         "model": cfg.experiment.model,

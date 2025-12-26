@@ -44,8 +44,7 @@ def cv_pipeline() -> CrossValidationPipeline:
         n_splits=2,
     )
 
-    mlflow_manager = MLflowManager(cfg)
-    return CrossValidationPipeline(cfg, splitter, mlflow_manager)
+    return CrossValidationPipeline(cfg, splitter)
 
 
 def test_cv_pipeline_smoke(cv_pipeline: CrossValidationPipeline) -> None:

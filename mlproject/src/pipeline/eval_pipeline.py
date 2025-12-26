@@ -23,7 +23,6 @@ from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
-from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
 
@@ -37,13 +36,6 @@ class EvalPipeline(BasePipeline):
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
 
-        self.mlflow_manager = MLflowManager(self.cfg)
-        self.model_name: str = (
-            self.cfg.get("mlflow", {})
-            .get("registry", {})
-            .get("model_name", "ts_forecast_model")
-        )
-
         self.model: Any = None
         self.preprocessor_model: Optional[Any] = None
 
@@ -51,14 +43,12 @@ class EvalPipeline(BasePipeline):
         self.evaluator: BaseEvaluator = self._build_evaluator()
 
         if self.mlflow_manager.enabled:
-            # self.model = self._load_model_from_mlflow()
             # Load artifacts đồng nhất
-            model_name: str = self.cfg.experiment["model"].lower()
             self.preprocessor_model = self.mlflow_manager.load_component(
-                name=f"{model_name}_preprocessor", alias=alias
+                name=f"{self.model_name}_preprocessor", alias=alias
             )
             self.model = self.mlflow_manager.load_component(
-                name=f"{model_name}_model", alias=alias
+                name=f"{self.model_name}_model", alias=alias
             )
 
     def preprocess(self) -> pd.DataFrame:

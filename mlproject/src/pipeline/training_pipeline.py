@@ -2,18 +2,14 @@ from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.dm_factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
 from mlproject.src.eval.classification_eval import ClassificationEvaluator
 from mlproject.src.eval.clustering_eval import ClusteringEvaluator
 from mlproject.src.eval.regression_eval import RegressionEvaluator
 from mlproject.src.eval.ts_eval import TimeSeriesEvaluator
-from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.preprocess.transform_manager import TransformManager
-from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.trainer.trainer_factory import TrainerFactory
 from mlproject.src.utils.config_loader import ConfigLoader
 
 
@@ -33,7 +29,7 @@ class TrainingPipeline(BasePipeline):
         """Initialize training pipeline and load configuration."""
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
-        self.mlflow_manager = MLflowManager(self.cfg)
+
         self.preprocessor = OfflinePreprocessor(is_train=True, cfg=self.cfg)
         self.evaluator: BaseEvaluator
         eval_type = self.cfg.get("evaluation", {}).get("type", "regression")
@@ -58,20 +54,7 @@ class TrainingPipeline(BasePipeline):
         df = self.preprocessor.fit_and_transform()
         return df
 
-    def _init_model(self, approach: Dict[str, Any]):
-        """
-        Initialize model wrapper using ModelFactory.
-
-        Args:
-            approach: Dictionary containing model name and hyperparameters.
-
-        Returns:
-            Initialized model wrapper.
-        """
-        name = approach["model"].lower()
-        return ModelFactory.create(name, self.cfg)
-
-    def _execute_training(self, trainer, dm, wrapper, hyperparams: Dict[str, Any]):
+    def _execute_training(self, trainer, dm, hyperparams: Dict[str, Any]):
         """
         Execute training and evaluation, independent of MLflow.
 
@@ -90,7 +73,6 @@ class TrainingPipeline(BasePipeline):
         metrics = self.evaluator.evaluate(
             y_test, preds, x=x_test, model=wrapper.get_model()
         )
-        print(metrics)
         return metrics
 
     def run_approach(self, approach: Dict[str, Any], data: Any) -> Dict[str, float]:
@@ -121,93 +103,35 @@ class TrainingPipeline(BasePipeline):
                 Dictionary of evaluation metrics produced by the training run.
         """
         df = data
-        model_name: str = approach["model"].lower()
         hyperparams: Dict[str, Any] = approach.get("hyperparams", {})
-        model_type: str = approach["model_type"].lower()
-        wrapper = self._init_model(approach)
-        dm = DataModuleFactory.build(self.cfg, df)
+        dm, wrapper, trainer = self._get_components(approach, df)
         dm.setup()
 
-        trainer = TrainerFactory.create(
-            model_type=model_type,
-            model_name=model_name,
-            wrapper=wrapper,
-            save_dir=self.cfg.training.artifacts_dir,
-        )
-
         if self.mlflow_manager:
-            return self._run_with_mlflow(
-                model_name=model_name,
-                trainer=trainer,
-                dm=dm,
-                wrapper=wrapper,
-                hyperparams=hyperparams,
-            )
+            run_name: str = f"{self.model_name}_run"
 
-        return self._execute_training(trainer, dm, wrapper, hyperparams)
+            with self.mlflow_manager.start_run(run_name=run_name) as logger:
+                transform_manager: Optional[
+                    TransformManager
+                ] = self.preprocessor.transform_manager
 
-    def _run_with_mlflow(
-        self,
-        *,
-        model_name: str,
-        trainer: Any,
-        dm: Any,
-        wrapper: Any,
-        hyperparams: Dict[str, Any],
-    ) -> Dict[str, float]:
-        """
-        Execute a training run with full MLflow tracking enabled.
+                # Log Preprocessor (với interface thống nhất)
+                logger.log_component(
+                    obj=transform_manager,
+                    name=f"{self.model_name}_preprocessor",
+                    artifact_type="preprocess",
+                )
 
-        This method is responsible for:
-        - Starting and managing an MLflow run
-        - Logging preprocessing artifacts and preprocessing PyFunc model
-        - Executing training and evaluation
-        - Logging metrics and trained model to MLflow
-        - Optionally registering the model in the MLflow Model Registry
+                metrics: Dict[str, float] = self._execute_training(
+                    trainer, dm, hyperparams
+                )
+                # Log Model
+                logger.log_component(
+                    obj=wrapper, name=f"{self.model_name}_model", artifact_type="model"
+                )
 
-        All MLflow-specific logic is intentionally isolated here to:
-        - Reduce cognitive load in `run_approach`
-        - Avoid pylint `too-many-locals`
-        - Improve testability and maintainability
+                logger.log_metadata(params=hyperparams, metrics=metrics)
 
-        Args:
-            model_name (str):
-                Normalized model name used for naming MLflow runs.
-            trainer (Any):
-                Initialized trainer responsible for fitting the model.
-            dm (Any):
-                Prepared DataModule instance.
-            wrapper (Any):
-                Model wrapper containing the trainable model.
-            hyperparams (Dict[str, Any]):
-                Hyperparameter dictionary passed to the training routine.
+                return metrics
 
-        Returns:
-            Dict[str, float]:
-                Dictionary of evaluation metrics logged to MLflow.
-        """
-        run_name: str = f"{model_name}_run"
-
-        with self.mlflow_manager.start_run(run_name=run_name) as logger:
-            transform_manager: Optional[
-                TransformManager
-            ] = self.preprocessor.transform_manager
-
-            # Log Preprocessor (với interface thống nhất)
-            logger.log_component(
-                obj=transform_manager,
-                name=f"{model_name}_preprocessor",
-                artifact_type="preprocess",
-            )
-
-            metrics: Dict[str, float] = self._execute_training(
-                trainer, dm, wrapper, hyperparams
-            )
-            # Log Model
-            logger.log_component(
-                obj=wrapper, name=f"{model_name}_model", artifact_type="model"
-            )
-
-            logger.log_metadata(params=hyperparams, metrics=metrics)
-
-            return metrics
+        return self._execute_training(trainer, dm, hyperparams)

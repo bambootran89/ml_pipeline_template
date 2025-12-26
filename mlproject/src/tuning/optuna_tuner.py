@@ -42,15 +42,8 @@ class OptunaTuner(BaseTuner):
         """
         super().__init__(cfg, splitter, mlflow_manager, metric_name, direction)
 
-        # Ensure MLflowManager instance
-        if mlflow_manager is None:
-            self.mlflow_manager = MLflowManager(cfg)
-            self.mlflow_manager.enabled = False
-        else:
-            self.mlflow_manager = mlflow_manager
-
         # CV pipeline used inside objective function
-        self.cv_pipeline = CrossValidationPipeline(cfg, splitter, self.mlflow_manager)
+        self.cv_pipeline = CrossValidationPipeline(cfg, splitter)
 
     def _suggest_params(self, trial: optuna.Trial, model_name: str) -> Dict[str, Any]:
         """

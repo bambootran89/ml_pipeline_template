@@ -1,50 +1,117 @@
+"""
+Abstract base pipeline defining a safe,
+ high-level, typed workflow for ML/DL experiments.
+"""
+
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple, Union
 
 import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 
+from mlproject.src.datamodule.dm_factory import DataModuleFactory
+from mlproject.src.models.model_factory import ModelFactory
+from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.trainer.trainer_factory import TrainerFactory
+
 
 class BasePipeline(ABC):
     """
-    Abstract base pipeline defining the generic workflow.
+    Base class orchestrating preprocessing, component initialization, and experiment
+    execution using Hydra/OmegaConf configuration.
     """
 
-    def __init__(self, cfg: Optional[DictConfig] = None):
+    def __init__(
+        self,
+        cfg: Optional[Union[DictConfig, Dict[str, Any]]] = None,
+    ) -> None:
         """
-        cfg: DictConfig preferred, fallback empty DictConfig.
+        Initialize pipeline and cache model metadata.
         """
         if cfg is None:
-            self.cfg: DictConfig = DictConfig({})
+            self.cfg: DictConfig = OmegaConf.create({})
         elif isinstance(cfg, dict):
-            # convert dict → DictConfig
             self.cfg = OmegaConf.create(cfg)
         elif isinstance(cfg, DictConfig):
             self.cfg = cfg
         else:
             raise TypeError("cfg must be dict or DictConfig")
 
+        self.mlflow_manager = MLflowManager(self.cfg)
+
+        exp: Dict[str, Any] = OmegaConf.select(self.cfg, "experiment") or {}
+        model = exp.get("model")
+        mtype = exp.get("model_type")
+
+        self.model_name = str(model).lower() if model else "undefined"
+        self.model_type = str(mtype).lower() if mtype else "undefined"
+
+        print(f"[Pipeline] Init -> model='{self.model_name}', type='{self.model_type}'")
+
+    def _get_components(
+        self,
+        approach: Dict[str, Any],
+        df: Optional[pd.DataFrame] = None,
+    ) -> Tuple[Any, Any, Any]:
+        """
+        Initialize core components using cached pipeline metadata.
+        """
+        print(f"[Pipeline] Approach keys: {list(approach.keys())}")
+
+        if "model" not in approach or "model_type" not in approach:
+            print("[Pipeline] Missing required keys")
+            raise KeyError("approach must contain 'model' and 'model_type'")
+
+        print(
+            f"[Pipeline] Build -> model='{self.model_name}', type='{self.model_type}'"
+        )
+
+        wrapper = ModelFactory.create(self.model_name, self.cfg)
+        print(f"[Pipeline] Wrapper: {type(wrapper).__name__}")
+
+        datamodule = DataModuleFactory.build(self.cfg, df)
+        datamodule.setup()
+        print(f"[Pipeline] DataModule: {type(datamodule).__name__}")
+
+        trainer = TrainerFactory.create(
+            model_type=self.model_type,
+            model_name=self.model_name,
+            wrapper=wrapper,
+            save_dir=self.cfg.training.artifacts_dir,
+        )
+        print(f"[Pipeline] Trainer: {type(trainer).__name__}")
+
+        return datamodule, wrapper, trainer
+
     @abstractmethod
     def preprocess(self) -> pd.DataFrame:
-        """Run preprocessing and return a dataset."""
+        """Run preprocessing and return DataFrame."""
 
     @abstractmethod
-    def run_approach(self, approach: Dict[str, Any], data: pd.DataFrame):
-        """Run a single experiment approach."""
+    def run_approach(
+        self,
+        approach: Dict[str, Any],
+        data: pd.DataFrame,
+    ) -> Any:
+        """Execute a single experiment approach."""
 
-    def run(self, data: Optional[pd.DataFrame] = None):
+    def run(self, data: Optional[pd.DataFrame] = None) -> None:
         """
-        Execute preprocessing and run the experiment.
-        If data is provided, skip preprocessing.
+        Run pipeline end-to-end.
         """
         if data is None:
+            print("[Pipeline] Preprocess()")
             data = self.preprocess()
+            print(f"[Pipeline] Shape: {data.shape}")
 
-        # Lấy experiment config trực tiếp (không còn approaches list)
-        experiment = OmegaConf.select(self.cfg, "experiment")
+        exp = OmegaConf.select(self.cfg, "experiment")
+        if exp is None:
+            print("[Pipeline] No experiment config found")
+            raise RuntimeError("experiment config not found")
 
-        if not experiment:
-            raise RuntimeError("No experiment config found")
+        print(f"[Pipeline] Run -> '{exp.get('name', 'Unnamed')}'")
+        print(f"[Pipeline] Use -> model='{self.model_name}', type='{self.model_type}'")
 
-        print(f"\n=== Running experiment: {experiment.get('name', 'Unnamed')} ===")
-        self.run_approach(experiment, data)
+        self.run_approach(dict(exp), data)

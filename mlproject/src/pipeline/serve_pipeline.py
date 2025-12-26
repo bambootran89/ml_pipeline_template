@@ -16,7 +16,6 @@ from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
-from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_loader import ConfigLoader
 
 
@@ -36,8 +35,6 @@ class TestPipeline(BasePipeline):
         """
         self.cfg: DictConfig = ConfigLoader.load(cfg_path)
         super().__init__(self.cfg)
-
-        self.mlflow_manager = MLflowManager(self.cfg)
         self.preprocessor = OfflinePreprocessor(is_train=False, cfg=self.cfg)
 
         self.model: Any = None
