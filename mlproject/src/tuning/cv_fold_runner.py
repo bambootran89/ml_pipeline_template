@@ -1,6 +1,6 @@
 from typing import Any, Tuple
 
-from mlproject.src.datamodule.dm_factory import DataModuleFactory
+from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager

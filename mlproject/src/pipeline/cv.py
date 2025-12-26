@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.base_splitter import BaseSplitter
+from mlproject.src.tuning.splitters.base import BaseSplitter
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.tuning.cv_fold_runner import FoldRunner
 

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
+from mlproject.src.tuning.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 # Forward reference for static type checking only

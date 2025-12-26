@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 import optuna
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
+from mlproject.src.tuning.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv import CrossValidationPipeline
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.base_tuner import BaseTuner

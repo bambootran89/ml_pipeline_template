@@ -7,7 +7,7 @@ Run:
 
 import pytest
 
-from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
+from mlproject.src.tuning.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna_tuner import OptunaTuner
 from mlproject.src.utils.config_loader import ConfigLoader

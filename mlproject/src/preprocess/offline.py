@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Sequence
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.dataset_resolver import resolve_datasets_from_cfg
+from mlproject.src.datamodule.resolver import resolve_datasets_from_cfg
 from mlproject.src.preprocess.transform_manager import TransformManager
 
 ARTIFACT_DIR = "mlproject/artifacts/preprocessing"

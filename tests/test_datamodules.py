@@ -21,8 +21,8 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
 from mlproject.src.datamodule.base import BaseDataModule
-from mlproject.src.datamodule.dm_factory import DataModuleFactory
-from mlproject.src.datamodule.tsdl import TSDLDataModule
+from mlproject.src.datamodule.factory import DataModuleFactory
+from mlproject.src.datamodule.time_series_dl import TSDLDataModule
 
 
 class DataGenerator:

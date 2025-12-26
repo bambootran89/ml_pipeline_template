@@ -20,8 +20,8 @@ from typing import Any, Dict, cast
 import pandas as pd
 from omegaconf import OmegaConf
 
-from mlproject.src.datamodule.base_splitter import BaseSplitter
-from mlproject.src.datamodule.ts_splitter import TimeSeriesFoldSplitter
+from mlproject.src.tuning.splitters.base import BaseSplitter
+from mlproject.src.tuning.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv import CrossValidationPipeline
 
 # === moved all imports to top to fix pylint C0415 ===

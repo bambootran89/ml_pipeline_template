@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.datamodule.dm_factory import DataModuleFactory
+from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.trainer.factory import TrainerFactory

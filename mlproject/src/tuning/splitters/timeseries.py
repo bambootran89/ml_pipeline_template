@@ -2,7 +2,7 @@ from typing import Any, Dict, List
 
 import pandas as pd
 
-from .base_splitter import BaseSplitter
+from .base import BaseSplitter
 
 
 class TimeSeriesFoldSplitter(BaseSplitter):
