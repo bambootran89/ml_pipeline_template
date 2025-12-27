@@ -50,22 +50,51 @@ Start the MLflow server to visualize results:
 ```bash
 mlflow ui --port 5000
 ```
+
+
 Run a standard training experiment:
 ```bash
-python -m mlproject.src.pipeline.run train --config mlproject/configs/experiments/etth1.yaml
+python -m mlproject.src.pipeline.run train \
+  --config mlproject/configs/experiments/etth1.yaml
 ```
 
 Run a eval experiment.  (alias: latest, production, staging)
 ```bash
-python -m mlproject.src.pipeline.run eval --config mlproject/configs/experiments/etth1.yaml --alias latest
+python -m mlproject.src.pipeline.run eval \
+  --config mlproject/configs/experiments/etth1.yaml \
+  --alias latest
 ```
 
 Run a serving. (alias: latest, production, staging)
 ```bash
-python -m mlproject.src.pipeline.run test --config mlproject/configs/experiments/etth1.yaml --alias latest --input sample_input.csv
+python -m mlproject.src.pipeline.run test \
+  --config mlproject/configs/experiments/etth1.yaml \
+  --alias latest
 ```
+
+Create and populate the Feast feature store.
+Purpose: Loads raw data from CSV, engineers features, registers them to Feast, and materializes to the online store.
 ```bash
-# Auto-load input features from Feast (no --input flag needed)
+python -m mlproject.src.pipeline.populate_feast \
+  --csv mlproject/data/ETTh1.csv \
+  --repo feature_repo_etth1 \
+  --entity location_id \
+  --materialize
+```
+Training with automatic data loading from Feast:
+```bash
+python -m mlproject.src.pipeline.run train \
+  --config mlproject/configs/experiments/etth1_feast.yaml
+```
+
+Evaluation with automatic data loading from Feast:
+```bash
+python -m mlproject.src.pipeline.run eval \
+  --config mlproject/configs/experiments/etth1_feast.yaml
+```
+
+Run the test stage with automatic feature loading from Feast
+```bash
 python -m mlproject.src.pipeline.run test \
     --config mlproject/configs/experiments/etth1_feast.yaml
 ```
@@ -133,3 +162,30 @@ kubectl apply -f k8s/service-api.yaml
 - [Training-Safe Preprocessing & Data Transformation](docs/preprocessing.md)
 - [Model Integration Guide](docs/adding_new_model.md)
 - [Directory Structure](docs/directorystructure.md)
+
+
+
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 1: Feature Engineering (One-time setup)                   │
+│ Raw CSV → Engineer Features → Register to Feast                 │
+└─────────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 2: Training Pipeline                                      │
+│ Feast Offline → Preprocessing → Model Training → MLflow         │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 3: Evaluation Pipeline                                    │
+│ Feast Offline → Load Model → Evaluate → Log Metrics             │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 4: Hyperparameter Tuning                                  │
+│ Feast Offline → Cross-validation → Optuna → Best Model          │
+└─────────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────────┐
+│ PHASE 5: Online Serving                                         │
+│ Feast Online → Load Model → Real-time Inference                 │
+└─────────────────────────────────────────────────────────────────┘

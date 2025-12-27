@@ -36,16 +36,17 @@ class FeastDatasetLoader(BaseDatasetLoader):
         """Load historical features from a Feast offline feature repository.
 
         Args:
-            path: Feast repository path with optional query parameters.
-            index_col: Optional timestamp column to set as index.
-            data_type: Must be "timeseries" for this loader.
+            path: Feast repository URI with optional query parameters.
+            index_col: Optional timestamp column to set as DataFrame index.
+            data_type: Must match SUPPORTED_TYPE ("timeseries") for this loader.
 
         Returns:
             DataFrame containing historical features sorted by timestamp.
 
         Raises:
-            ValueError: If data_type is not supported or URI format is invalid.
-            OSError: If the underlying feature store cannot be initialized.
+            ValueError: If the data_type is not supported, the URI is invalid,
+                or no data is available in the feature store.
+            OSError: If the feature store cannot be initialized or accessed.
         """
         if data_type != self.SUPPORTED_TYPE:
             raise ValueError(
@@ -65,14 +66,40 @@ class FeastDatasetLoader(BaseDatasetLoader):
             default_entity_id=entity_id,
         )
 
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=self.LOOKBACK_DAYS)
+        try:
+            end_date = datetime.now(timezone.utc)
+            start_date = end_date - timedelta(days=self.LOOKBACK_DAYS)
 
-        df = ts_store.get_sequence_by_range(
-            features=features.split(","),
-            start_date=start_date,
-            end_date=end_date,
-        )
+            df = ts_store.get_sequence_by_range(
+                features=features.split(","),
+                start_date=start_date,
+                end_date=end_date,
+            )
+
+            if len(df) == 0:
+                logger.warning(
+                    "No data found in the last %d days. Falling back to full history.",
+                    self.LOOKBACK_DAYS,
+                )
+
+                start_date = end_date - timedelta(days=1 * 365)
+
+                df = ts_store.get_sequence_by_range(
+                    features=features.split(","),
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                print(df.columns)
+
+        except Exception as exc:
+            logger.error("Failed to load historical features from Feast: %s", exc)
+            raise
+
+        if len(df) == 0:
+            raise ValueError(
+                f"No data retrieved from Feast repository '{repo_path}'. "
+                "Ensure features are populated using populate_feast.py before loading."
+            )
 
         if index_col and index_col in df.columns:
             df = df.set_index(index_col)
@@ -80,7 +107,7 @@ class FeastDatasetLoader(BaseDatasetLoader):
         df = df.sort_values(self.TIMESTAMP_FIELD)
 
         logger.info(
-            "Loaded %d rows from Feast (range: %s → %s)",
+            "Loaded %d rows from Feast (range: %s -> %s)",
             len(df),
             start_date.date().isoformat(),
             end_date.date().isoformat(),

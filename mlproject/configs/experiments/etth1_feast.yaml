@@ -5,16 +5,20 @@ defaults:
   - ../base/mlflow.yaml
 
 data:
-  path: "feast://feature_repo_etth1?entity=location_id&id=1&features=etth1_features:HUFL,etth1_features:HUFL_lag24,etth1_features:HUFL_roll12_mean,etth1_features:hour_sin,etth1_features:hour_cos"
+  path: "feast://feature_repo_etth1?entity=location_id&id=1&features=etth1_features:HUFL,etth1_features:MUFL,etth1_features:HUFL_lag24,etth1_features:MUFL_lag24,etth1_features:HUFL_roll12_mean,etth1_features:MUFL_roll12_mean,etth1_features:hour_sin,etth1_features:hour_cos"
   index_col: "event_timestamp"
   target_columns: ["HUFL", "MUFL"]
   features:
     - "HUFL"
+    - "MUFL"
     - "HUFL_lag24"
+    - "MUFL_lag24"
     - "HUFL_roll12_mean"
+    - "MUFL_roll12_mean"
     - "hour_sin"
     - "hour_cos"
   type: timeseries
+
 
 preprocessing:
   steps:
@@ -26,15 +30,16 @@ preprocessing:
     test: 0.2
 
 experiment:
-  name: "feast_nlinear"
-  task: "forecasting"
-  series: "multivariate"
-  model: "nlinear"
+  name: "feast_multivariate_tft"
+  type: "multivariate"
+  model: "tft"
+  model_type: "dl"
   hyperparams:
     input_chunk_length: 24
-    output_chunk_length: 6
-    n_features: 5
+    n_features: 3
     n_targets: 2
+    output_chunk_length: 6
+    n_epochs: 20
     batch_size: 16
-    hidden_dim: 128
-    n_epochs: 10
+    hidden_size: 64
+    num_layers: 2

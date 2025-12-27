@@ -154,4 +154,5 @@ warnings.txt
 *.pyc
 
 *_repo 
+*_repo*
 
