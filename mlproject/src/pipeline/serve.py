@@ -110,6 +110,7 @@ class TestPipeline(BasePipeline):
             ValueError: If Feast URI is invalid or features unavailable.
         """
         feast_uri = self.cfg.data.get("path", "")
+        features = self.cfg.data.get("features", [])
 
         if not feast_uri.startswith("feast://"):
             raise ValueError(
@@ -127,7 +128,7 @@ class TestPipeline(BasePipeline):
         )
 
         print(f"[Feast] Loaded {len(df)} rows from online store")
-        return df
+        return df[features]
 
     def run_exp(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
         """Perform model inference using a fixed sequence of operations.
