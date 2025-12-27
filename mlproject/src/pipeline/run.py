@@ -15,26 +15,26 @@ Usage examples:
 """
 
 import argparse
-from typing import cast
+import logging
+from typing import Any, cast
 
 import pandas as pd
 
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv import CrossValidationPipeline
-# === moved all imports to top to fix pylint C0415 ===
 from mlproject.src.pipeline.eval import EvalPipeline
 from mlproject.src.pipeline.serve import TestPipeline
 from mlproject.src.pipeline.training import TrainingPipeline
 from mlproject.src.pipeline.tuning import TuningPipeline
 from mlproject.src.utils.config_loader import ConfigLoader
 
-# ====================================================
-
-
 # import os
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 # os.environ["OMP_NUM_THREADS"] = "1"
+
+
+logger = logging.getLogger(__name__)
 
 
 def run_training(cfg_path: str) -> None:
@@ -49,21 +49,76 @@ def run_evaluation(cfg_path: str, alias: str) -> None:
     pipeline.run()
 
 
-def run_testing(cfg_path: str, input_path: str, alias: str) -> None:
-    """
-    Execute serving-time inference on a provided CSV file.
-    """
-    if not input_path:
-        raise ValueError("Test mode requires --input <file.csv>")
+def run_testing(cfg_path: str, input_path: str | None, alias: str = "latest") -> Any:
+    """Run inference at serving time using either a CSV input file or auto-loaded
+    online features from Feast Feature Store.
 
+    Modes:
+    1) CSV Mode  → Load input features from a provided CSV file.
+    2) Feast Mode → Ignore CSV and pull the most recent features
+        from Feast online store.
+
+    Args:
+        cfg_path: Path to the experiment configuration file.
+        input_path: Path to the input CSV file (optional when using Feast Mode).
+        alias: Model alias in MLflow Model Registry (default: "latest").
+
+    Raises:
+        ValueError: If input_path is not provided and config does not specify a valid
+                    Feast feature store URI.
+
+    Returns:
+        Model predictions as a NumPy array or pandas DataFrame
+          depending on pipeline output.
+    """
     pipeline = TestPipeline(cfg_path, alias=alias)
+    logger.info(
+        "[TEST] Pipeline initialized (config='%s', alias='%s')", cfg_path, alias
+    )
 
-    raw_df = pd.read_csv(input_path)
-    assert "date" in raw_df.columns, "Input CSV must contain a 'date' column."
-    raw_df.date = pd.to_datetime(raw_df.date)
-    raw_df = raw_df.set_index("date")
+    if input_path:
+        logger.info("[TEST] CSV mode active (input='%s')", input_path)
+        print(f"[TEST] Loading data from CSV: {input_path}")
 
-    pipeline.run(raw_df)
+        df = pd.read_csv(input_path)
+
+        if "date" not in df.columns:
+            raise ValueError("Input CSV must contain a 'date' column")
+
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.set_index("date")
+
+        logger.info("[TEST] Input loaded with shape (%d, %d)", df.shape[0], df.shape[1])
+        preds = pipeline.run_exp(data=df)
+
+    else:
+        uri = pipeline.cfg.data.get("path", "")
+        logger.info("[TEST] Feast mode active (config_uri='%s')", uri)
+        print("[TEST] No CSV provided, loading latest features from Feast")
+
+        if not uri.startswith("feast://"):
+            raise ValueError(
+                "Testing requires either a CSV input or a Feast URI in the config"
+            )
+
+        preds = pipeline.run_exp(data=None)
+
+    print("\n" + "=" * 70)
+    print("INFERENCE COMPLETED")
+    print("=" * 70)
+    print(f"Prediction output type: {type(preds)}")
+
+    if hasattr(preds, "shape"):
+        print(f"Prediction shape: {preds.shape}")
+
+    if hasattr(preds, "flatten"):
+        flat = preds.flatten()
+        print(f"First 10 predictions: {flat[:10]}")
+
+    print("=" * 70)
+    logger.info("[TEST] Inference completed successfully")
+
+    return preds
 
 
 def run_cross_validation(cfg_path: str) -> None:

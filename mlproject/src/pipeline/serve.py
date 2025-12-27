@@ -8,7 +8,10 @@ Responsibilities:
 - Run forward prediction and return outputs.
 """
 
-from typing import Any
+from __future__ import annotations
+
+import logging
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -18,6 +21,8 @@ from mlproject.src.dataio.feast_loader import FeastDatasetLoader
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
+
+logger = logging.getLogger(__name__)
 
 
 class TestPipeline(BasePipeline):
@@ -124,44 +129,67 @@ class TestPipeline(BasePipeline):
         print(f"[Feast] Loaded {len(df)} rows from online store")
         return df
 
-    def run_exp(self, data: pd.DataFrame) -> np.ndarray:
-        """
-        Execute model inference for a given exp.
+    def run_exp(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
+        """Perform model inference using a fixed sequence of operations.
 
-        Steps:
-        1. Preprocess raw data.
-        2. Build input window.
-        3. Load model from MLflow or local artifacts.
-        4. Run forward prediction.
+        Execution order:
+        1) Load latest features from Feast online store if `data` is None.
+        2) Apply preprocessing transformations.
+        3) Construct an input window for the model.
+        4) Run forward prediction using the loaded MLflow model.
 
         Args:
-            approach: Dictionary containing model name and hyperparameters.
-            data: Raw historical DataFrame.
+            data: Optional raw historical features. If None, the method attempts
+                to pull the latest available features from Feast online store.
 
         Returns:
-            Numpy array of predictions.
+            Predictions as a NumPy array of shape (batch, horizon, ...).
+
+        Raises:
+            ValueError: If no data is supplied and no valid Feast URI is found in
+                        the configuration.
         """
+        # Step 1: Resolve data source
         if data is None:
-            feast_uri = self.cfg.data.get("path", "")
-            if feast_uri.startswith("feast://"):
+            uri = self.cfg.data.get("path", "")
+            logger.info("[INFERENCE] No data argument supplied, config.path='%s'", uri)
+
+            if uri.startswith("feast://"):
                 data = self._load_from_feast()
+                logger.info(
+                    "[INFERENCE] Feast source returned shape (%d, %d)",
+                    data.shape[0],
+                    data.shape[1],
+                )
             else:
                 raise ValueError(
-                    "No input data provided and Feast not configured. "
-                    "Either provide data or set data.path to feast:// URI"
+                    "Inference requires either a DataFrame input or a Feast URI in "
+                    "config.data.path starting with 'feast://'"
                 )
 
-        df_transformed: pd.DataFrame = self.preprocess(data)
-        input_chunk_length: int = self.exp.get("hyperparams", {}).get(
-            "input_chunk_length", 24
+        # Step 2: Preprocess raw features
+        logger.info(
+            "[INFERENCE] Running preprocessing on data with shape (%d, %d)",
+            data.shape[0],
+            data.shape[1],
         )
-        x_input: np.ndarray = self._prepare_input_window(
-            df_transformed, input_chunk_length
-        )
+        df: pd.DataFrame = self.preprocess(data)
 
-        preds: np.ndarray = self.model.predict(x_input)
+        # Step 3: Build model input window
+        win: int = int(self.exp.get("hyperparams", {}).get("input_chunk_length", 24))
+        logger.info("[INFERENCE] Building input window (length=%d)", win)
 
-        print(f"[INFERENCE] Input shape: {x_input.shape}, Output shape: {preds.shape}")
-        print(f"[INFERENCE] Predictions (first 10): {preds.flatten()[:10]}...")
+        x: np.ndarray = self._prepare_input_window(df, win)
+        logger.info("[INFERENCE] Model input window prepared with shape %s", x.shape)
 
-        return preds
+        # Step 4: Run model forward prediction
+        logger.info("[INFERENCE] Calling model.predict()")
+        y: np.ndarray = self.model.predict(x)
+
+        # Output logging to user
+        print(f"[INFERENCE] Input shape: {x.shape}, Output shape: {y.shape}")
+        if hasattr(y, "flatten"):
+            print(f"[INFERENCE] First 10 values: {y.flatten()[:10]}")
+
+        logger.info("[INFERENCE] Inference completed")
+        return y
