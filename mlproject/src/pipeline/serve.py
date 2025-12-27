@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
+from mlproject.src.dataio.feast_loader import FeastDatasetLoader
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
@@ -89,6 +90,40 @@ class TestPipeline(BasePipeline):
         window: np.ndarray = df.iloc[-seq_len:].values
         return window[np.newaxis, :].astype(np.float32)
 
+    def _load_from_feast(self) -> pd.DataFrame:
+        """
+        Load latest features from Feast for real-time inference.
+
+        This method is automatically called when:
+        - No input data is provided to run_exp()
+        - Config has data.path starting with "feast://"
+
+        Returns:
+            pd.DataFrame: Latest feature sequence from Feast online store.
+
+        Raises:
+            ValueError: If Feast URI is invalid or features unavailable.
+        """
+        feast_uri = self.cfg.data.get("path", "")
+
+        if not feast_uri.startswith("feast://"):
+            raise ValueError(
+                "Feast URI required. Expected format: "
+                "feast://repo?entity=key&id=val&features=..."
+            )
+
+        loader = FeastDatasetLoader()
+
+        # Load features using same URI from config
+        df = loader.load(
+            path=feast_uri,
+            index_col=self.cfg.data.get("index_col", "event_timestamp"),
+            data_type="timeseries",
+        )
+
+        print(f"[Feast] Loaded {len(df)} rows from online store")
+        return df
+
     def run_exp(self, data: pd.DataFrame) -> np.ndarray:
         """
         Execute model inference for a given exp.
@@ -106,6 +141,15 @@ class TestPipeline(BasePipeline):
         Returns:
             Numpy array of predictions.
         """
+        if data is None:
+            feast_uri = self.cfg.data.get("path", "")
+            if feast_uri.startswith("feast://"):
+                data = self._load_from_feast()
+            else:
+                raise ValueError(
+                    "No input data provided and Feast not configured. "
+                    "Either provide data or set data.path to feast:// URI"
+                )
 
         df_transformed: pd.DataFrame = self.preprocess(data)
         input_chunk_length: int = self.exp.get("hyperparams", {}).get(

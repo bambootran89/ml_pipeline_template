@@ -4,6 +4,7 @@ from typing import Dict, Type
 
 from mlproject.src.dataio.base import BaseDatasetLoader
 from mlproject.src.dataio.csv_loader import CsvDatasetLoader
+from mlproject.src.dataio.feast_loader import FeastDatasetLoader
 
 
 class DatasetLoaderRegistry:
@@ -16,6 +17,7 @@ class DatasetLoaderRegistry:
 
     _REGISTRY: Dict[str, Type[BaseDatasetLoader]] = {
         ".csv": CsvDatasetLoader,
+        "feast://": FeastDatasetLoader,
     }
 
     @classmethod
@@ -39,6 +41,10 @@ class DatasetLoaderRegistry:
             If the data source is unsupported.
         """
         path_lower = path.lower()
+
+        for prefix, loader_cls in cls._REGISTRY.items():
+            if path_lower.startswith(prefix):
+                return loader_cls()
 
         for suffix, loader_cls in cls._REGISTRY.items():
             if path_lower.endswith(suffix):

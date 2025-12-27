@@ -64,6 +64,11 @@ Run a serving. (alias: latest, production, staging)
 ```bash
 python -m mlproject.src.pipeline.run test --config mlproject/configs/experiments/etth1.yaml --alias latest --input sample_input.csv
 ```
+```bash
+# Auto-load input features from Feast (no --input flag needed)
+python -m mlproject.src.pipeline.run test \
+    --config mlproject/configs/experiments/etth1_feast.yaml
+```
 
 # Workflows & Capabilities
 ## 1. Cross-Validation (Backtesting)
