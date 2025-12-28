@@ -73,14 +73,23 @@ python -m mlproject.src.pipeline.run test \
 ```
 
 Create and populate the Feast feature store.
-Purpose: Loads raw data from CSV, engineers features, registers them to Feast, and materializes to the online store.
+Run scheduled periodic data ingestion (e.g., daily)
 ```bash
-python -m mlproject.src.pipeline.populate_feast \
-  --csv mlproject/data/ETTh1.csv \
-  --repo feature_repo_etth1 \
-  --entity location_id \
-  --materialize
+# Ingest Batch: Typically runs in large-scale data processing jobs (Spark/Pandas). It may run for a long time.
+python -m mlproject.src.pipeline.feature_ops.ingest_batch \
+    --csv mlproject/data/ETTh1.csv \
+    --repo feature_repo_etth1
 ```
+
+Sync data to the online store for API inference
+```bash
+# Materialize: Can run independently. Example: you can update the online store
+# hourly without rerunning feature engineering if offline features are already available.
+python -m mlproject.src.pipeline.feature_ops.materialize \
+    --repo feature_repo_etth1 \
+    --data feature_repo_etth1/data/features.parquet
+```
+
 Training with automatic data loading from Feast:
 ```bash
 python -m mlproject.src.pipeline.run train \

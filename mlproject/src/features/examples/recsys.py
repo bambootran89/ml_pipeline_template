@@ -1,137 +1,72 @@
 """
-Recommendation system workflow demo using Feast Feature Store.
-
-This module simulates user–item interactions, initializes a Feast
-repository, registers entities and feature views, materializes offline
-features into an online store, and retrieves them for ranking or serving
-RecSys models with UTC-aware timestamps.
+Online feature materialization and retrieval demo for recommendation system
+inference using Feast. Performs a short materialization window and fetches
+real-time user-item interaction features for prediction input.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Dict, List
 
-import numpy as np
-import pandas as pd
-
+from mlproject.src.features.examples.ingest_recsys import run_pipeline
 from mlproject.src.features.factory import FeatureStoreFactory
-from mlproject.src.features.repository import FeastRepositoryManager
+
+logger = logging.getLogger(__name__)
 
 
-def generate_interaction_data(repo_path: Path, hours: int = 72) -> Path:
-    """Generate synthetic user–item interactions stored as a Parquet file."""
-    file_path = repo_path / "data" / "interactions.parquet"
-    file_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+def demo_retrieval() -> None:
+    """
+    Run a materialization and online feature retrieval example.
 
-    now = datetime.now(timezone.utc)
-    ts = pd.date_range(
-        start=now - timedelta(hours=hours),
-        periods=hours,
-        freq="H",
-        tz=timezone.utc,
-    )
-
-    n_rows = len(ts)
-    df = pd.DataFrame(
-        {
-            "user_id": (np.arange(n_rows) % 4 + 1).astype(int),
-            "item_id": (np.arange(n_rows) % 10 + 101).astype(int),
-            "event_timestamp": ts,
-            "view_count": np.random.poisson(
-                5,
-                n_rows,
-            ).astype(float),
-            "like_ratio": np.random.uniform(
-                0,
-                1,
-                n_rows,
-            ).astype(float),
-        }
-    )
-
-    df.loc[10:15, "like_ratio"] = np.nan
-    df.to_parquet(file_path)
-    return file_path.absolute()
-
-
-def build_store(repo_name: str, data_file: Path) -> Any:
-    """Initialize Feast store and register RecSys entities and feature views."""
-    store = FeatureStoreFactory.create(
+    Connects to an existing Feast feature store, materializes a short
+    time window to the online store, and retrieves online features for
+    a list of users to simulate model inference input.
+    """
+    run_pipeline()
+    store: Any = FeatureStoreFactory.create(
         store_type="feast",
-        repo_path=repo_name,
+        repo_path="recsys_repo",
     )
 
-    print("Registering entity 'user' with join key 'user_id'...")
-    store.register_entity(
-        name="user",
-        join_key="user_id",
-        description="Users for interaction-based joins",
-        value_type="int",
-    )
-
-    print("Registering feature view 'recsys_view'...")
-    store.register_feature_view(
-        name="recsys_view",
-        entities=["user"],
-        schema={
-            "view_count": "float",
-            "like_ratio": "float",
-            "item_id": "int",
-        },
-        source_path=str(data_file),
-        ttl_days=2,
-    )
-
-    return store
-
-
-def main() -> None:
-    """Orchestrate the end-to-end RecSys feature store workflow."""
-    repo_name = "recsys_repo"
-    repo_path = Path(repo_name)
-
-    print("--- Initializing repository on disk ---")
-    FeastRepositoryManager.initialize_repo(repo_name)
-
-    data_file = generate_interaction_data(repo_path)
-
-    print("\n--- Building feature store ---")
-    store = build_store(repo_name, data_file)
-
-    print("\n--- Materializing features into the online store ---")
-    now = datetime.now(timezone.utc)
+    now: datetime = datetime.now(timezone.utc)
 
     store.materialize(
         start_date=now - timedelta(days=7),
         end_date=now + timedelta(minutes=10),
     )
 
-    print("\n--- Retrieving online features ---")
     entity_rows: List[Dict[str, Any]] = [
         {"user_id": 1},
         {"user_id": 2},
-        {"user_id": 3},
     ]
 
-    online_results = store.get_online_features(
+    results = store.get_online_features(
         entity_rows=entity_rows,
         features=[
             "recsys_view:like_ratio",
             "recsys_view:view_count",
+            "recsys_view:item_id",
         ],
     )
 
-    print("Retrieved feature vectors for ranking and personalization:")
-    for result in online_results:
-        print(f"  > {result}")
+    print("--- RecSys Online Prediction Input ---")
 
-    print("\nRecSys workflow demo completed.")
+    for res in results:
+        user_id = res.get("user_id")
+        item_id = res.get("item_id")
+        like_ratio = res.get("like_ratio")
+
+        if user_id is None or item_id is None or like_ratio is None:
+            logger.warning("Missing feature values for entity row: %s", res)
+            continue
+
+        print(
+            f"User {user_id} -> Recommend Item: {item_id} "
+            f"(Like Ratio: {float(like_ratio):.2f})"
+        )
 
 
 if __name__ == "__main__":
-    main()
+    demo_retrieval()
