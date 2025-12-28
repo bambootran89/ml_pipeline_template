@@ -1,12 +1,13 @@
-"""Feast Feature Store dataset loader for offline historical features."""
+"""Feast Feature Store dataset loader for offline historical time-series features."""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional, Tuple, Union
 
 import pandas as pd
+from omegaconf import DictConfig
 
 from mlproject.src.dataio.base import BaseDatasetLoader
 from mlproject.src.features.factory import FeatureStoreFactory
@@ -20,7 +21,6 @@ class FeastDatasetLoader(BaseDatasetLoader):
 
     TIMESTAMP_FIELD: str = "event_timestamp"
     SUPPORTED_TYPE: str = "timeseries"
-    LOOKBACK_DAYS: int = 90
     URI_PREFIX: str = "feast://"
 
     default_entity_key: str = "location_id"
@@ -28,77 +28,79 @@ class FeastDatasetLoader(BaseDatasetLoader):
 
     def load(
         self,
+        cfg: DictConfig,
         path: str,
         *,
         index_col: Optional[str] = None,
         data_type: str,
     ) -> pd.DataFrame:
-        """Load historical features from a Feast offline feature repository.
+        """Load historical features from a Feast offline feature repository."""
 
-        Args:
-            path: Feast repository URI with optional query parameters.
-            index_col: Optional timestamp column to set as DataFrame index.
-            data_type: Must match SUPPORTED_TYPE ("timeseries") for this loader.
-
-        Returns:
-            DataFrame containing historical features sorted by timestamp.
-
-        Raises:
-            ValueError: If the data_type is not supported, the URI is invalid,
-                or no data is available in the feature store.
-            OSError: If the feature store cannot be initialized or accessed.
-        """
         if data_type != self.SUPPORTED_TYPE:
             raise ValueError(
                 f"FeastDatasetLoader only supports data_type='{self.SUPPORTED_TYPE}'"
             )
 
-        repo_path, entity_key, entity_id, features = self._parse_uri(path)
+        repo_path, entity_key, entity_id, _ = self._parse_uri(path)
 
-        base_store = FeatureStoreFactory.create(
-            store_type="feast",
-            repo_path=repo_path,
-        )
+        if not cfg or not hasattr(cfg.data, "features"):
+            raise ValueError("Missing Feast feature list in config YAML.")
+
+        if not cfg or not hasattr(cfg.data, "featureview"):
+            raise ValueError("Missing Feast featureview in config YAML.")
+
+        if not cfg or not hasattr(cfg.data, "start_date"):
+            raise ValueError("Missing Feast start_date in config YAML.")
+
+        if not cfg or not hasattr(cfg.data, "end_date"):
+            raise ValueError("Missing Feast end_date in config YAML.")
+
+        full_features = [f"{cfg.data.featureview}:{f}" for f in cfg.data.features]
 
         ts_store = TimeSeriesFeatureStore(
-            base_store,
+            FeatureStoreFactory.create(
+                store_type="feast",
+                repo_path=repo_path,
+            ),
             default_entity_key=entity_key,
             default_entity_id=entity_id,
         )
 
+        # Apply minimal time-range patch to avoid future timestamp filling
+        cfg_start = datetime.fromisoformat(cfg.data.start_date).astimezone(timezone.utc)
+        cfg_end = datetime.fromisoformat(cfg.data.end_date).astimezone(timezone.utc)
+
+        print("[Feast Profiling] Requested range:")
+        print(f"  → start: {cfg_start.isoformat()}")
+        print(f"  → end  : {cfg_end.isoformat()}")
+        print(
+            f"  → total hours: " f"{(cfg_end - cfg_start).total_seconds() / 3600:.2f}"
+        )
+
         try:
-            end_date = datetime.now(timezone.utc)
-            start_date = end_date - timedelta(days=self.LOOKBACK_DAYS)
-
             df = ts_store.get_sequence_by_range(
-                features=features.split(","),
-                start_date=start_date,
-                end_date=end_date,
+                features=full_features,
+                start_date=cfg_start,
+                end_date=cfg_end,
             )
+            print("\n[Feast Profiling] DataFrame result:")
+            print(f"  → rows         : {len(df)}")
+            print(f"  → columns      : {list(df.columns)}")
 
-            if len(df) == 0:
-                logger.warning(
-                    "No data found in the last %d days. Falling back to full history.",
-                    self.LOOKBACK_DAYS,
-                )
+            print("\n[Feast Profiling] head Sample:")
+            print(df.head(5))
 
-                start_date = end_date - timedelta(days=1 * 365)
-
-                df = ts_store.get_sequence_by_range(
-                    features=features.split(","),
-                    start_date=start_date,
-                    end_date=end_date,
-                )
-                print(df.columns)
+            print("\n[Feast Profiling] tail Sample:")
+            print(df.tail(5))
 
         except Exception as exc:
-            logger.error("Failed to load historical features from Feast: %s", exc)
+            print(f"[Feast Profiling] ERROR: {exc}")
             raise
 
-        if len(df) == 0:
+        if df.empty:
             raise ValueError(
-                f"No data retrieved from Feast repository '{repo_path}'. "
-                "Ensure features are populated using populate_feast.py before loading."
+                f"No valid data from Feast repository '{repo_path}'. Ensure history "
+                "exists and populate_feast.py was executed before loading."
             )
 
         if index_col and index_col in df.columns:
@@ -106,30 +108,21 @@ class FeastDatasetLoader(BaseDatasetLoader):
 
         df = df.sort_values(self.TIMESTAMP_FIELD)
 
-        logger.info(
-            "Loaded %d rows from Feast (range: %s -> %s)",
-            len(df),
-            start_date.date().isoformat(),
-            end_date.date().isoformat(),
-        )
-
+        logger.info("Loaded %d rows from Feast.", len(df))
         return df
 
     def _parse_uri(self, path: str) -> Tuple[str, str, Union[int, str], str]:
-        """Parse Feast repository URI.
+        """Parse a Feast repository URI.
 
-        Supported format:
-            feast://<repo_path>?entity=<key>&id=<val>&features=<list>
+        Format:
+            feast://<repo_path>?entity=<entity_key>&id=<entity_id>
 
-        Args:
-            path: URI string to parse.
+        The features are intentionally ignored because they are read from config.
 
         Returns:
-            Tuple of (repo_path, entity_key, entity_id, features).
-
-        Raises:
-            ValueError: If URI prefix or parameters are invalid.
+            (repo_path, entity_key, entity_id, empty_feature_string)
         """
+
         if not path.startswith(self.URI_PREFIX):
             raise ValueError(f"Feast path must start with '{self.URI_PREFIX}'")
 
@@ -146,6 +139,5 @@ class FeastDatasetLoader(BaseDatasetLoader):
         entity_key = params.get("entity", self.default_entity_key)
         raw_id = params.get("id", str(self.default_entity_id))
         entity_id: Union[int, str] = int(raw_id) if raw_id.isdigit() else raw_id
-        features = params.get("features", "")
 
-        return repo_path, entity_key, entity_id, features
+        return repo_path, entity_key, entity_id, ""

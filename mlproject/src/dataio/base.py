@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 import pandas as pd
+from omegaconf import DictConfig
 
 
 class BaseDatasetLoader(ABC):
@@ -23,6 +24,7 @@ class BaseDatasetLoader(ABC):
     @abstractmethod
     def load(
         self,
+        cfg: DictConfig,
         path: str,
         *,
         index_col: Optional[str] = None,

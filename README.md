@@ -14,7 +14,7 @@ It bridges the gap between experimental research code and production-ready syste
 ---
 # Getting Started
 ## 1. Prerequisites
-Python 3.9+
+Python 3.10+
 
 Virtual Environment (recommended)
 
@@ -163,29 +163,16 @@ kubectl apply -f k8s/service-api.yaml
 - [Model Integration Guide](docs/adding_new_model.md)
 - [Directory Structure](docs/directorystructure.md)
 
+```mermaid
+flowchart TD
+    A[Feature Engineering] --> B[Training Pipeline]
+    B --> C[Evaluation Pipeline]
+    C --> D[Hyperparameter Tuning]
+    D --> E[Online Serving]
 
-
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 1: Feature Engineering (One-time setup)                   │
-│ Raw CSV → Engineer Features → Register to Feast                 │
-└─────────────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 2: Training Pipeline                                      │
-│ Feast Offline → Preprocessing → Model Training → MLflow         │
-└─────────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 3: Evaluation Pipeline                                    │
-│ Feast Offline → Load Model → Evaluate → Log Metrics             │
-└─────────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 4: Hyperparameter Tuning                                  │
-│ Feast Offline → Cross-validation → Optuna → Best Model          │
-└─────────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 5: Online Serving                                         │
-│ Feast Online → Load Model → Real-time Inference                 │
-└─────────────────────────────────────────────────────────────────┘
+    A -->|Raw CSV → Engineer Features → Register to Feast| A
+    B -->|Feast Offline → Preprocessing → Model Training → MLflow| B
+    C -->|Feast Offline → Load Model → Evaluate → Log Metrics| C
+    D -->|Feast Offline → Cross-validation → Optuna → Best Model| D
+    E -->|Feast Online → Load Model → Real-time Inference| E
+```

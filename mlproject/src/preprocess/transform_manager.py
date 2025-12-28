@@ -98,7 +98,11 @@ class TransformManager:
         for step_cfg in self.steps:
             step_name = step_cfg.get("name", "")
             if step_name == "fill_missing":
-                df_out = self.transform_fillna(df_out)
+                df_out = self.transform_fillna(
+                    df_out,
+                    columns=step_cfg.get("columns", list(df_out.columns)),
+                    method=step_cfg.get("method", "mean"),
+                )
 
             elif step_name == "label_encoding":
                 df_out = self.transform_label_encoding(df_out)
@@ -443,10 +447,10 @@ class TransformManager:
         """
         if method not in {"mean", "median", "mode", "ffill"}:
             raise ValueError(f"Invalid fillna method: {method}")
-
         if method == "ffill":
             for col in columns:
-                df[col] = df[col].ffill().bfill()
+                df[col] = df[col].ffill()
+                df[col] = df[col].bfill()
             return
 
         for col in columns:
@@ -468,7 +472,12 @@ class TransformManager:
                 "value": value,
             }
 
-    def transform_fillna(self, df: pd.DataFrame) -> pd.DataFrame:
+    def transform_fillna(
+        self,
+        df: pd.DataFrame,
+        columns: List[str],
+        method: str = "mean",
+    ) -> pd.DataFrame:
         """
         Apply missing value imputation.
 
@@ -476,13 +485,23 @@ class TransformManager:
         ----------
         df : pd.DataFrame
             Input DataFrame.
-
+                columns : List[str]
+            List of column names for which fillna statistics are computed.
+        method : str, default="mean"
+            Fillna strategy. Must be one of {"mean", "median", "mode"}.
         Returns
         -------
         pd.DataFrame
             Transformed DataFrame.
         """
         df_out = df.copy()
+        if method not in {"mean", "median", "mode", "ffill"}:
+            raise ValueError(f"Invalid fillna method: {method}")
+        if method == "ffill":
+            for col in columns:
+                df_out[col] = df_out[col].ffill()
+                df_out[col] = df_out[col].bfill()
+            return df_out
 
         for col, stats in self.fillna_stats.items():
             if col in df_out.columns:

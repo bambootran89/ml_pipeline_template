@@ -122,6 +122,7 @@ class TestPipeline(BasePipeline):
 
         # Load features using same URI from config
         df = loader.load(
+            cfg=self.cfg,
             path=feast_uri,
             index_col=self.cfg.data.get("index_col", "event_timestamp"),
             data_type="timeseries",

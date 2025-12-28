@@ -4,6 +4,7 @@ defaults:
   - ../base/evaluation.yaml
   - ../base/mlflow.yaml
   - ../base/tuning.yaml
+
 preprocessing:
   steps:
     - name: fill_missing
@@ -36,16 +37,27 @@ data:
     - "hour_cos"
 
 experiment:
-  name: "feast_multivariate_tft"
-  type: "multivariate"
-  model: "tft"
-  model_type: "dl"
+  name: "feast_xgboost_tuning"
+  type: "timeseries"
+  model: "xgboost"
+  model_type: "ml"
   hyperparams:
+    # Initial guess (will be overridden by tuning)
     input_chunk_length: 24
-    n_features: 9
-    n_targets: 2
     output_chunk_length: 6
-    n_epochs: 20
-    batch_size: 16
-    hidden_size: 64
-    num_layers: 2
+    n_targets: 2
+    args:
+      n_estimators: 100
+      max_depth: 5
+      learning_rate: 0.1
+      objective: "reg:squarederror"
+      early_stopping_round: 15
+
+# Override tuning settings
+tuning:
+  n_trials: 30
+  n_splits: 3
+  test_size: 24
+  optimize_metric: "mae_mean"
+  direction: "minimize"
+  n_jobs: 1

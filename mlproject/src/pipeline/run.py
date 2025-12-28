@@ -16,6 +16,8 @@ Usage examples:
 
 import argparse
 import logging
+
+# import os
 from typing import Any, cast
 
 import pandas as pd
@@ -29,7 +31,6 @@ from mlproject.src.pipeline.training import TrainingPipeline
 from mlproject.src.pipeline.tuning import TuningPipeline
 from mlproject.src.utils.config_loader import ConfigLoader
 
-# import os
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 # os.environ["OMP_NUM_THREADS"] = "1"
 

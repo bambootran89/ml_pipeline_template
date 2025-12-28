@@ -17,6 +17,6 @@ experiment:
     n_features: 3
     n_targets: 2
     output_chunk_length: 6
-    n_epochs: 2
-    batch_size: 8
+    n_epochs: 20
+    batch_size: 16
     hidden: 128

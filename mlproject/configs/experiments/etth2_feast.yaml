@@ -19,12 +19,23 @@ preprocessing:
   artifacts_dir: "mlproject/artifacts/preprocessing"
 
 data:
-  path: "mlproject/data/ETTh1.csv"   # optional demo
-  index_col: "date"
-  target_columns: ["HUFL","MUFL"]
-  features: ["HUFL", "MUFL", "mobility_inflow"]
-  return_type: pandas
+  path: "feast://feature_repo_etth1?entity=location_id&id=1"
   type: timeseries
+  featureview: "etth1_features"
+  start_date: "2023-01-01"
+  end_date: "2024-01-09"
+  index_col: "event_timestamp"
+  target_columns: ["HUFL", "MUFL"]
+  features:
+    - "HUFL"
+    - "MUFL"
+    - "mobility_inflow"
+    - "HUFL_lag24"
+    - "MUFL_lag24"
+    - "HUFL_roll12_mean"
+    - "MUFL_roll12_mean"
+    - "hour_sin"
+    - "hour_cos"
 
 experiment:
   name: "univariate_nlinear"
@@ -33,9 +44,9 @@ experiment:
   model_type: "dl"
   hyperparams:
     input_chunk_length: 24
-    n_features: 3
+    n_features: 9
     n_targets: 2
     output_chunk_length: 6
     n_epochs: 20
     batch_size: 16
-    hidden: 128
+    hidden: 256

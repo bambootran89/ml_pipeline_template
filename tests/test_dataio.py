@@ -40,6 +40,7 @@ def test_load_timeseries_csv(sample_csv: Path) -> None:
     CSV loader should load time-series data with index column.
     """
     df = load_dataset(
+        cfg={},
         path=str(sample_csv),
         index_col="date",
         data_type="timeseries",
@@ -56,6 +57,7 @@ def test_load_tabular_csv(sample_csv: Path) -> None:
     CSV loader should load tabular data without forcing an index.
     """
     df = load_dataset(
+        cfg={},
         path=str(sample_csv),
         index_col=None,
         data_type="tabular",
@@ -72,6 +74,7 @@ def test_missing_index_column_raises(sample_csv: Path) -> None:
     """
     with pytest.raises(ValueError):
         load_dataset(
+            cfg={},
             path=str(sample_csv),
             index_col="missing_col",
             data_type="timeseries",
@@ -86,6 +89,7 @@ def test_empty_csv_returns_empty_df(tmp_path: Path) -> None:
     empty_path.write_text("")
 
     df = load_dataset(
+        cfg={},
         path=str(empty_path),
         index_col="date",
         data_type="timeseries",

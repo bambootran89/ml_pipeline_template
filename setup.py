@@ -35,7 +35,7 @@ setup(
     author_email="bambootran89@gmail.com",
     license=license,
     packages=find_packages(exclude=("tests", "docs")),
-    python_requires=">=3.11",
+    python_requires=">=3.10",
     extras_require={
         "dev": required_packages + style_packages + test_packages,
         "test": required_packages + test_packages,

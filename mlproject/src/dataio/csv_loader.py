@@ -4,6 +4,7 @@ import logging
 from typing import List, Optional
 
 import pandas as pd
+from omegaconf import DictConfig
 from pandas.errors import EmptyDataError, ParserError
 
 from mlproject.src.dataio.base import BaseDatasetLoader
@@ -22,6 +23,7 @@ class CsvDatasetLoader(BaseDatasetLoader):
 
     def load(
         self,
+        cfg: DictConfig,
         path: str,
         *,
         index_col: Optional[str] = None,
@@ -44,6 +46,7 @@ class CsvDatasetLoader(BaseDatasetLoader):
         pd.DataFrame
             Loaded dataset.
         """
+        _ = cfg
         self._validate_data_type(data_type)
 
         columns = self._read_columns(path)
@@ -121,7 +124,15 @@ class CsvDatasetLoader(BaseDatasetLoader):
                 index_col,
             )
             df = self._read_csv(path)
+        print("\n[CSV Profiling] DataFrame result:")
+        print(f"  → rows         : {len(df)}")
+        print(f"  → columns      : {list(df.columns)}")
 
+        print("\n[CSV Profiling] head Sample:")
+        print(df.head(5))
+
+        print("\n[CSV Profiling] tail Sample:")
+        print(df.tail(5))
         return df.set_index(index_col)
 
     def _load_tabular(

@@ -3,11 +3,13 @@ from __future__ import annotations
 from typing import Optional
 
 import pandas as pd
+from omegaconf import DictConfig
 
 from mlproject.src.dataio.registry import DatasetLoaderRegistry
 
 
 def load_dataset(
+    cfg: DictConfig,
     path: str,
     *,
     index_col: Optional[str] = None,
@@ -37,6 +39,7 @@ def load_dataset(
     loader = DatasetLoaderRegistry.get_loader(path)
 
     return loader.load(
+        cfg,
         path,
         index_col=index_col,
         data_type=data_type,

@@ -39,6 +39,7 @@ def resolve_datasets_from_cfg(
 
     if path:
         full_df = load_dataset(
+            cfg,
             path,
             index_col=index_col,
             data_type=data_type,
@@ -52,19 +53,21 @@ def resolve_datasets_from_cfg(
         raise ValueError("`data.test_path` must be specified")
 
     train_df = load_dataset(
+        cfg,
         train_path,
         index_col=index_col,
         data_type=data_type,
     )
 
     test_df = load_dataset(
+        cfg,
         test_path,
         index_col=index_col,
         data_type=data_type,
     )
 
     val_df = (
-        load_dataset(val_path, index_col=index_col, data_type=data_type)
+        load_dataset(cfg, val_path, index_col=index_col, data_type=data_type)
         if val_path
         else test_df.copy()
     )

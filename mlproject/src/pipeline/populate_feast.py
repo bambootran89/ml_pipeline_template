@@ -73,8 +73,6 @@ def _engineer(df: pd.DataFrame) -> pd.DataFrame:
     df = add_lag_features(df, ["HUFL", "MUFL"], lags=[24])
     df = add_rolling_features(df, ["HUFL", "MUFL"], windows=[12], agg="mean")
     df = add_time_features(df, "event_timestamp")
-    df = df.dropna()
-
     logger.info(
         "Engineered feature data generated with shape: (%d, %d)",
         df.shape[0],
@@ -117,6 +115,7 @@ def _register(store: Any, entity_col: str, source: Path) -> None:
         "hour_cos": "float",
         "dow_sin": "float",
         "dow_cos": "float",
+        "mobility_inflow": "float",
     }
 
     store.register_feature_view(
