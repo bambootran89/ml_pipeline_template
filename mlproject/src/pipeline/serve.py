@@ -200,62 +200,50 @@ class TestPipeline(BasePipeline):
             return df
 
     def run_exp(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
-        """Perform model inference using a fixed sequence of operations.
+        """
+        Run model inference.
 
-        Execution order:
-        1) Load latest features from Feast online store if `data` is None.
+        Steps:
+        1) Load features from Feast if data is None.
         2) Apply preprocessing transformations.
-        3) Construct an input window for the model.
-        4) Run forward prediction using the loaded MLflow model.
+        3) Construct input window for timeseries, or use full DataFrame for tabular.
+        4) Run forward prediction.
 
         Args:
-            data: Optional raw historical features. If None, the method attempts
-                to pull the latest available features from Feast online store.
+            data: Optional raw features for inference.
 
         Returns:
-            Predictions as a NumPy array of shape (batch, horizon, ...).
-
-        Raises:
-            ValueError: If no data is supplied and no valid Feast URI is found in
-                        the configuration.
+            Model predictions as np.ndarray.
         """
-        # Step 1: Resolve data source
         if data is None:
-            uri = self.cfg.data.get("path", "")
-            print(f"[INFERENCE] No data argument supplied, config.path={uri}")
+            print("[INFERENCE] No input DataFrame, loading from Feast...")
+            data = self._load_from_feast()
+            print(f"[INFERENCE] Loaded data shape: {data.shape}")
 
-            if uri.startswith("feast://"):
-                data = self._load_from_feast()
-                print(f"[INFERENCE] Feast source returned shape {data.shape}")
-            else:
-                raise ValueError(
-                    "Inference requires either a DataFrame input or a Feast URI in "
-                    "config.data.path starting with 'feast://'"
-                )
-
-        # Step 2: Preprocess raw features
-        print(
-            f"[INFERENCE] Running preprocessing on data with shape {data.shape}",
-        )
+        print(f"[INFERENCE] Preprocessing data with shape {data.shape}")
         df: pd.DataFrame = self.preprocess(data)
 
-        # Step 3: Build model input window
-        win: int = int(self.exp.get("hyperparams", {}).get("input_chunk_length", 24))
-        print("[INFERENCE] Building input window (length=%d)", win)
+        # --- Handle timeseries vs tabular separately ---
+        data_type: str = self.cfg.data.get("type", "timeseries")
+        if data_type == "timeseries":
+            win: int = int(
+                self.exp.get("hyperparams", {}).get("input_chunk_length", 24)
+            )
+            print(f"[INFERENCE] Building input window of length {win}")
+            x: np.ndarray = self._prepare_input_window(df, win)
+            print(f"[INFERENCE] Input window shape: {x.shape}")
+        else:
+            # For tabular, no sequence window; use full preprocessed DataFrame
+            print("[INFERENCE] Tabular input, using full DataFrame")
+            x = df.values[np.newaxis, :, :].astype(np.float32)
+            print(f"[INFERENCE] Input array shape: {x.shape}")
 
-        x: np.ndarray = self._prepare_input_window(df, win)
-        print(
-            f"[INFERENCE] Model input window prepared with shape {x.shape}",
-        )
-
-        # Step 4: Run model forward prediction
-        print("[INFERENCE] Calling model.predict()")
+        print("[INFERENCE] Running model.predict()")
         y: np.ndarray = self.model.predict(x)
+        print(f"[INFERENCE] Output shape: {y.shape}")
 
-        # Output logging to user
-        print(f"[INFERENCE] Input shape: {x.shape}, Output shape: {y.shape}")
         if hasattr(y, "flatten"):
-            print(f"[INFERENCE] First 10 values: {y.flatten()[:10]}")
+            print(f"[INFERENCE] First 10 output values: {y.flatten()[:10]}")
 
         print("[INFERENCE] Inference completed")
         return y

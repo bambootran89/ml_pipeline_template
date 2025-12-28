@@ -76,18 +76,26 @@ Create and populate the Feast feature store.
 Run scheduled periodic data ingestion (e.g., daily)
 ```bash
 # Ingest Batch: Typically runs in large-scale data processing jobs (Spark/Pandas). It may run for a long time.
-python -m mlproject.src.pipeline.feature_ops.ingest_batch \
+python -m mlproject.src.pipeline.feature_ops.ingest_batch_etth1 \
     --csv mlproject/data/ETTh1.csv \
     --repo feature_repo_etth1
+
+python -m mlproject.src.pipeline.feature_ops.ingest_titanic \
+    --csv mlproject/data/titanic.csv \
+    --repo titanic_repo
 ```
 
 Sync data to the online store for API inference
 ```bash
 # Materialize: Can run independently. Example: you can update the online store
 # hourly without rerunning feature engineering if offline features are already available.
-python -m mlproject.src.pipeline.feature_ops.materialize \
+python -m mlproject.src.pipeline.feature_ops.materialize_etth1 \
     --repo feature_repo_etth1 \
     --data feature_repo_etth1/data/features.parquet
+
+python -m mlproject.src.pipeline.feature_ops.materialize_titanic \
+    --repo titanic_repo \
+    --data titanic_repo/data/titanic.parquet
 ```
 
 Training with automatic data loading from Feast:
