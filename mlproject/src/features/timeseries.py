@@ -92,6 +92,7 @@ class TimeSeriesFeatureStore:
         frequency_hours: int = 1,
         entity_id: Optional[Union[int, str]] = None,
         entity_key: Optional[str] = None,
+        time_point: str = "now",
     ) -> pd.DataFrame:
         """
         Retrieve the N most recent feature points for inference.
@@ -108,11 +109,19 @@ class TimeSeriesFeatureStore:
         """
         target_id = entity_id if entity_id is not None else self.default_entity_id
         target_key = entity_key if entity_key is not None else self.default_entity_key
-
-        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-        timestamps = [
-            now - timedelta(hours=i * frequency_hours) for i in range(n_points)
-        ]
+        if time_point == "now":
+            now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            timestamps = [
+                now - timedelta(hours=i * frequency_hours) for i in range(n_points)
+            ]
+        else:
+            datetime_time_point = datetime.fromisoformat(time_point).astimezone(
+                timezone.utc
+            )
+            timestamps = [
+                datetime_time_point - timedelta(hours=i * frequency_hours)
+                for i in range(n_points)
+            ]
 
         entity_df = pd.DataFrame(
             {

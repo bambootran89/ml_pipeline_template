@@ -50,7 +50,9 @@ def run_evaluation(cfg_path: str, alias: str) -> None:
     pipeline.run()
 
 
-def run_testing(cfg_path: str, input_path: str | None, alias: str = "latest") -> Any:
+def run_testing(
+    cfg_path: str, input_path: str | None, alias: str = "latest", time_point="now"
+) -> Any:
     """Run inference at serving time using either a CSV input file or auto-loaded
     online features from Feast Feature Store.
 
@@ -72,9 +74,12 @@ def run_testing(cfg_path: str, input_path: str | None, alias: str = "latest") ->
         Model predictions as a NumPy array or pandas DataFrame
           depending on pipeline output.
     """
-    pipeline = TestPipeline(cfg_path, alias=alias)
+    pipeline = TestPipeline(cfg_path, alias=alias, time_point=time_point)
     logger.info(
-        "[TEST] Pipeline initialized (config='%s', alias='%s')", cfg_path, alias
+        "[TEST] Pipeline initialized (config='%s', alias='%s' , time_point='%s')",
+        cfg_path,
+        alias,
+        time_point,
     )
 
     if input_path:
@@ -192,6 +197,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="latest, production, staging",
     )
 
+    parser.add_argument(
+        "--time_point",
+        type=str,
+        default="now",
+        help="Reference timestamp for serving (ISO or keyword: 'now').",
+    )
+
     return parser
 
 
@@ -209,6 +221,7 @@ def main() -> None:
             args.config,
             args.input,
             args.alias,
+            args.time_point,
         )
     elif args.mode == "cv":
         run_cross_validation(args.config)
@@ -225,7 +238,11 @@ def main_run(mode: str, cfg_path: str = "", input_path: str = "") -> None:
     elif mode == "eval":
         run_evaluation(cfg_path, alias="latest")
     elif mode == "test":
-        run_testing(cfg_path, input_path, alias="latest")
+        run_testing(
+            cfg_path,
+            input_path,
+            alias="latest",
+        )
     elif mode == "cv":
         run_cross_validation(cfg_path)
     elif mode == "tune":

@@ -10,19 +10,18 @@ Responsibilities:
 
 from __future__ import annotations
 
-import logging
-from typing import Any, Optional
+from typing import Any, List, Optional
+from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.dataio.feast_loader import FeastDatasetLoader
+from mlproject.src.features.factory import FeatureStoreFactory
+from mlproject.src.features.timeseries import TimeSeriesFeatureStore
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
-
-logger = logging.getLogger(__name__)
 
 
 class TestPipeline(BasePipeline):
@@ -32,7 +31,9 @@ class TestPipeline(BasePipeline):
     This pipeline does not use DataModule, dataset splits, or batching logic.
     """
 
-    def __init__(self, cfg_path: str = "", alias: str = "latest") -> None:
+    def __init__(
+        self, cfg_path: str = "", alias: str = "latest", time_point: str = "now"
+    ) -> None:
         """
         Initialize pipeline and load configuration.
 
@@ -45,6 +46,7 @@ class TestPipeline(BasePipeline):
 
         self.model: Any = None
         self.preprocessor_model: Any | None = None
+        self.time_point = time_point
 
         if self.mlflow_manager.enabled:
             # self.model = self._load_model_from_mlflow()
@@ -97,39 +99,79 @@ class TestPipeline(BasePipeline):
 
     def _load_from_feast(self) -> pd.DataFrame:
         """
-        Load latest features from Feast for real-time inference.
-
-        This method is automatically called when:
-        - No input data is provided to run_exp()
-        - Config has data.path starting with "feast://"
-
-        Returns:
-            pd.DataFrame: Latest feature sequence from Feast online store.
-
-        Raises:
-            ValueError: If Feast URI is invalid or features unavailable.
+        Parse the Feast repo path from a URI and fetch the latest inference window
+        using TimeSeriesFeatureStore for fixed-length, point-in-time safe retrieval.
         """
-        feast_uri = self.cfg.data.get("path", "")
-        features = self.cfg.data.get("features", [])
+        # Extract repo path from the URI (example: feast://feature_repo_etth1?... )
+        uri: str = self.cfg.data.get("path", "")
+        parsed = urlparse(uri)
 
-        if not feast_uri.startswith("feast://"):
-            raise ValueError(
-                "Feast URI required. Expected format: "
-                "feast://repo?entity=key&id=val&features=..."
-            )
+        if not parsed.scheme or not parsed.netloc:
+            print("[FEAST] Invalid Feast URI provided: missing scheme/path")
+            raise ValueError("Invalid Feast URI. Expected format: feast://<repo>")
 
-        loader = FeastDatasetLoader()
+        # Normalize repo name by stripping leading slashes
+        repo_name: str = parsed.netloc
 
-        # Load features using same URI from config
-        df = loader.load(
-            cfg=self.cfg,
-            path=feast_uri,
-            index_col=self.cfg.data.get("index_col", "event_timestamp"),
-            data_type="timeseries",
+        # Feature list from config (already known, no need to ask)
+
+        if not self.cfg or not hasattr(self.cfg.data, "featureview"):
+            raise ValueError("Missing Feast featureview in config YAML.")
+
+        features: List[str] = [
+            f"{self.cfg.data.featureview}:{f}" for f in self.cfg.data.features
+        ]
+        # Determine inference window size from experiment hyperparams
+        win_size: int = int(
+            self.exp.get("hyperparams", {}).get("input_chunk_length", 24)
         )
 
-        print(f"[Feast] Loaded {len(df)} rows from online store")
-        return df[features]
+        # Initialize base store via factory using parsed repo path
+        base_store = FeatureStoreFactory.create(store_type="feast", repo_path=repo_name)
+
+        # Wrap into TimeSeriesFeatureStore with default entity key/id
+        entity_key: str = self.cfg.data.get("entity_key", "location_id")
+        entity_id: int = int(self.cfg.data.get("entity_id", 1))
+        # on_df = base_store.get_online_features(
+        # entity_rows=[{entity_key: entity_id}], features=features)
+        # print(on_df)
+
+        ts_store = TimeSeriesFeatureStore(
+            store=base_store,
+            default_entity_key=entity_key,
+            default_entity_id=entity_id,
+        )
+
+        print("[FEAST] Fetching latest {win_size} points from repo={repo_name}")
+        if not self.cfg or not hasattr(self.cfg.data, "end_date"):
+            raise ValueError("Missing Feast end_date in config YAML.")
+        # Retrieve latest N points for inference using configured frequency
+        # +(24//frequency_hours) buffer to enough window size
+        frequency_hours = int(self.cfg.data.get("frequency_hours", 1))
+        df: pd.DataFrame = ts_store.get_latest_n_sequence(
+            features=features,
+            n_points=win_size + (24 // frequency_hours),
+            frequency_hours=frequency_hours,
+            time_point=self.time_point,
+        )
+        if df.empty:
+            print(
+                f"[FEAST] No data found at time_point='{self.time_point}', "
+                f"falling back to cfg_end_date='{self.cfg.data.end_date}'."
+            )
+            df: pd.DataFrame = ts_store.get_latest_n_sequence(
+                features=features,
+                n_points=win_size + (24 // frequency_hours),
+                frequency_hours=frequency_hours,
+                time_point=self.cfg.data.end_date,
+            )
+
+        print(f"[Feast] Loaded sequence window with {len(df)} rows")
+        if not self.cfg or not hasattr(self.cfg.data, "index_col"):
+            raise ValueError("Missing Feast index_col in config YAML.")
+        index_col = self.cfg.data.index_col
+        df = df.set_index(index_col)[self.cfg.data.features]
+        return df
 
     def run_exp(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
         """Perform model inference using a fixed sequence of operations.
@@ -154,15 +196,11 @@ class TestPipeline(BasePipeline):
         # Step 1: Resolve data source
         if data is None:
             uri = self.cfg.data.get("path", "")
-            logger.info("[INFERENCE] No data argument supplied, config.path='%s'", uri)
+            print(f"[INFERENCE] No data argument supplied, config.path={uri}")
 
             if uri.startswith("feast://"):
                 data = self._load_from_feast()
-                logger.info(
-                    "[INFERENCE] Feast source returned shape (%d, %d)",
-                    data.shape[0],
-                    data.shape[1],
-                )
+                print(f"[INFERENCE] Feast source returned shape {data.shape}")
             else:
                 raise ValueError(
                     "Inference requires either a DataFrame input or a Feast URI in "
@@ -170,22 +208,22 @@ class TestPipeline(BasePipeline):
                 )
 
         # Step 2: Preprocess raw features
-        logger.info(
-            "[INFERENCE] Running preprocessing on data with shape (%d, %d)",
-            data.shape[0],
-            data.shape[1],
+        print(
+            f"[INFERENCE] Running preprocessing on data with shape {data.shape}",
         )
         df: pd.DataFrame = self.preprocess(data)
 
         # Step 3: Build model input window
         win: int = int(self.exp.get("hyperparams", {}).get("input_chunk_length", 24))
-        logger.info("[INFERENCE] Building input window (length=%d)", win)
+        print("[INFERENCE] Building input window (length=%d)", win)
 
         x: np.ndarray = self._prepare_input_window(df, win)
-        logger.info("[INFERENCE] Model input window prepared with shape %s", x.shape)
+        print(
+            f"[INFERENCE] Model input window prepared with shape {x.shape}",
+        )
 
         # Step 4: Run model forward prediction
-        logger.info("[INFERENCE] Calling model.predict()")
+        print("[INFERENCE] Calling model.predict()")
         y: np.ndarray = self.model.predict(x)
 
         # Output logging to user
@@ -193,5 +231,5 @@ class TestPipeline(BasePipeline):
         if hasattr(y, "flatten"):
             print(f"[INFERENCE] First 10 values: {y.flatten()[:10]}")
 
-        logger.info("[INFERENCE] Inference completed")
+        print("[INFERENCE] Inference completed")
         return y
