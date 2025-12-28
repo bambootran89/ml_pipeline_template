@@ -99,79 +99,105 @@ class TestPipeline(BasePipeline):
 
     def _load_from_feast(self) -> pd.DataFrame:
         """
-        Parse the Feast repo path from a URI and fetch the latest inference window
-        using TimeSeriesFeatureStore for fixed-length, point-in-time safe retrieval.
+        Load data from Feast.
+
+        - 'timeseries': Use TimeSeriesFeatureStore to
+                retrieve a historical sequence window.
+        - 'tabular': Fetch data directly from Online Store
+                using get_online_features.
+
+        Raises:
+            ValueError: If URI is invalid or required config keys are missing.
         """
-        # Extract repo path from the URI (example: feast://feature_repo_etth1?... )
+        # 1. Parse Feast URI
         uri: str = self.cfg.data.get("path", "")
         parsed = urlparse(uri)
-
         if not parsed.scheme or not parsed.netloc:
-            print("[FEAST] Invalid Feast URI provided: missing scheme/path")
-            raise ValueError("Invalid Feast URI. Expected format: feast://<repo>")
+            raise ValueError(
+                f"Invalid Feast URI: {uri}. Expected format 'feast://<repo_name>'"
+            )
 
-        # Normalize repo name by stripping leading slashes
         repo_name: str = parsed.netloc
+        data_type: str = self.cfg.data.get("type", "timeseries")
 
-        # Feature list from config (already known, no need to ask)
+        if not hasattr(self.cfg.data, "featureview") or not hasattr(
+            self.cfg.data, "features"
+        ):
+            raise ValueError("Missing 'featureview' or 'features' in cfg.data")
 
-        if not self.cfg or not hasattr(self.cfg.data, "featureview"):
-            raise ValueError("Missing Feast featureview in config YAML.")
-
-        features: List[str] = [
+        # 2. Build list of feature references (view:feature)
+        feature_refs: List[str] = [
             f"{self.cfg.data.featureview}:{f}" for f in self.cfg.data.features
         ]
-        # Determine inference window size from experiment hyperparams
-        win_size: int = int(
-            self.exp.get("hyperparams", {}).get("input_chunk_length", 24)
-        )
 
-        # Initialize base store via factory using parsed repo path
+        entity_key: str = self.cfg.data.get("entity_key", "location_id")
+        entity_id: Any = self.cfg.data.get("entity_id", 1)
+
+        # 3. Initialize Base Store
         base_store = FeatureStoreFactory.create(store_type="feast", repo_path=repo_name)
 
-        # Wrap into TimeSeriesFeatureStore with default entity key/id
-        entity_key: str = self.cfg.data.get("entity_key", "location_id")
-        entity_id: int = int(self.cfg.data.get("entity_id", 1))
-        # on_df = base_store.get_online_features(
-        # entity_rows=[{entity_key: entity_id}], features=features)
-        # print(on_df)
-
-        ts_store = TimeSeriesFeatureStore(
-            store=base_store,
-            default_entity_key=entity_key,
-            default_entity_id=entity_id,
-        )
-
-        print("[FEAST] Fetching latest {win_size} points from repo={repo_name}")
-        if not self.cfg or not hasattr(self.cfg.data, "end_date"):
-            raise ValueError("Missing Feast end_date in config YAML.")
-        # Retrieve latest N points for inference using configured frequency
-        # +(24//frequency_hours) buffer to enough window size
-        frequency_hours = int(self.cfg.data.get("frequency_hours", 1))
-        df: pd.DataFrame = ts_store.get_latest_n_sequence(
-            features=features,
-            n_points=win_size + (24 // frequency_hours),
-            frequency_hours=frequency_hours,
-            time_point=self.time_point,
-        )
-        if df.empty:
+        # --- Tabular / Online Data Retrieval ---
+        if data_type != "timeseries":
             print(
-                f"[FEAST] No data found at time_point='{self.time_point}', "
-                f"falling back to cfg_end_date='{self.cfg.data.end_date}'."
+                f"[FEAST] Direct online fetch for \
+                    tabular data (repo={repo_name}, type={data_type})"
             )
-            df: pd.DataFrame = ts_store.get_latest_n_sequence(
-                features=features,
+
+            online_data_list = base_store.get_online_features(
+                entity_rows=[{entity_key: entity_id}],
+                features=feature_refs,
+            )
+
+            if not online_data_list:
+                raise ValueError(f"No online data found for {entity_key}={entity_id}")
+
+            df = pd.DataFrame(online_data_list)
+            return df[self.cfg.data.features]
+
+        # --- Timeseries Data Retrieval ---
+        else:
+            print(f"[FEAST] Sequence fetch for timeseries data (repo={repo_name})")
+
+            win_size: int = int(
+                self.exp.get("hyperparams", {}).get("input_chunk_length", 24)
+            )
+            frequency_hours: int = int(self.cfg.data.get("frequency_hours", 1))
+
+            ts_store = TimeSeriesFeatureStore(
+                store=base_store,
+                default_entity_key=entity_key,
+                default_entity_id=entity_id,
+            )
+
+            # Retrieve sequence window
+            df = ts_store.get_latest_n_sequence(
+                features=feature_refs,
                 n_points=win_size + (24 // frequency_hours),
                 frequency_hours=frequency_hours,
-                time_point=self.cfg.data.end_date,
+                time_point=self.time_point,
             )
 
-        print(f"[Feast] Loaded sequence window with {len(df)} rows")
-        if not self.cfg or not hasattr(self.cfg.data, "index_col"):
-            raise ValueError("Missing Feast index_col in config YAML.")
-        index_col = self.cfg.data.index_col
-        df = df.set_index(index_col)[self.cfg.data.features]
-        return df
+            # Fallback to cfg.data.end_date if no data
+            if df.empty and hasattr(self.cfg.data, "end_date"):
+                print(
+                    f"[FEAST] No data at time_point={self.time_point}, "
+                    f"falling back to cfg_end_date={self.cfg.data.end_date}"
+                )
+                df = ts_store.get_latest_n_sequence(
+                    features=feature_refs,
+                    n_points=win_size + (24 // frequency_hours),
+                    frequency_hours=frequency_hours,
+                    time_point=self.cfg.data.end_date,
+                )
+
+            if df.empty:
+                raise ValueError("No data found in Feast for timeseries sequence.")
+
+            index_col: str = self.cfg.data.get("index_col", "event_timestamp")
+            df = df.set_index(index_col)[self.cfg.data.features]
+
+            print(f"[FEAST] Loaded sequence window with {len(df)} rows")
+            return df
 
     def run_exp(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
         """Perform model inference using a fixed sequence of operations.
