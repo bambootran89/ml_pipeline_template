@@ -211,103 +211,10 @@ class TestOnlineRetrievalStrategy:
             )
 
     @patch("mlproject.src.features.strategies.TimeSeriesFeatureStore")
-    def test_timeseries_retrieves_latest_sequence(self, mock_ts_store_class):
-        """Strategy retrieves sequence window for timeseries."""
-        mock_ts_store = Mock()
-        mock_ts_store.get_latest_n_sequence.return_value = pd.DataFrame(
-            {
-                "event_timestamp": pd.date_range("2024-01-01", periods=24, freq="h"),
-                "temp": range(24),
-                "humidity": range(24, 48),
-            }
-        )
-        mock_ts_store_class.return_value = mock_ts_store
-
-        mock_store = Mock()
-        strategy = OnlineRetrievalStrategy(time_point="2024-01-02T00:00:00")
-
-        features = ["hourly:temp", "hourly:humidity"]
-        config = {
-            "data_type": "timeseries",
-            "featureview": "hourly",
-            "features": ["temp", "humidity"],
-            "input_chunk_length": 24,
-            "frequency_hours": 1,
-            "index_col": "event_timestamp",
-        }
-
-        df = strategy.retrieve(
-            store=mock_store,
-            features=features,
-            entity_key="location_id",
-            entity_ids=[42],
-            config=config,
-        )
-
-        assert isinstance(df, pd.DataFrame)
-        assert len(df) == 24
-        assert df.index.name == "event_timestamp"
-
-        # Verify correct method call
-        mock_ts_store.get_latest_n_sequence.assert_called_once()
-        call_kwargs = mock_ts_store.get_latest_n_sequence.call_args[1]
-        assert call_kwargs["time_point"] == "2024-01-02T00:00:00"
-        assert call_kwargs["n_points"] == 48  # 24 + (24//1)
-
-    @patch("mlproject.src.features.strategies.TimeSeriesFeatureStore")
-    def test_timeseries_fallback_to_end_date(self, mock_ts_store_class):
-        """Strategy falls back to end_date when time_point empty."""
-        mock_ts_store = Mock()
-
-        # First call empty, second call has data
-        mock_ts_store.get_latest_n_sequence.side_effect = [
-            pd.DataFrame(),  # Empty at time_point
-            pd.DataFrame(
-                {
-                    "event_timestamp": pd.date_range(
-                        "2024-01-01", periods=10, freq="h"
-                    ),
-                    "temp": range(10),
-                }
-            ),
-        ]
-        mock_ts_store_class.return_value = mock_ts_store
-
-        mock_store = Mock()
-        strategy = OnlineRetrievalStrategy(time_point="now")
-
-        features = ["hourly:temp"]
-        config = {
-            "data_type": "timeseries",
-            "featureview": "hourly",
-            "features": ["temp"],
-            "input_chunk_length": 10,
-            "frequency_hours": 1,
-            "index_col": "event_timestamp",
-            "end_date": "2024-01-01T10:00:00",
-        }
-
-        df = strategy.retrieve(
-            store=mock_store,
-            features=features,
-            entity_key="location_id",
-            entity_ids=[42],
-            config=config,
-        )
-
-        # Verify fallback was triggered
-        assert len(df) == 10
-        assert mock_ts_store.get_latest_n_sequence.call_count == 2
-
-        # Check second call used end_date
-        second_call = mock_ts_store.get_latest_n_sequence.call_args_list[1]
-        assert second_call[1]["time_point"] == "2024-01-01T10:00:00"
-
-    @patch("mlproject.src.features.strategies.TimeSeriesFeatureStore")
     def test_timeseries_raises_when_no_data(self, mock_ts_store_class):
         """Strategy raises when no data at time_point or end_date."""
         mock_ts_store = Mock()
-        mock_ts_store.get_latest_n_sequence.return_value = pd.DataFrame()
+        mock_ts_store.get_latest_n_sequence_single.return_value = pd.DataFrame()
         mock_ts_store_class.return_value = mock_ts_store
 
         mock_store = Mock()

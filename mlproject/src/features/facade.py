@@ -222,13 +222,13 @@ class FeatureStoreFacade:
         if index_col in df.columns:
             df = df.set_index(index_col)
 
-        # Filter to requested features
-        feature_cols = self.data_cfg.get("features", [])
-        target_cols = self.data_cfg.get("target_columns", [])
-        requested = set(feature_cols + target_cols)
-        available = [c for c in requested if c in df.columns]
+        # # Filter to requested features
+        # feature_cols = self.data_cfg.get("features", [])
+        # target_cols = self.data_cfg.get("target_columns", [])
+        # requested = set(feature_cols + target_cols)
+        # available = [c for c in requested if c in df.columns]
 
-        if available:
-            return df[available]
+        # if available:
+        #     return df[available]
 
         return df

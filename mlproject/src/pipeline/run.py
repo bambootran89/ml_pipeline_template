@@ -116,10 +116,6 @@ def run_testing(
     if hasattr(preds, "shape"):
         print(f"Prediction shape: {preds.shape}")
 
-    if hasattr(preds, "flatten"):
-        flat = preds.flatten()
-        print(f"First 10 predictions: {flat[:10]}")
-
     print("=" * 70)
     logger.info("[TEST] Inference completed successfully")
 

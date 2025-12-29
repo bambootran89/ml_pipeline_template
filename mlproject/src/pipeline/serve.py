@@ -10,7 +10,7 @@ Responsibilities:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -137,16 +137,29 @@ class TestPipeline(BasePipeline):
 
         print(f"[INFERENCE] Preprocessing data with shape {data.shape}")
         df: pd.DataFrame = self.preprocess(data)
-        print(df)
+
         # --- Handle timeseries vs tabular separately ---
         data_type: str = self.cfg.data.get("type", "timeseries")
         if data_type == "timeseries":
+            entity_key: str = self.cfg.data.get("entity_key", "location_id")
             win: int = int(
                 self.exp.get("hyperparams", {}).get("input_chunk_length", 24)
             )
+
+            arr_list: List[np.ndarray] = [
+                self._prepare_input_window(
+                    g.drop(columns=[entity_key], errors="ignore"),
+                    win,
+                )
+                for _, g in data.groupby(entity_key)
+            ]
+
             print(f"[INFERENCE] Building input window of length {win}")
-            x: np.ndarray = self._prepare_input_window(df, win)
+
+            x: np.ndarray = np.vstack(arr_list).astype(np.float32)
+
             print(f"[INFERENCE] Input window shape: {x.shape}")
+
         else:
             # For tabular, no sequence window; use full preprocessed DataFrame
             print("[INFERENCE] Tabular input, using full DataFrame")
@@ -158,7 +171,7 @@ class TestPipeline(BasePipeline):
         print(f"[INFERENCE] Output shape: {y.shape}")
 
         if hasattr(y, "flatten"):
-            print(f"[INFERENCE] First 10 output values: {y.flatten()[:10]}")
+            print(f"[INFERENCE] First 10 output values: {y[:10]}")
 
         print("[INFERENCE] Inference completed")
         return y

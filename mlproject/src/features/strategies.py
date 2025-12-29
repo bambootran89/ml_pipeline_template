@@ -289,7 +289,7 @@ class OnlineRetrievalStrategy(FeatureRetrievalStrategy):
         ts_store = TimeSeriesFeatureStore(
             store=store,
             default_entity_key=entity_key,
-            default_entity_id=entity_ids[0],
+            default_entity_ids=entity_ids,
         )
 
         # Retrieve sequence at time_point
@@ -299,15 +299,18 @@ class OnlineRetrievalStrategy(FeatureRetrievalStrategy):
             n_points=win_size + (24 // frequency_hours),
             frequency_hours=frequency_hours,
             time_point=self.time_point,
+            entity_ids=entity_ids,
         )
 
         # Fallback to config end_date if no data
-        if df.empty and end_date:
+        cols = config.get("features", [])
+        if (df.empty or df[cols].isna().all().all()) and end_date:
             df = ts_store.get_latest_n_sequence(
                 features=features,
                 n_points=win_size + (24 // frequency_hours),
                 frequency_hours=frequency_hours,
                 time_point=end_date,
+                entity_ids=entity_ids,
             )
 
         if df.empty:
