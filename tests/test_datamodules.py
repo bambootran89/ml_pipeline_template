@@ -12,7 +12,6 @@ Run:
     pytest tests/test_datamodules.py -v -s
 """
 
-from typing import Tuple
 
 import numpy as np
 import pandas as pd

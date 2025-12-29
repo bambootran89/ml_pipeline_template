@@ -7,14 +7,14 @@ loading features from Feast regardless of data type.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
 import pandas as pd
 from omegaconf import DictConfig
 
 from mlproject.src.features.factory import FeatureStoreFactory
-from mlproject.src.features.strategies import StrategyFactory
+from mlproject.src.features.strategies import FeatureRetrievalStrategy, StrategyFactory
 
 
 class FeatureStoreFacade:
@@ -25,21 +25,40 @@ class FeatureStoreFacade:
     logic to appropriate strategies while maintaining a clean API.
     """
 
-    def __init__(self, cfg: DictConfig) -> None:
+    def __init__(
+        self,
+        cfg: DictConfig,
+        mode: str = "historical",
+    ) -> None:
         """
         Initialize facade with configuration.
 
         Parameters
         ----------
         cfg : DictConfig
-            Configuration containing data and feature metadata.
+            Configuration containing data path and feature specs.
+        mode : str, default="historical"
+            Retrieval mode: "historical" (training/eval) or
+            "online" (serving).
         """
         self.cfg = cfg
-        self.data_cfg = cfg.get("data", {})
+        self.data_cfg = self.cfg.get("data", {})
+        self.mode = mode
+        self._validate_config()
 
-    def load_features(self) -> pd.DataFrame:
+    def load_features(
+        self,
+        time_point: Optional[str] = None,
+    ) -> pd.DataFrame:
         """
         Load features from Feast using configuration metadata.
+
+        Parameters
+        ----------
+        time_point : Optional[str], default=None
+            Time point for online timeseries retrieval.
+            Only used when mode="online" and data_type="timeseries".
+            Can be "now", ISO datetime string, or Unix timestamp.
 
         Returns
         -------
@@ -59,7 +78,6 @@ class FeatureStoreFacade:
             raise ValueError(f"Invalid Feast URI: {uri}")
 
         repo_name: str = parsed.netloc
-        data_type: str = self.data_cfg.get("type", "timeseries")
 
         # Validate required config
         self._validate_config()
@@ -72,21 +90,22 @@ class FeatureStoreFacade:
 
         # Build feature references
         featureview: str = self.data_cfg["featureview"]
-        only_features: List[str] = [
-            f"{featureview}:{f}" for f in self.data_cfg["features"]
-        ]
-        target_columns: List[str] = [
-            f"{featureview}:{f}" for f in self.data_cfg.get("target_columns", [])
-        ]
-        features = list(set(only_features + target_columns))
+        features: List[str] = [f"{featureview}:{f}" for f in self.data_cfg["features"]]
+        # target_columns: List[str] = [
+        #     f"{featureview}:{f}" for f in self.data_cfg.get("target_columns", [])
+        # ]
+        # features = list(set(only_features + target_columns))
+
         # Extract entity metadata
         entity_key, entity_id = self._resolve_entity()
 
         # Prepare strategy config
         strategy_config = self._build_strategy_config()
 
-        # Load using appropriate strategy
-        strategy = StrategyFactory.create(data_type)
+        # Create strategy (KHÔNG pass store!)
+        strategy = self._create_strategy(time_point)
+
+        # Retrieve features (pass store VÀO ĐÂY!)
         df = strategy.retrieve(
             store=store,
             features=features,
@@ -96,6 +115,31 @@ class FeatureStoreFacade:
         )
 
         return self._post_process(df)
+
+    def _create_strategy(
+        self,
+        time_point: Optional[str] = None,
+    ) -> FeatureRetrievalStrategy:
+        """
+        Create appropriate retrieval strategy.
+
+        Parameters
+        ----------
+        time_point : Optional[str], default=None
+            Time point for online mode.
+
+        Returns
+        -------
+        FeatureRetrievalStrategy
+            Strategy instance based on mode and data_type.
+        """
+        data_type = self.cfg.data.get("type", "timeseries")
+
+        return StrategyFactory.create(
+            data_type=data_type,
+            mode=self.mode,
+            time_point=time_point,
+        )
 
     def _validate_config(self) -> None:
         """Validate required configuration keys."""
@@ -127,12 +171,31 @@ class FeatureStoreFacade:
         Dict[str, Any]
             Strategy-specific configuration.
         """
-        return {
+        config = {
             "start_date": self.data_cfg.get("start_date", ""),
             "end_date": self.data_cfg.get("end_date", ""),
             "entity_data": self.data_cfg.get("entity_data", ""),
             "index_col": self.data_cfg.get("index_col", "event_timestamp"),
+            "data_type": self.data_cfg.get("type", "timeseries"),
         }
+
+        # Add online-specific config for timeseries
+        if self.mode == "online":
+            exp_cfg = self.cfg.get("experiment", {})
+            hyperparams = exp_cfg.get("hyperparams", {})
+
+            config.update(
+                {
+                    "input_chunk_length": hyperparams.get("input_chunk_length", 24),
+                    "frequency_hours": self.data_cfg.get("frequency_hours", 1),
+                    "featureview": self.data_cfg.get("featureview", ""),
+                    "features": self.data_cfg.get("features", []),
+                }
+            )
+        else:
+            config.update({"target_columns": self.data_cfg.get("target_columns", [])})
+
+        return config
 
     def _post_process(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -150,12 +213,15 @@ class FeatureStoreFacade:
         """
         index_col = self.data_cfg.get("index_col", "event_timestamp")
 
+        # Set index if not already set
         if index_col in df.columns:
             df = df.set_index(index_col)
 
+        # Filter to requested features
         feature_cols = self.data_cfg.get("features", [])
         target_cols = self.data_cfg.get("target_columns", [])
-        available = [c for c in set(feature_cols + target_cols) if c in df.columns]
+        requested = set(feature_cols + target_cols)
+        available = [c for c in requested if c in df.columns]
 
         if available:
             return df[available]

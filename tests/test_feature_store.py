@@ -10,13 +10,14 @@ from __future__ import annotations
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Generator, List, Dict
+from typing import Dict, Generator, List
 
 import pandas as pd
 import pytest
 
 from mlproject.src.features.factory import FeatureStoreFactory
 from mlproject.src.features.repository import FeastRepositoryManager
+from mlproject.src.features.strategies import BaseFeatureStore
 
 
 @pytest.fixture(scope="function")
@@ -59,7 +60,7 @@ def sample_data(repo_path: Path) -> Path:
 
 
 @pytest.fixture(scope="function")
-def store(repo_path: Path, sample_data: Path) -> "BaseFeatureStore":
+def store(repo_path: Path, sample_data: Path) -> BaseFeatureStore:
     """
     Initialize a FeastFeatureStore via factory and register:
     - A join-key entity (``user_id``).
@@ -84,7 +85,7 @@ def store(repo_path: Path, sample_data: Path) -> "BaseFeatureStore":
     return store_inst
 
 
-def test_pit_join_accuracy(store: "BaseFeatureStore") -> None:
+def test_pit_join_accuracy(store: BaseFeatureStore) -> None:
     """
     Validate point-in-time (PIT) join semantics by asserting that the
     closest past feature record relative to the query timestamp is
@@ -103,7 +104,7 @@ def test_pit_join_accuracy(store: "BaseFeatureStore") -> None:
     assert hist["credit_score"].iloc[0] == pytest.approx(600.0)
 
 
-def test_online_serving_consistency(store: "BaseFeatureStore") -> None:
+def test_online_serving_consistency(store: BaseFeatureStore) -> None:
     """
     Validate offline-to-online materialization and ensure that online
     feature responses are returned as a list of dictionaries, ready
@@ -131,7 +132,7 @@ def test_online_serving_consistency(store: "BaseFeatureStore") -> None:
     assert user_101.get("is_active") == 1
 
 
-def test_empty_retrieval_behavior(store: "BaseFeatureStore") -> None:
+def test_empty_retrieval_behavior(store: BaseFeatureStore) -> None:
     """
     Ensure that requests for non-existent entity keys do not raise
     runtime errors and return ``None`` for unresolved features.

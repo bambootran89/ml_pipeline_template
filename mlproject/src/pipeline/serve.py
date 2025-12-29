@@ -10,15 +10,13 @@ Responsibilities:
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
-from urllib.parse import urlparse
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.features.factory import FeatureStoreFactory
-from mlproject.src.features.timeseries import TimeSeriesFeatureStore
+from mlproject.src.features.facade import FeatureStoreFacade
 from mlproject.src.pipeline.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
@@ -99,105 +97,22 @@ class TestPipeline(BasePipeline):
 
     def _load_from_feast(self) -> pd.DataFrame:
         """
-        Load data from Feast.
+        Load features from Feast using unified facade.
 
-        - 'timeseries': Use TimeSeriesFeatureStore to
-                retrieve a historical sequence window.
-        - 'tabular': Fetch data directly from Online Store
-                using get_online_features.
+        Returns
+        -------
+        pd.DataFrame
+            Features ready for preprocessing.
+            - Tabular: Single row from Online Store
+            - Timeseries: Indexed sequence window
 
-        Raises:
-            ValueError: If URI is invalid or required config keys are missing.
+        Raises
+        ------
+        ValueError
+            If Feast URI is invalid or data loading fails.
         """
-        # 1. Parse Feast URI
-        uri: str = self.cfg.data.get("path", "")
-        parsed = urlparse(uri)
-        if not parsed.scheme or not parsed.netloc:
-            raise ValueError(
-                f"Invalid Feast URI: {uri}. Expected format 'feast://<repo_name>'"
-            )
-
-        repo_name: str = parsed.netloc
-        data_type: str = self.cfg.data.get("type", "timeseries")
-
-        if not hasattr(self.cfg.data, "featureview") or not hasattr(
-            self.cfg.data, "features"
-        ):
-            raise ValueError("Missing 'featureview' or 'features' in cfg.data")
-
-        # 2. Build list of feature references (view:feature)
-        feature_refs: List[str] = [
-            f"{self.cfg.data.featureview}:{f}" for f in self.cfg.data.features
-        ]
-
-        entity_key: str = self.cfg.data.get("entity_key", "location_id")
-        entity_id: Any = self.cfg.data.get("entity_id", 1)
-
-        # 3. Initialize Base Store
-        base_store = FeatureStoreFactory.create(store_type="feast", repo_path=repo_name)
-
-        # --- Tabular / Online Data Retrieval ---
-        if data_type != "timeseries":
-            print(
-                f"[FEAST] Direct online fetch for \
-                    tabular data (repo={repo_name}, type={data_type})"
-            )
-
-            online_data_list = base_store.get_online_features(
-                entity_rows=[{entity_key: entity_id}],
-                features=feature_refs,
-            )
-
-            if not online_data_list:
-                raise ValueError(f"No online data found for {entity_key}={entity_id}")
-
-            df = pd.DataFrame(online_data_list)
-            return df[self.cfg.data.features]
-
-        # --- Timeseries Data Retrieval ---
-        else:
-            print(f"[FEAST] Sequence fetch for timeseries data (repo={repo_name})")
-
-            win_size: int = int(
-                self.exp.get("hyperparams", {}).get("input_chunk_length", 24)
-            )
-            frequency_hours: int = int(self.cfg.data.get("frequency_hours", 1))
-
-            ts_store = TimeSeriesFeatureStore(
-                store=base_store,
-                default_entity_key=entity_key,
-                default_entity_id=entity_id,
-            )
-
-            # Retrieve sequence window
-            df = ts_store.get_latest_n_sequence(
-                features=feature_refs,
-                n_points=win_size + (24 // frequency_hours),
-                frequency_hours=frequency_hours,
-                time_point=self.time_point,
-            )
-
-            # Fallback to cfg.data.end_date if no data
-            if df.empty and hasattr(self.cfg.data, "end_date"):
-                print(
-                    f"[FEAST] No data at time_point={self.time_point}, "
-                    f"falling back to cfg_end_date={self.cfg.data.end_date}"
-                )
-                df = ts_store.get_latest_n_sequence(
-                    features=feature_refs,
-                    n_points=win_size + (24 // frequency_hours),
-                    frequency_hours=frequency_hours,
-                    time_point=self.cfg.data.end_date,
-                )
-
-            if df.empty:
-                raise ValueError("No data found in Feast for timeseries sequence.")
-
-            index_col: str = self.cfg.data.get("index_col", "event_timestamp")
-            df = df.set_index(index_col)[self.cfg.data.features]
-
-            print(f"[FEAST] Loaded sequence window with {len(df)} rows")
-            return df
+        facade = FeatureStoreFacade(self.cfg, mode="online")
+        return facade.load_features(time_point=self.time_point)
 
     def run_exp(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
         """
