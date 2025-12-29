@@ -49,6 +49,7 @@ class FeatureStoreFacade:
     def load_features(
         self,
         time_point: Optional[str] = None,
+        entity_ids: Optional[List[Union[int, str]]] = None,
     ) -> pd.DataFrame:
         """
         Load features from Feast using configuration metadata.
@@ -59,7 +60,7 @@ class FeatureStoreFacade:
             Time point for online timeseries retrieval.
             Only used when mode="online" and data_type="timeseries".
             Can be "now", ISO datetime string, or Unix timestamp.
-
+        entity_ids: Optional[List[Union[int, str]]]
         Returns
         -------
         pd.DataFrame
@@ -97,20 +98,22 @@ class FeatureStoreFacade:
         # features = list(set(only_features + target_columns))
 
         # Extract entity metadata
-        entity_key, entity_id = self._resolve_entity()
+        entity_key, cfg_entity_ids = self._resolve_entity()
+        if entity_ids is None:
+            entity_ids = cfg_entity_ids
 
         # Prepare strategy config
         strategy_config = self._build_strategy_config()
 
-        # Create strategy (KHÔNG pass store!)
+        # Create strategy (not pass store!)
         strategy = self._create_strategy(time_point)
 
-        # Retrieve features (pass store VÀO ĐÂY!)
+        # Retrieve features (pass store here!)
         df = strategy.retrieve(
             store=store,
             features=features,
             entity_key=entity_key,
-            entity_id=entity_id,
+            entity_ids=entity_ids,
             config=strategy_config,
         )
 
@@ -149,7 +152,7 @@ class FeatureStoreFacade:
         if missing:
             raise ValueError(f"Missing config keys: {missing}")
 
-    def _resolve_entity(self) -> tuple[str, Union[int, str]]:
+    def _resolve_entity(self) -> tuple[str, List[Union[int, str]]]:
         """
         Resolve entity key and ID from configuration.
 
@@ -159,8 +162,10 @@ class FeatureStoreFacade:
             Entity key name and entity ID value.
         """
         entity_key: str = self.data_cfg.get("entity_key", "location_id")
-        entity_id: Union[int, str] = self.data_cfg.get("entity_id", 1)
-        return entity_key, entity_id
+        entity_ids: List[Union[int, str]] = self.data_cfg.get(
+            "entity_ids", [1, 2, 3, 4]
+        )
+        return entity_key, entity_ids
 
     def _build_strategy_config(self) -> Dict[str, Any]:
         """

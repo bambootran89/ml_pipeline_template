@@ -137,7 +137,7 @@ class TestPipeline(BasePipeline):
 
         print(f"[INFERENCE] Preprocessing data with shape {data.shape}")
         df: pd.DataFrame = self.preprocess(data)
-
+        print(df)
         # --- Handle timeseries vs tabular separately ---
         data_type: str = self.cfg.data.get("type", "timeseries")
         if data_type == "timeseries":
@@ -150,7 +150,7 @@ class TestPipeline(BasePipeline):
         else:
             # For tabular, no sequence window; use full preprocessed DataFrame
             print("[INFERENCE] Tabular input, using full DataFrame")
-            x = df.values[np.newaxis, :, :].astype(np.float32)
+            x = df.values.astype(np.float32)
             print(f"[INFERENCE] Input array shape: {x.shape}")
 
         print("[INFERENCE] Running model.predict()")

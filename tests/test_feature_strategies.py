@@ -78,7 +78,7 @@ class TestTimeseriesStrategy:
             store=mock_store,
             features=["view:feat1"],
             entity_key="location_id",
-            entity_id=1,
+            entity_ids=[1],
             config=config,
         )
 
@@ -116,7 +116,7 @@ class TestFeatureStoreFacade:
                     "featureview": "test_view",
                     "features": ["feat1", "feat2"],
                     "entity_key": "id",
-                    "entity_id": 1,
+                    "entity_ids": [1],
                     "start_date": "2024-01-01T00:00:00+00:00",
                     "end_date": "2024-01-02T00:00:00+00:00",
                     "index_col": "timestamp",
@@ -176,7 +176,7 @@ class TestOnlineRetrievalStrategy:
             store=mock_store,
             features=features,
             entity_key="location_id",
-            entity_id=42,
+            entity_ids=[42],
             config=config,
         )
 
@@ -206,7 +206,7 @@ class TestOnlineRetrievalStrategy:
                 store=mock_store,
                 features=features,
                 entity_key="location_id",
-                entity_id=999,
+                entity_ids=[999],
                 config=config,
             )
 
@@ -240,7 +240,7 @@ class TestOnlineRetrievalStrategy:
             store=mock_store,
             features=features,
             entity_key="location_id",
-            entity_id=42,
+            entity_ids=[42],
             config=config,
         )
 
@@ -291,7 +291,7 @@ class TestOnlineRetrievalStrategy:
             store=mock_store,
             features=features,
             entity_key="location_id",
-            entity_id=42,
+            entity_ids=[42],
             config=config,
         )
 
@@ -328,7 +328,7 @@ class TestOnlineRetrievalStrategy:
                 store=mock_store,
                 features=features,
                 entity_key="location_id",
-                entity_id=42,
+                entity_ids=[42],
                 config=config,
             )
 
@@ -348,7 +348,7 @@ class TestOnlineRetrievalStrategy:
                 store=mock_store,
                 features=["hourly:temp"],
                 entity_key="location_id",
-                entity_id=42,
+                entity_ids=[42],
                 config=config,
             )
 
@@ -368,7 +368,7 @@ class TestOnlineRetrievalStrategy:
                 store=mock_store,
                 features=["view:temp"],
                 entity_key="location_id",
-                entity_id=42,
+                entity_ids=[42],
                 config=config,
             )
 
@@ -443,7 +443,7 @@ class TestFeatureFacadeWithOnlineMode:
                     "featureview": "hourly",
                     "features": ["temp"],
                     "entity_key": "location_id",
-                    "entity_id": 42,
+                    "entity_ids": [42],
                 },
                 "experiment": {"hyperparams": {"input_chunk_length": 24}},
             }

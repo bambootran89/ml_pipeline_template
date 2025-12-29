@@ -31,7 +31,7 @@ class FeatureRetrievalStrategy(ABC):
         store: BaseFeatureStore,
         features: List[str],
         entity_key: str,
-        entity_id: Union[int, str],
+        entity_ids: List[Union[int, str]],
         config: Dict[str, Any],
     ) -> pd.DataFrame:
         """
@@ -45,7 +45,7 @@ class FeatureRetrievalStrategy(ABC):
             Fully qualified feature references.
         entity_key : str
             Entity join key name.
-        entity_id : Union[int, str]
+        entity_ids : List[Union[int, str]]
             Entity identifier value.
         config : Dict[str, Any]
             Additional configuration parameters.
@@ -65,14 +65,14 @@ class TimeseriesRetrievalStrategy(FeatureRetrievalStrategy):
         store: BaseFeatureStore,
         features: List[str],
         entity_key: str,
-        entity_id: Union[int, str],
+        entity_ids: List[Union[int, str]],
         config: Dict[str, Any],
     ) -> pd.DataFrame:
         """Retrieve timeseries features as a sequence window."""
         ts_store = TimeSeriesFeatureStore(
             store=store,
             default_entity_key=entity_key,
-            default_entity_id=entity_id,
+            default_entity_id=entity_ids[0],
         )
 
         # Extract time range
@@ -94,7 +94,7 @@ class TabularRetrievalStrategy(FeatureRetrievalStrategy):
         store: BaseFeatureStore,
         features: List[str],
         entity_key: str,
-        entity_id: Union[int, str],
+        entity_ids: List[Union[int, str]],
         config: Dict[str, Any],
     ) -> pd.DataFrame:
         """Retrieve tabular features via historical or online lookup."""
@@ -151,7 +151,7 @@ class OnlineRetrievalStrategy(FeatureRetrievalStrategy):
         store: BaseFeatureStore,
         features: List[str],
         entity_key: str,
-        entity_id: Union[int, str],
+        entity_ids: List[Union[int, str]],
         config: Dict[str, Any],
     ) -> pd.DataFrame:
         """
@@ -199,16 +199,18 @@ class OnlineRetrievalStrategy(FeatureRetrievalStrategy):
         data_type = config.get("data_type", "timeseries")
 
         if data_type != "timeseries":
-            return self._retrieve_tabular(store, features, entity_key, entity_id)
+            return self._retrieve_tabular(store, features, entity_key, entity_ids)
 
-        return self._retrieve_timeseries(store, features, entity_key, entity_id, config)
+        return self._retrieve_timeseries(
+            store, features, entity_key, entity_ids, config
+        )
 
     def _retrieve_tabular(
         self,
         store: BaseFeatureStore,
         features: List[str],
         entity_key: str,
-        entity_id: Union[int, str],
+        entity_ids: List[Union[int, str]],
     ) -> pd.DataFrame:
         """
         Retrieve single point from Online Store.
@@ -235,12 +237,12 @@ class OnlineRetrievalStrategy(FeatureRetrievalStrategy):
             If no online data found for the entity.
         """
         online_data = store.get_online_features(
-            entity_rows=[{entity_key: entity_id}],
+            entity_rows=[{entity_key: entity_id} for entity_id in entity_ids],
             features=features,
         )
 
         if not online_data:
-            raise ValueError(f"No online data found for {entity_key}={entity_id}")
+            raise ValueError(f"No online data found for {entity_key}={entity_ids}")
 
         return pd.DataFrame(online_data)
 
@@ -249,7 +251,7 @@ class OnlineRetrievalStrategy(FeatureRetrievalStrategy):
         store: BaseFeatureStore,
         features: List[str],
         entity_key: str,
-        entity_id: Union[int, str],
+        entity_ids: List[Union[int, str]],
         config: Dict[str, Any],
     ) -> pd.DataFrame:
         """
@@ -287,7 +289,7 @@ class OnlineRetrievalStrategy(FeatureRetrievalStrategy):
         ts_store = TimeSeriesFeatureStore(
             store=store,
             default_entity_key=entity_key,
-            default_entity_id=entity_id,
+            default_entity_id=entity_ids[0],
         )
 
         # Retrieve sequence at time_point
