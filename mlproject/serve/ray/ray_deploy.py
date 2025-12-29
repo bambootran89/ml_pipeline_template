@@ -1,9 +1,18 @@
+"""
+Ray Serve deployment with Feast integration for model inference.
+
+This module provides:
+1. Traditional data-in-payload prediction
+2. Feast-native single/multi-entity prediction
+3. Batch prediction for multiple entities
+"""
+
 from __future__ import annotations
 
 import asyncio
 import os
 import signal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -12,7 +21,15 @@ from fastapi import FastAPI, HTTPException
 from omegaconf import DictConfig, OmegaConf
 from ray import serve
 
-from mlproject.serve.schemas import PredictRequest
+from mlproject.serve.schemas import (
+    BatchPredictResponse,
+    FeastBatchPredictRequest,
+    FeastPredictRequest,
+    HealthResponse,
+    PredictRequest,
+    PredictResponse,
+)
+from mlproject.src.features.facade import FeatureStoreFacade
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
@@ -26,10 +43,122 @@ ARTIFACTS_DIR: str = get_env_path(
 
 CONFIG_PATH: str = get_env_path(
     "CONFIG_PATH",
-    "mlproject/configs/experiments/etth1.yaml",
+    "mlproject/configs/experiments/etth1_feast.yaml",
 ).as_posix()
 
-app = FastAPI(title="mlproject Ray Serve Inference API")
+app = FastAPI(
+    title="mlproject Ray Serve Inference API with Feast",
+    version="2.0.0",
+    description="Model inference with Feast feature store integration",
+)
+
+
+@serve.deployment(
+    health_check_period_s=10,
+    health_check_timeout_s=30,
+    num_replicas=int(os.getenv("RAY_FEAST_REPLICAS", "2")),
+    ray_actor_options={"num_cpus": 0.5},
+)
+class FeastService:
+    """
+    Ray Serve deployment for Feast feature retrieval.
+
+    Handles fetching features from Feast for single or multiple
+    entities at specified time points.
+
+    Attributes
+    ----------
+    cfg : DictConfig
+        Experiment configuration.
+    facade : FeatureStoreFacade
+        Facade for Feast operations.
+    ready : bool
+        Service readiness status.
+    """
+
+    cfg: DictConfig
+    facade: FeatureStoreFacade
+    ready: bool
+
+    def __init__(self) -> None:
+        """Initialize FeastService with configuration and facade."""
+        print("[FeastService] Initializing...")
+        self.cfg = ConfigLoader.load(CONFIG_PATH)
+        self.facade = FeatureStoreFacade(self.cfg, mode="online")
+        self.ready = True
+        print("[FeastService] Ready")
+
+    def check_health(self) -> None:
+        """Health check by Ray."""
+        if not self.ready:
+            raise RuntimeError("FeastService not ready")
+
+    async def fetch_features(
+        self,
+        time_point: str = "now",
+        entities: Optional[List[Union[int, str]]] = None,
+        entity_key: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """
+        Fetch features from Feast for entities at time_point.
+
+        Parameters
+        ----------
+        time_point : str, default="now"
+            Reference time. Can be "now" or ISO datetime string.
+        entities : Optional[List[Union[int, str]]], default=None
+            Entity IDs to query. If None, uses config default.
+        entity_key : Optional[str], default=None
+            Entity key name. If None, uses config default.
+
+        Returns
+        -------
+        pd.DataFrame
+            Features for requested entities and time point.
+
+        Raises
+        ------
+        RuntimeError
+            If Feast query fails.
+        """
+        try:
+            # Prepare config overlay for runtime entities
+            cfg_copy = OmegaConf.to_container(
+                self.cfg, resolve=True, throw_on_missing=False
+            )
+
+            if entities is not None and len(entities) > 0:
+                # Update entity_ids in config
+                cfg_copy["data"]["entity_ids"] = entities
+
+            if entity_key is not None:
+                cfg_copy["data"]["entity_key"] = entity_key
+
+            # Reload facade with updated config
+            updated_cfg = OmegaConf.create(cfg_copy)
+            facade = FeatureStoreFacade(updated_cfg, mode="online")
+
+            # Fetch features (run in executor to not block event loop)
+            loop = asyncio.get_running_loop()
+            df = await loop.run_in_executor(
+                None,
+                facade.load_features,
+                time_point,
+            )
+
+            print(
+                f"[FeastService] Fetched {len(df)} rows for "
+                f"{len(entities) if entities else 1} entities"
+            )
+            return df
+
+        except Exception as e:
+            print(f"[FeastService] Error fetching features: {e}")
+            raise RuntimeError(f"Feast query failed: {e}") from e
+
+    def is_available(self) -> bool:
+        """Return whether Feast service is available."""
+        return self.ready
 
 
 @serve.deployment(
@@ -92,55 +221,63 @@ class PreprocessingService:
             return
 
         if self.mlflow_manager.enabled:
-            # self.model = self._load_model_from_mlflow()
-            # Load artifacts đồng nhất
             model_name: str = self.cfg.experiment["model"].lower()
             self.preprocessor = self.mlflow_manager.load_component(
                 name=f"{model_name}_preprocessor", alias="production"
             )
 
-        # Fallback: Load local TransformManager
-        self.preprocessor = TransformManager(
-            self.cfg,
-            artifacts_dir=self.cfg.training.artifacts_dir,
-        )
-        self.preprocessor.load(cfg=self.cfg)
+        if self.preprocessor is None:
+            # Fallback: Load local TransformManager
+            self.preprocessor = TransformManager(
+                self.cfg,
+                artifacts_dir=self.cfg.training.artifacts_dir,
+            )
+            self.preprocessor.load(cfg=self.cfg)
+            print("[PreprocessingService] Loaded local TransformManager")
+
         self.ready = True
-        print("[PreprocessingService] Loaded local TransformManager")
+        print("[PreprocessingService] Ready")
 
     def check_health(self) -> None:
         """Health check by Ray - allow warmup phase."""
-        # Don't fail health check during warmup, just log status
         if not self.ready:
             print("[PreprocessingService] Still warming up...")
-        # Health check passes even during warmup
 
     async def preprocess(
-        self, data: Dict[str, List[Any]], model_handle: Any
+        self, data: Union[Dict[str, List[Any]], pd.DataFrame]
     ) -> pd.DataFrame:
         """
-        Transform raw input payload into feature DataFrame.
+        Transform raw input into feature DataFrame.
 
         Parameters
         ----------
-        data : Dict[str, List[Any]]
-            Raw input payload from HTTP request.
-        model_handle : Any
-            Ray actor handle to ModelService (unused, kept for compatibility).
+        data : Union[Dict[str, List[Any]], pd.DataFrame]
+            Raw input from request or Feast.
 
         Returns
         -------
         pd.DataFrame
             Transformed feature DataFrame.
-        """
-        _ = model_handle
-        if not self.ready:
-            raise RuntimeError("Service temporarily unavailable")
 
-        df = pd.DataFrame(data)
+        Raises
+        ------
+        RuntimeError
+            If service not ready or transformation fails.
+        """
+        if not self.ready:
+            raise RuntimeError("PreprocessingService temporarily unavailable")
+
+        # Convert dict to DataFrame if needed
+        if isinstance(data, dict):
+            df = pd.DataFrame(data)
+        else:
+            df = data.copy()
+
+        # Set index if date column exists
         if "date" in df.columns:
             df = df.set_index("date")
 
+        # Transform
         loop = asyncio.get_running_loop()
         assert self.preprocessor is not None
         return await loop.run_in_executor(None, self.preprocessor.transform, df)
@@ -151,20 +288,7 @@ class ModelService:
     """
     Ray Serve deployment for model inference.
 
-    Attributes
-    ----------
-    cfg : DictConfig
-        Experiment configuration.
-    mlflow_manager : MLflowManager
-        MLflow manager instance.
-    model : Optional[Any]
-        Loaded model instance.
-    model_loaded : bool
-        Indicates if the model is loaded.
-    run_id : Optional[str]
-        MLflow run ID if loaded from MLflow.
-    input_chunk_length : int
-        Number of time steps for model input.
+    (Same as original - no changes needed)
     """
 
     cfg: DictConfig
@@ -184,7 +308,9 @@ class ModelService:
         self.run_id = None
         self.input_chunk_length = self._load_input_chunk_length()
         self._load_model()
-        print(f"[ModelService] Initialization Complete. Loaded: {self.model_loaded}")
+        print(
+            f"[ModelService] Initialization Complete. " f"Loaded: {self.model_loaded}"
+        )
 
     def check_health(self) -> None:
         """Health check by Ray."""
@@ -192,14 +318,7 @@ class ModelService:
             raise RuntimeError("Model artifacts not loaded yet.")
 
     def _load_input_chunk_length(self) -> int:
-        """
-        Load input_chunk_length from experiment config.
-
-        Returns
-        -------
-        int
-            Number of input time steps.
-        """
+        """Load input_chunk_length from experiment config."""
         if hasattr(self.cfg, "experiment") and hasattr(
             self.cfg.experiment, "hyperparams"
         ):
@@ -218,7 +337,6 @@ class ModelService:
             return
 
         self._load_local_model()
-        return
 
     def _load_local_model(self) -> None:
         """Load model from local artifacts directory."""
@@ -231,46 +349,20 @@ class ModelService:
         self.model_loaded = True
 
     def prepare_input(self, df: pd.DataFrame) -> np.ndarray:
-        """
-        Prepare model input from preprocessed DataFrame.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Preprocessed feature DataFrame.
-
-        Returns
-        -------
-        np.ndarray
-            2D array with shape (1, input_chunk_length, n_features).
-        """
+        """Prepare model input from preprocessed DataFrame."""
         if self.model is None:
             raise RuntimeError("Model not loaded")
         if len(df) < self.input_chunk_length:
             raise ValueError(
-                f"Need at least {self.input_chunk_length} rows, got {len(df)}"
+                f"Need at least {self.input_chunk_length} rows, " f"got {len(df)}"
             )
         return df.values[-self.input_chunk_length :][np.newaxis, :]
 
     def predict_prepared(self, x_input: np.ndarray) -> List[float]:
-        """
-        Run prediction on prepared input array.
-
-        Parameters
-        ----------
-        x_input : np.ndarray
-            Prepared input array.
-
-        Returns
-        -------
-        List[float]
-            Flattened prediction results.
-        """
+        """Run prediction on prepared input array."""
         if self.model is None:
             raise RuntimeError("Model not loaded")
 
-        # PyFuncModel từ MLflow có method predict
-        # Model local từ ModelFactory cũng có method predict
         if not hasattr(self.model, "predict"):
             raise RuntimeError("Model has no predict method")
 
@@ -294,7 +386,12 @@ class ModelService:
 @serve.ingress(app)
 class ForecastAPI:
     """
-    Ray Serve HTTP API for model-agnostic inference.
+    Ray Serve HTTP API with Feast integration.
+
+    Provides three prediction modes:
+    1. /predict - Traditional data-in-payload
+    2. /predict/feast - Feast-native single/multi-entity
+    3. /predict/feast/batch - Optimized batch prediction
 
     Attributes
     ----------
@@ -302,14 +399,22 @@ class ForecastAPI:
         Ray actor handle for PreprocessingService.
     model_handle : Any
         Ray actor handle for ModelService.
+    feast_handle : Any
+        Ray actor handle for FeastService.
     """
 
     preprocess_handle: Any
     model_handle: Any
+    feast_handle: Any
 
-    def __init__(self, preprocess_handle: Any, model_handle: Any) -> None:
+    def __init__(
+        self,
+        preprocess_handle: Any,
+        model_handle: Any,
+        feast_handle: Any,
+    ) -> None:
         """
-        Initialize ForecastAPI with preprocessing and model handles.
+        Initialize ForecastAPI with service handles.
 
         Parameters
         ----------
@@ -317,37 +422,47 @@ class ForecastAPI:
             Preprocessing Ray actor handle.
         model_handle : Any
             Model Ray actor handle.
+        feast_handle : Any
+            Feast Ray actor handle.
         """
         self.preprocess_handle = preprocess_handle
         self.model_handle = model_handle
+        self.feast_handle = feast_handle
 
-    @app.post("/predict")
+    @app.post("/predict", response_model=PredictResponse)
     async def predict(self, req: PredictRequest) -> Dict[str, List[float]]:
         """
-        Run model prediction for input payload.
+        Traditional prediction with data in payload.
+
+        This endpoint maintains backward compatibility with existing
+        clients that provide feature data directly in the request.
 
         Parameters
         ----------
         req : PredictRequest
-            FastAPI request payload containing data.
+            Request containing feature data.
 
         Returns
         -------
         Dict[str, List[float]]
-            Dictionary with prediction results.
+            Dictionary with 'prediction' key containing results.
+
+        Examples
+        --------
+        >>> POST /predict
+        >>> {
+        ...     "data": {
+        ...         "temp": [25.5, 26.0, ...],
+        ...         "humidity": [60.0, 61.5, ...]
+        ...     }
+        ... }
         """
         try:
-            # Call .remote() on Ray handles
-            df: pd.DataFrame = await self.preprocess_handle.preprocess.remote(
-                req.data,
-                self.model_handle,
-            )  # type: ignore[attr-defined]
-
-            # type: ignore[attr-defined]
+            df: pd.DataFrame = await self.preprocess_handle.preprocess.remote(req.data)
             x_input = await self.model_handle.prepare_input.remote(df)
-            # type: ignore[attr-defined]
             preds = await self.model_handle.predict_prepared.remote(x_input)
             return {"prediction": preds}
+
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
@@ -355,7 +470,169 @@ class ForecastAPI:
                 status_code=500, detail=f"Prediction failed: {exc}"
             ) from exc
 
-    @app.get("/health")
+    @app.post("/predict/feast", response_model=PredictResponse)
+    async def predict_feast(self, req: FeastPredictRequest) -> Dict[str, List[float]]:
+        """
+        Feast-native prediction for single or few entities.
+
+        The API automatically fetches features from Feast based on
+        time_point and entities parameters.
+
+        Parameters
+        ----------
+        req : FeastPredictRequest
+            Request with time_point and optional entities.
+
+        Returns
+        -------
+        Dict[str, List[float]]
+            Dictionary with 'prediction' key containing results.
+
+        Examples
+        --------
+        Single entity:
+        >>> POST /predict/feast
+        >>> {
+        ...     "time_point": "2024-01-01T12:00:00",
+        ...     "entities": [1]
+        ... }
+
+        Multiple entities (returns first entity's prediction):
+        >>> POST /predict/feast
+        >>> {
+        ...     "time_point": "now",
+        ...     "entities": [1, 2, 3]
+        ... }
+        """
+        try:
+            # 1. Fetch features from Feast
+            df: pd.DataFrame = await self.feast_handle.fetch_features.remote(
+                time_point=req.time_point,
+                entities=req.entities,
+                entity_key=req.entity_key,
+            )
+
+            # 2. For multi-entity, take first entity only
+            entity_key = req.entity_key or "location_id"
+            if req.entities and len(req.entities) > 1:
+                if entity_key in df.columns:
+                    first_entity = req.entities[0]
+                    df = df[df[entity_key] == first_entity]
+
+            # 3. Preprocess
+            df_transformed: pd.DataFrame = (
+                await self.preprocess_handle.preprocess.remote(df)
+            )
+            if entity_key in df_transformed.columns:
+                del df_transformed[entity_key]
+
+            # 4. Predict
+            x_input = await self.model_handle.prepare_input.remote(df_transformed)
+            preds = await self.model_handle.predict_prepared.remote(x_input)
+            # Sanitize JSON-unsafe values
+
+            preds = np.asarray(preds, dtype=np.float32)
+            preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
+            return {"prediction": preds}
+
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Feast prediction failed: {exc}",
+            ) from exc
+
+    @app.post("/predict/feast/batch", response_model=BatchPredictResponse)
+    async def predict_feast_batch(
+        self, req: FeastBatchPredictRequest
+    ) -> Dict[str, Dict[Union[int, str], List[float]]]:
+        """
+        Batch prediction for multiple entities from Feast.
+
+        Optimized endpoint that fetches all entities in a single
+        Feast query, then predicts for each entity in parallel.
+
+        Parameters
+        ----------
+        req : FeastBatchPredictRequest
+            Request with time_point and entities list.
+
+        Returns
+        -------
+        Dict[str, Dict[Union[int, str], List[float]]]
+            Dictionary with 'predictions' key containing results
+            grouped by entity ID.
+
+        Examples
+        --------
+        >>> POST /predict/feast/batch
+        >>> {
+        ...     "time_point": "now",
+        ...     "entities": [1, 2, 3, 4, 5],
+        ...     "entity_key": "location_id"
+        ... }
+        >>>
+        >>> # Response:
+        >>> {
+        ...     "predictions": {
+        ...         "1": [25.5, 26.0, 24.8],
+        ...         "2": [22.3, 23.1, 22.7],
+        ...         "3": [28.9, 29.5, 28.3],
+        ...         "4": [24.1, 24.6, 24.0],
+        ...         "5": [26.7, 27.2, 26.5]
+        ...     }
+        ... }
+        """
+        try:
+            # 1. Fetch features for ALL entities (single Feast query!)
+            df_all: pd.DataFrame = await self.feast_handle.fetch_features.remote(
+                time_point=req.time_point,
+                entities=req.entities,
+                entity_key=req.entity_key,
+            )
+
+            # 2. Predict for each entity
+            predictions: Dict[Union[int, str], List[float]] = {}
+            entity_key = req.entity_key or "location_id"
+            for entity_id in req.entities:
+                # Filter data for this entity
+                entity_df = df_all[df_all[req.entity_key] == entity_id].copy()
+
+                if entity_df.empty:
+                    print(f"[WARNING] No data for entity {entity_id}, " f"skipping")
+                    continue
+
+                # Preprocess
+                df_transformed = await self.preprocess_handle.preprocess.remote(
+                    entity_df
+                )
+                if entity_key in df_transformed.columns:
+                    del df_transformed[entity_key]
+
+                # Predict
+                x_input = await self.model_handle.prepare_input.remote(df_transformed)
+                preds = await self.model_handle.predict_prepared.remote(x_input)
+
+                predictions[str(entity_id)] = preds
+
+            # Sanitize JSON-unsafe values
+            for k, v in predictions.items():
+                arr = np.asarray(v, dtype=np.float32)
+                arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+                predictions[k] = arr.tolist()
+
+            return {"predictions": predictions}
+
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Batch prediction failed: {exc}",
+            ) from exc
+
+    @app.get("/health", response_model=HealthResponse)
     async def health(self) -> Dict[str, bool]:
         """
         Health check endpoint.
@@ -363,23 +640,29 @@ class ForecastAPI:
         Returns
         -------
         Dict[str, bool]
-            Dictionary indicating API and model status.
+            Dictionary with status indicators.
         """
         try:
-            # type: ignore[attr-defined]
-            loaded = await self.model_handle.is_loaded.remote()
+            model_loaded = await self.model_handle.is_loaded.remote()
+            feast_available = await self.feast_handle.is_available.remote()
         except Exception:
-            loaded = False
-        return {"status": True, "model_loaded": loaded}
+            model_loaded = False
+            feast_available = False
+
+        return {
+            "status": True,
+            "model_loaded": model_loaded,
+            "feast_available": feast_available,
+        }
 
 
 def main() -> None:
     """
-    Start Ray Serve application.
+    Start Ray Serve application with Feast integration.
 
-    Initializes Ray, starts Serve, and deploys ForecastAPI.
+    Initializes Ray, starts Serve, and deploys all services.
     """
-    # Start Ray với dashboard
+    # Start Ray with dashboard
     ray.init(
         ignore_reinit_error=True,
         include_dashboard=True,
@@ -388,25 +671,32 @@ def main() -> None:
     )
     serve.start(detached=True)
 
+    # Bind services
     # pylint: disable=no-member
     model = ModelService.bind()  # type: ignore[attr-defined]
     # pylint: disable=no-member
     preprocess = PreprocessingService.bind(model)  # type: ignore[attr-defined]
+    feast = FeastService.bind()
 
-    # Deploy API với cả 2 handles
+    # Deploy API with all 3 handles
     # pylint: disable=no-member
     serve.run(
-        ForecastAPI.bind(preprocess, model),  # type: ignore[attr-defined]
+        ForecastAPI.bind(preprocess, model, feast),  # type: ignore[attr-defined]
         route_prefix="/",
     )
 
     print("[Ray Serve] API ready at http://localhost:8000")
+    print("[Ray Serve] Endpoints:")
+    print("  - POST /predict (traditional)")
+    print("  - POST /predict/feast (Feast single/multi)")
+    print("  - POST /predict/feast/batch (Feast batch)")
+    print("  - GET /health")
     print("[Ray Serve] Dashboard at http://localhost:8265")
     print("[Ray Serve] Press Ctrl+C to stop")
 
-    # Giữ script chạy
+    # Keep script running
     try:
-        signal.pause()  # Wait for signal (Ctrl+C)
+        signal.pause()
     except KeyboardInterrupt:
         print("\n[Ray Serve] Shutting down...")
         serve.shutdown()

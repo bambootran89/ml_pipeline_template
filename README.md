@@ -139,9 +139,8 @@ Deploys the model using Ray Serve.
 # OR Start Ray Serve
 python mlproject/serve/ray/ray_deploy.py
 ```
-Test API services
+Test API services: mlproject/configs/experiments/etth1.yaml
 ```bash
-
 curl -X POST http://localhost:8000/predict   -H "Content-Type: application/json"   -d '{
     "data": {
       "HUFL": [-0.15, 0.08, 0.01, -0.01, 0.21, -0.15, 0.12, 0.05, -0.08, 0.18, -0.12, 0.22, 0.03, -0.18, 0.15, -0.05, 0.28, -0.22, 0.08, -0.15, 0.32, -0.28, 0.12, -0.18],
@@ -149,6 +148,13 @@ curl -X POST http://localhost:8000/predict   -H "Content-Type: application/json"
       "mobility_inflow": [1.24, 4.42, 7.28, 1.03, 0.73, 2.5, 3.2, 4.1, 1.8, 5.3, 2.1, 6.4, 1.5, 7.8, 3.6, 4.9, 2.7, 8.2, 1.9, 5.5, 3.8, 6.7, 2.3, 4.2]
     }
   }'
+```
+
+Test API services: mlproject/configs/experiments/etth1etth1_feast.yaml
+```bash
+curl -X POST http://localhost:8000/predict/feast/batch \
+  -H "Content-Type: application/json" \
+  -d '{"time_point":"now","entities":[1,2,3,4,5],"entity_key":"location_id"}'
 ```
 
 ## Docker & Kubernetes
