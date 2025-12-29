@@ -122,28 +122,15 @@ class FeastService:
             If Feast query fails.
         """
         try:
-            # Prepare config overlay for runtime entities
-            cfg_copy = OmegaConf.to_container(
-                self.cfg, resolve=True, throw_on_missing=False
-            )
-
-            if entities is not None and len(entities) > 0:
-                # Update entity_ids in config
-                cfg_copy["data"]["entity_ids"] = entities
-
-            if entity_key is not None:
-                cfg_copy["data"]["entity_key"] = entity_key
-
-            # Reload facade with updated config
-            updated_cfg = OmegaConf.create(cfg_copy)
-            facade = FeatureStoreFacade(updated_cfg, mode="online")
-
             # Fetch features (run in executor to not block event loop)
+            _ = entity_key
             loop = asyncio.get_running_loop()
             df = await loop.run_in_executor(
                 None,
-                facade.load_features,
+                self.facade.load_features,
                 time_point,
+                entities,
+                # entity_key
             )
 
             print(
@@ -428,6 +415,11 @@ class ForecastAPI:
         self.preprocess_handle = preprocess_handle
         self.model_handle = model_handle
         self.feast_handle = feast_handle
+        self.cfg = ConfigLoader.load(CONFIG_PATH)
+        self.default_entity_key = self.cfg.data.get("entity_key", "location_id")
+        self.input_chunk_length = int(
+            self.cfg.experiment.hyperparams.get("input_chunk_length", 24)
+        )
 
     @app.post("/predict", response_model=PredictResponse)
     async def predict(self, req: PredictRequest) -> Dict[str, List[float]]:
@@ -513,7 +505,7 @@ class ForecastAPI:
             )
 
             # 2. For multi-entity, take first entity only
-            entity_key = req.entity_key or "location_id"
+            entity_key = req.entity_key or self.default_entity_key
             if req.entities and len(req.entities) > 1:
                 if entity_key in df.columns:
                     first_entity = req.entities[0]
@@ -585,52 +577,106 @@ class ForecastAPI:
         ... }
         """
         try:
-            # 1. Fetch features for ALL entities (single Feast query!)
+            # 1. Fetch features for ALL entities (single Feast query)
             df_all: pd.DataFrame = await self.feast_handle.fetch_features.remote(
                 time_point=req.time_point,
                 entities=req.entities,
                 entity_key=req.entity_key,
             )
 
-            # 2. Predict for each entity
-            predictions: Dict[Union[int, str], List[float]] = {}
-            entity_key = req.entity_key or "location_id"
+            # 2. Run inference chain for each valid entity
+            entity_key = req.entity_key or self.default_entity_key
+            tasks: List[asyncio.Task[List[float]]] = []
+            valid_entity_ids: List[Union[int, str]] = []
+            grouped = df_all.groupby(entity_key)
+
             for entity_id in req.entities:
-                # Filter data for this entity
-                entity_df = df_all[df_all[req.entity_key] == entity_id].copy()
+                # Filter rows belonging to this entity
+                if entity_id in grouped.groups:
+                    entity_df = grouped.get_group(entity_id).copy()
 
-                if entity_df.empty:
-                    print(f"[WARNING] No data for entity {entity_id}, " f"skipping")
-                    continue
+                    tasks.append(
+                        asyncio.create_task(
+                            self._run_inference_chain(entity_df, entity_key)
+                        )
+                    )
+                    valid_entity_ids.append(entity_id)
+                else:
+                    print(
+                        f"[WARNING] Entity {entity_id} \
+                            not found in Feast result, skipping."
+                    )
 
-                # Preprocess
-                df_transformed = await self.preprocess_handle.preprocess.remote(
-                    entity_df
-                )
-                if entity_key in df_transformed.columns:
-                    del df_transformed[entity_key]
+            if not tasks:
+                return {"predictions": {}}
 
-                # Predict
-                x_input = await self.model_handle.prepare_input.remote(df_transformed)
-                preds = await self.model_handle.predict_prepared.remote(x_input)
+            # 3. Collect predictions in parallel
+            batch_preds = await asyncio.gather(*tasks, return_exceptions=True)
 
-                predictions[str(entity_id)] = preds
+            # 4. Build response dictionary (entity_id → predictions)
+            predictions: Dict[Union[str, int], List[float]] = {
+                str(eid): preds
+                for eid, preds in zip(valid_entity_ids, batch_preds)
+                if isinstance(preds, list)
+            }
 
-            # Sanitize JSON-unsafe values
-            for k, v in predictions.items():
-                arr = np.asarray(v, dtype=np.float32)
+            # 5. Normalize JSON-unsafe values (NaN, Inf)
+            for eid, preds in predictions.items():
+                arr = np.asarray(preds, dtype=np.float32)
                 arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
-                predictions[k] = arr.tolist()
+                predictions[eid] = arr.tolist()
 
             return {"predictions": predictions}
 
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         except Exception as exc:
             raise HTTPException(
                 status_code=500,
-                detail=f"Batch prediction failed: {exc}",
+                detail=f"[ERROR] Batch prediction failed: {exc}",
             ) from exc
+
+    async def _run_inference_chain(self, df: pd.DataFrame, key: str) -> List[float]:
+        """Run feature preprocessing and model inference for one entity."""
+        try:
+            # 1. Preprocess features
+            df_transformed: pd.DataFrame = (
+                await self.preprocess_handle.preprocess.remote(df)
+            )
+
+            # 2. Drop entity key column if present
+            if key in df_transformed.columns:
+                df_transformed = df_transformed.drop(columns=[key])
+
+            if len(df_transformed) < self.input_chunk_length:
+                raise ValueError(
+                    f"Insufficient data: need \
+                        {self.input_chunk_length}, got {len(df_transformed)}"
+                )
+            # 3. Prepare model input
+            x_input: np.ndarray = await self.model_handle.prepare_input.remote(
+                df_transformed
+            )
+
+            # 4. Run model inference
+            preds: List[float] = await self.model_handle.predict_prepared.remote(
+                x_input
+            )
+
+            # 5. Normalize JSON-unsafe values
+            arr = np.asarray(preds, dtype=np.float32)
+            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+            return arr.tolist()
+
+        except ValueError as exc:
+            print(f"[InferenceChain] Value error: {exc}")
+            raise
+
+        except Exception as exc:
+            print(f"[InferenceChain] Unexpected error: {exc}")
+            raise
 
     @app.get("/health", response_model=HealthResponse)
     async def health(self) -> Dict[str, bool]:
@@ -676,7 +722,8 @@ def main() -> None:
     model = ModelService.bind()  # type: ignore[attr-defined]
     # pylint: disable=no-member
     preprocess = PreprocessingService.bind(model)  # type: ignore[attr-defined]
-    feast = FeastService.bind()
+    # pylint: disable=no-member
+    feast = FeastService.bind()  # type: ignore[attr-defined]
 
     # Deploy API with all 3 handles
     # pylint: disable=no-member
