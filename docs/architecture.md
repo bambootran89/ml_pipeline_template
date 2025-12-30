@@ -96,17 +96,24 @@ flowchart TB
 ```mermaid
 %%{init: {
   "theme": "base",
-  "flowchart": {"nodeSpacing":90,"rankSpacing":110,"curve":"linear","padding":12},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","lineColor":"#000","fontFamily":"Inter, Arial, sans-serif","fontSize":"15px","fontWeight":"700"}
+  "flowchart": {"nodeSpacing":40,"rankSpacing":50,"curve":"linear","padding":8},
+  "themeVariables": {
+    "primaryColor":"#e3f2fd",
+    "lineColor":"#2196f3",
+    "edgeLabelBackground":"#fff",
+    "fontFamily":"Inter, Arial, sans-serif",
+    "fontSize":"14px",
+    "fontWeight":"700"
+  }
 }}%%
 
 flowchart LR
     %% Stronger Styles
-    classDef training fill:#bbdefb,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef artifact fill:#e1bee7,stroke:#000,stroke-width:4px,color:#000,font-weight:800
-    classDef component fill:#c8e6c9,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef serving fill:#ffccbc,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef note fill:#ffffff,stroke:#000,stroke-width:2px,color:#000,font-weight:600,font-size:13px,stroke-dasharray:4 4
+    classDef training fill:#bbdefb,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:800
+    classDef artifact fill:#e1bee7,stroke:#2196f3,stroke-width:4px,color:#000,font-weight:800
+    classDef component fill:#c8e6c9,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:800
+    classDef serving fill:#ffccbc,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:800
+    classDef note fill:#ffffff,stroke:#2196f3,stroke-width:2px,color:#000,font-weight:600,font-size:13px,stroke-dasharray:4 4
 
     %% Training Phase
     subgraph Training["Training Phase"]
@@ -156,7 +163,7 @@ flowchart LR
     Note3 -.-> Output
 
     %% Global link emphasis
-    linkStyle default stroke:#000,stroke-width:3px
+    linkStyle default stroke:#2196f3,stroke-width:3px
 ```
 
 **Benefits:**
@@ -168,70 +175,6 @@ flowchart LR
 ---
 
 ## 3. Feast Feature Store Integration
-
-```mermaid
-%%{init: {
-  "theme": "base",
-  "flowchart": {"nodeSpacing":85,"rankSpacing":110,"curve":"linear","padding":14},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"15px","fontWeight":"800","lineColor":"#000"}
-}}%%
-
-flowchart TB
-    %% Stronger Styles
-    classDef source fill:#fff9c4,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef feast fill:#c8e6c9,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef client fill:#bbdefb,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef note fill:#ffffff,stroke:#000,stroke-width:2px,color:#000,font-weight:600,stroke-dasharray:5 5,font-size:13px
-
-    %% Data Sources
-    subgraph Sources["Data Sources"]
-        DB["PostgreSQL<br/>MySQL"]:::source
-        Files["Parquet<br/>CSV"]:::source
-        Stream["Kafka<br/>Kinesis"]:::source
-    end
-
-    %% Feast Core
-    subgraph FeastCore["Feast Feature Store"]
-        Registry["Feature Registry<br/>- Definitions<br/>- Metadata<br/>- Schemas"]:::feast
-
-        subgraph Stores["Storage Backends"]
-            Offline["Offline Store<br/>(Parquet/BigQuery)<br/>Training & Backfill"]:::feast
-            Online["Online Store<br/>(Redis/DynamoDB)<br/>Low-latency serving<br/>&lt;10ms reads"]:::feast
-        end
-
-        Materialize["Materialization<br/>Offline → Online<br/>(Scheduled/On-demand)"]:::feast
-    end
-
-    %% Clients
-    subgraph Clients["Client Applications"]
-        Training["Training Pipeline<br/>Historical features<br/>Point-in-time join"]:::client
-        Serving["Serving API<br/>Real-time features<br/>Multi-entity batch"]:::client
-    end
-
-    %% Flows (bold for primary paths)
-    DB ==> Registry
-    Files ==> Registry
-    Stream ==> Registry
-
-    Registry ==> Offline
-    Offline ==> |Materialize| Online
-    Materialize -.-> |Schedule| Online
-
-    Offline ==> |get_historical_features| Training
-    Online ==> |get_online_features| Serving
-
-    %% Notes / Annotations
-    Note1["Time-travel:<br/>Point-in-time correctness"]:::note
-    Note2["Sub-10ms latency:<br/>Production serving"]:::note
-    Note3["Consistency:<br/>Same features training/serving"]:::note
-
-    Note1 -.-> Offline
-    Note2 -.-> Online
-    Note3 -.-> Materialize
-
-    %% Global edge emphasis
-    linkStyle default stroke:#000,stroke-width:3px
-```
 
 **Key Features:**
 
@@ -249,263 +192,15 @@ flowchart TB
 
 ### 4.1 Strategy Pattern (Feature Retrieval)
 
-```mermaid
-%%{init: {
-  "theme": "base",
-  "flowchart": {"nodeSpacing":85,"rankSpacing":110,"curve":"linear","padding":14},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"15px","fontWeight":"800","lineColor":"#000"}
-}}%%
-
-flowchart TB
-    %% Stronger Styles (higher contrast + bold text)
-    classDef client fill:#fff9c4,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef factory fill:#e1bee7,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef interface fill:#ffccbc,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef strategy fill:#c8e6c9,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef decision fill:#ffffff,stroke:#000,stroke-width:2px,color:#000,font-weight:600,font-size:14px
-
-    %% Client
-    Client["Client Code<br/>(Facade/Pipeline)"]:::client
-
-    %% Factory
-    Factory["StrategyFactory<br/>.create(data_type, mode, time_point)"]:::factory
-
-    %% Interface
-    Interface["FeatureRetrievalStrategy<br/>«interface»<br/>+ retrieve()"]:::interface
-
-    %% Concrete Strategies
-    Timeseries["TimeseriesRetrievalStrategy<br/>- get_sequence_by_range()<br/>- Windowed data"]:::strategy
-    Tabular["TabularRetrievalStrategy<br/>- get_historical_features()<br/>- Entity joins"]:::strategy
-    Online["OnlineRetrievalStrategy<br/>- get_online_features()<br/>- get_latest_n_sequence()<br/>- Multi-entity support"]:::strategy
-
-    %% Decision Logic Node (fixed syntax + clean formatting)
-    Decision{"mode == 'online'?<br/>data_type?"}:::decision
-
-    %% Relationships (primary flow emphasized with ==>)
-    Client ==>|"1. Request strategy"| Factory
-    Factory ==>|"2. Create"| Interface
-
-    %% Interface implementation links (fixed direction and syntax)
-    Interface -.-> Timeseries
-    Interface -.-> Tabular
-    Interface -.-> Online
-
-    %% Return paths
-    Timeseries ==>|"3. Return"| Factory
-    Tabular ==>|"3. Return"| Factory
-    Online ==>|"3. Return"| Factory
-
-    %% Factory usage
-    Factory ==>|"4. Use"| Client
-
-    %% Decision branching (connect directly to strategies)
-    Factory -.-> Decision
-    Decision -.->|"online"| Online
-    Decision -.->|"historical + timeseries"| Timeseries
-    Decision -.->|"historical + tabular"| Tabular
-
-    %% Global edge emphasis for better visibility
-    linkStyle default stroke:#000,stroke-width:3px
-```
-
-**Code Example:**
-```python
-# Client code - NO conditionals!
-strategy = StrategyFactory.create(
-    data_type="timeseries",
-    mode="online",
-    time_point="now"
-)
-
-df = strategy.retrieve(
-    store=feast_store,
-    features=["temp", "humidity"],
-    entity_key="location_id",
-    entity_id=42,
-    config=config
-)
-```
-
 **Benefits:**
 - **Open-Closed Principle**: Add new strategies without modifying client
 - **Single Responsibility**: Each strategy handles one retrieval type
 - **Testability**: Easy to mock strategies
 
----
 
 ### 4.2 Facade Pattern (Simplified Feature Access)
 
-```mermaid
-%%{init: {
-  "theme": "base",
-  "flowchart": {"nodeSpacing":90,"rankSpacing":120,"curve":"linear","padding":12},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"15px","fontWeight":"700","lineColor":"#000"}
-}}%%
-
-flowchart LR
-    %% Stronger contrast styles
-    classDef client fill:#fff9c4,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef facade fill:#e1bee7,stroke:#000,stroke-width:4px,color:#000,font-weight:900
-    classDef subsystem fill:#c8e6c9,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef edgeMain stroke:#000,stroke-width:3.2px,font-weight:800,color:#000
-
-    %% Simple Interface
-    subgraph Simple["Simple Interface (3 lines)"]
-        Client["Client Code"]:::client
-        Facade["FeatureStoreFacade<br/><br/>load_features(<br/>  time_point,<br/>  entities<br/>)"]:::facade
-    end
-
-    %% Complex Subsystem
-    subgraph Complex["Complex Subsystem (Hidden)"]
-        Factory["FeatureStoreFactory<br/>Initialize store"]:::subsystem
-        Strategy["StrategyFactory<br/>Select strategy"]:::subsystem
-        Store["Feast FeatureStore<br/>Complex API"]:::subsystem
-        Config["Config Resolution<br/>Entities, features"]:::subsystem
-        Error["Error Handling<br/>Retries, fallbacks"]:::subsystem
-    end
-
-    %% Primary flow emphasized
-    Client ==>|"Simple call"| Facade:::edgeMain
-    Facade ==>|"1. Create store"| Factory:::edgeMain
-    Facade ==>|"2. Select strategy"| Strategy:::edgeMain
-    Facade ==>|"3. Load features"| Store:::edgeMain
-    Facade ==>|"4. Resolve config"| Config:::edgeMain
-    Facade ==>|"5. Handle errors"| Error:::edgeMain
-
-    %% Encapsulation return paths
-    Factory -.->|"Encapsulated"| Facade
-    Strategy -.->|"Encapsulated"| Facade
-    Store -.->|"Encapsulated"| Facade
-    Config -.->|"Encapsulated"| Facade
-    Error -.->|"Encapsulated"| Facade
-
-    %% Final output flow preserved
-    Facade ==>|"DataFrame"| Client:::edgeMain
-
-    %% Global edge visibility boost
-    linkStyle default stroke:#000,stroke-width:2.8px
-```
-
-**Before (Complex):**
-```python
-# 30 lines of boilerplate
-from feast import FeatureStore
-store = FeatureStore(repo_path="...")
-features = [f"{view}:{f}" for f in feature_list]
-entity_rows = [{entity_key: eid} for eid in entity_ids]
-
-if mode == "online":
-    result = store.get_online_features(
-        entity_rows=entity_rows,
-        features=features
-    )
-else:
-    entity_df = pd.DataFrame({...})
-    result = store.get_historical_features(
-        entity_df=entity_df,
-        features=features
-    )
-# ... error handling, parsing, etc.
-```
-
-**After (Simple):**
-```python
-# 3 lines!
-facade = FeatureStoreFacade(config, mode="online")
-df = facade.load_features(time_point="now", entities=[1, 2, 3])
-```
-
----
-
 ## 5. Distributed Serving Architecture (Ray Serve)
-
-```mermaid
-%%{init: {
-  "theme": "base",
-  "flowchart": {"nodeSpacing":100,"rankSpacing":130,"curve":"linear","padding":14},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","fontFamily":"Inter, Arial, sans-serif","fontSize":"15px","fontWeight":"700","lineColor":"#000"}
-}}%%
-
-flowchart TB
-    %% Stronger contrast & sharper lines
-    classDef client fill:#fff9c4,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef ingress fill:#ffccbc,stroke:#000,stroke-width:4px,color:#000,font-weight:900
-    classDef service fill:#c8e6c9,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef storage fill:#e1bee7,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef async fill:#b0bec5,stroke:#000,stroke-width:2.5px,stroke-dasharray:5,color:#000,font-weight:700
-    classDef edgeMain stroke:#000,stroke-width:3.2px,font-weight:800,color:#000
-
-    %% Client
-    Client["HTTP Client<br/>POST /predict/feast/batch"]:::client
-
-    %% Ingress
-    subgraph Ingress["API Gateway (1 replica)"]
-        API["ForecastAPI<br/>- Request validation<br/>- Response formatting<br/>- Error handling"]:::ingress
-    end
-
-    %% Services Layer
-    subgraph Services["Distributed Services (Ray Cluster)"]
-        subgraph FeastSvc["FeastService (2 replicas)"]
-            F1["Replica 1<br/>I/O bound"]:::service
-            F2["Replica 2<br/>I/O bound"]:::service
-        end
-
-        subgraph PreprocessSvc["PreprocessingService (2 replicas)"]
-            P1["Replica 1<br/>CPU bound"]:::service
-            P2["Replica 2<br/>CPU bound"]:::service
-        end
-
-        subgraph ModelSvc["ModelService (1-4 replicas)"]
-            M1["Replica 1<br/>GPU/CPU"]:::service
-            M2["Replica 2<br/>GPU/CPU"]:::service
-        end
-    end
-
-    %% Storage
-    subgraph Storage["External Dependencies"]
-        Feast["Feast<br/>Feature Store"]:::storage
-        MLflow["MLflow<br/>Model Registry"]:::storage
-    end
-
-    %% Primary flow (kept identical but highlighted visually)
-    Client ==>|"1. HTTP Request"| API:::edgeMain
-
-    API ==>|"2. async fetch_features.remote()"| F1:::edgeMain
-    API -.->|"Load balance"| F2
-    F1 ==>|"Query"| Feast:::edgeMain
-    F2 -->|"Query"| Feast
-
-    F1 ==>|"3. async preprocess.remote()"| P1:::edgeMain
-    F1 -.->|"Load balance"| P2
-    P1 ==>|"Load artifacts"| MLflow:::edgeMain
-
-    P1 ==>|"4. async predict.remote()"| M1:::edgeMain
-    P1 -.->|"Load balance"| M2
-    M1 ==>|"Load model"| MLflow:::edgeMain
-
-    M1 ==>|"5. Predictions"| API:::edgeMain
-    API ==>|"6. JSON Response"| Client:::edgeMain
-
-    %% Async coordination
-    AsyncCoord["Async Coordination<br/>(await asyncio.gather)"]:::async
-    API -.->|"Non-blocking"| AsyncCoord
-    AsyncCoord -.-> F1
-    AsyncCoord -.-> P1
-    AsyncCoord -.-> M1
-
-    %% Edge visibility boost globally
-    linkStyle default stroke:#000,stroke-width:2.8px
-
-```
-
-**Service Scaling Matrix:**
-
-| Service | Bottleneck | Replicas | Resource | Auto-scale Trigger |
-|---------|-----------|----------|----------|-------------------|
-| **ForecastAPI** | HTTP routing | 1 | 0.5 CPU | Request queue |
-| **FeastService** | I/O latency | 2-4 | 0.5 CPU | Feast query time |
-| **PreprocessingService** | CPU computation | 2-4 | 1-2 CPU | CPU usage >70% |
-| **ModelService** | GPU/CPU inference | 1-4 | 1 GPU or 4 CPU | GPU usage >80% |
 
 **Key Features:**
 - **Independent Scaling**: Each service scales based on its bottleneck
@@ -513,111 +208,8 @@ flowchart TB
 - **Fault Isolation**: Service crash doesn't affect others
 - **Resource Efficiency**: GPU only for inference
 
----
 
 ## 6. MLflow Model Registry (Deployment Strategy)
-
-```mermaid
-%%{init: {
-  "theme": "base",
-  "flowchart": {"nodeSpacing":90,"rankSpacing":110,"curve":"linear","padding":12},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#ffffff","fontFamily":"Inter, Arial, sans-serif","fontSize":"15px","fontWeight":"700","lineColor":"#000000"}
-}}%%
-
-flowchart LR
-    %% Stronger styles for visibility
-    classDef training fill:#c8e6c9,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef registry fill:#e1bee7,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef alias fill:#ffccbc,stroke:#000,stroke-width:4px,color:#000,font-weight:900
-    classDef serving fill:#bbdefb,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef edgeMain stroke:#000,stroke-width:3.4px,font-weight:800,color:#000
-
-    %% Training
-    subgraph Train["Training Pipeline"]
-        direction LR
-        T1["Train Model v1"]:::training
-        T2["Train Model v2"]:::training
-        T3["Train Model v3"]:::training
-    end
-
-    %% Registry
-    subgraph Registry["MLflow Model Registry\nModel: 'xgboost_forecaster'"]
-        direction LR
-        V1["Version 1\nAccuracy: 92%\nDate: 2024-01-01"]:::registry
-        V2["Version 2\nAccuracy: 94%\nDate: 2024-01-10"]:::registry
-        V3["Version 3\nAccuracy: 95%\nDate: 2024-01-15"]:::registry
-    end
-
-    %% Aliases
-    subgraph Aliases["Deployment Aliases"]
-        direction LR
-        Latest["latest\n(newest)"]:::alias
-        Staging["staging\n(testing)"]:::alias
-        Production["production\n(live traffic)"]:::alias
-    end
-
-    %% Serving
-    subgraph Serve["Serving Environments"]
-        direction LR
-        Dev["Dev API\n--alias latest"]:::serving
-        Test["Test API\n--alias staging"]:::serving
-        Prod["Prod API\n--alias production"]:::serving
-    end
-
-    %% Main flow with stronger arrows
-    T1 ==>|"Log"| V1:::edgeMain
-    T2 ==>|"Log"| V2:::edgeMain
-    T3 ==>|"Log"| V3:::edgeMain
-
-    V3 -.->|"Auto-assign"| Latest
-    V2 -.->|"Promote"| Staging
-    V1 -.->|"Promote"| Production
-
-    Latest ==>|"Load"| Dev:::edgeMain
-    Staging ==>|"Load"| Test:::edgeMain
-    Production ==>|"Load"| Prod:::edgeMain
-
-    %% Promotion workflow
-    Promote["Promotion Workflow\nstaging → production"]:::alias
-    V2 -.->|"After validation"| Promote
-    Promote -.->|"mlflow.set_alias()"| Production
-
-    %% Global edge visibility boost
-    linkStyle default stroke:#000,stroke-width:2.9px,color:#000,font-weight:700
-
-```
-
-**Deployment Workflow:**
-
-```python
-# 1. Train new model → Auto-assigned to "latest"
-mlflow.log_model(..., registered_model_name="xgboost_forecaster")
-# Version 3 created, alias="latest" assigned
-
-# 2. Test in staging
-mlflow.set_registered_model_alias(
-    name="xgboost_forecaster",
-    alias="staging",
-    version=3
-)
-# Load in test environment
-model = mlflow.pyfunc.load_model("models:/xgboost_forecaster@staging")
-
-# 3. Promote to production (after validation)
-mlflow.set_registered_model_alias(
-    name="xgboost_forecaster",
-    alias="production",
-    version=3
-)
-# Live traffic now uses v3
-
-# 4. Rollback if needed (instant!)
-mlflow.set_registered_model_alias(
-    name="xgboost_forecaster",
-    alias="production",
-    version=2  # Revert to previous version
-)
-```
 
 **Benefits:**
 - **A/B Testing**: Run staging and production in parallel
@@ -633,13 +225,14 @@ mlflow.set_registered_model_alias(
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 70,
-    "rankSpacing": 90,
-    "curve": "basis"
+    "nodeSpacing": 30,
+    "rankSpacing": 40,
+    "curve": "basis",
+    "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -695,7 +288,7 @@ flowchart TB
         Alert["Alerting<br/>Anomaly detection"]:::monitor
     end
 
-    %% Flow connections (same logic, cleaner arrows)
+    %% Flow connections (compact + blue edges)
     Raw --> Ingest
     Ingest --> FeastOff
 
@@ -723,8 +316,8 @@ flowchart TB
     %% Feedback loop unchanged
     Alert -.->|"Retrain trigger"| Pipeline
 
-    %% Edge styling for better visibility
-    linkStyle default stroke-width:2px,color:#000
+    %% Edge styling for visibility
+    linkStyle default stroke:#2196f3,stroke-width:2px
 
 ```
 
