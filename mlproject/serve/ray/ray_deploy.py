@@ -369,6 +369,49 @@ class ModelService:
         return self.model
 
 
+@serve.deployment(num_replicas=2)
+class PostprocessingService:
+    """Deployment actor responsible for sanitizing model outputs.
+
+    Supports both list-based predictions and dictionary-based batch outputs where
+    each value is a list of predictions. Ensures numeric stability by replacing NaN
+    and infinite values with safe defaults.
+    """
+
+    def _sanitize_array(self, preds: Any) -> List[float]:
+        """Sanitize a single array of predictions.
+
+        Args:
+            preds: Raw model predictions convertible to a NumPy array.
+
+        Returns:
+            A flattened list of finite float values with NaN and infinite values
+            replaced by 0.0.
+        """
+        arr = np.asarray(preds, dtype=np.float32).flatten()
+        clean = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
+        return clean.tolist()
+
+    async def format_output(
+        self, data: Union[List[float], Dict[Any, List[float]]]
+    ) -> Union[List[float], Dict[Any, List[float]]]:
+        """Format and sanitize model output.
+
+        If the input is a dictionary, each value (list of predictions) is sanitized.
+        If the input is a list, it is sanitized directly.
+
+        Args:
+            data: Either a list of predictions or a dictionary mapping entity IDs to
+                lists of predictions.
+
+        Returns:
+            Sanitized predictions in the same structure as the input.
+        """
+        if isinstance(data, dict):
+            return {key: self._sanitize_array(value) for key, value in data.items()}
+        return self._sanitize_array(data)
+
+
 @serve.deployment
 @serve.ingress(app)
 class ForecastAPI:
@@ -399,6 +442,7 @@ class ForecastAPI:
         preprocess_handle: Any,
         model_handle: Any,
         feast_handle: Any,
+        postprocess_handle: Any,
     ) -> None:
         """
         Initialize ForecastAPI with service handles.
@@ -415,6 +459,7 @@ class ForecastAPI:
         self.preprocess_handle = preprocess_handle
         self.model_handle = model_handle
         self.feast_handle = feast_handle
+        self.postprocess_handle = postprocess_handle
         self.cfg = ConfigLoader.load(CONFIG_PATH)
         self.default_entity_key = self.cfg.data.get("entity_key", "location_id")
         self.input_chunk_length = int(
@@ -497,15 +542,16 @@ class ForecastAPI:
         ... }
         """
         try:
+            entity_key = req.entity_key or self.default_entity_key
             # 1. Fetch features from Feast
             df: pd.DataFrame = await self.feast_handle.fetch_features.remote(
                 time_point=req.time_point,
                 entities=req.entities,
-                entity_key=req.entity_key,
+                entity_key=entity_key,
             )
 
             # 2. For multi-entity, take first entity only
-            entity_key = req.entity_key or self.default_entity_key
+
             if req.entities and len(req.entities) > 1:
                 if entity_key in df.columns:
                     first_entity = req.entities[0]
@@ -522,10 +568,8 @@ class ForecastAPI:
             x_input = await self.model_handle.prepare_input.remote(df_transformed)
             preds = await self.model_handle.predict_prepared.remote(x_input)
             # Sanitize JSON-unsafe values
-
-            preds = np.asarray(preds, dtype=np.float32)
-            preds = np.nan_to_num(preds, nan=0.0, posinf=0.0, neginf=0.0)
-            return {"prediction": preds}
+            clean_preds = await self.postprocess_handle.format_output.remote(preds)
+            return PredictResponse(prediction=clean_preds)
 
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -621,12 +665,11 @@ class ForecastAPI:
             }
 
             # 5. Normalize JSON-unsafe values (NaN, Inf)
-            for eid, preds in predictions.items():
-                arr = np.asarray(preds, dtype=np.float32)
-                arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
-                predictions[eid] = arr.tolist()
+            sanitized_dict = await self.postprocess_handle.format_output.remote(
+                predictions
+            )
 
-            return {"predictions": predictions}
+            return BatchPredictResponse(predictions=sanitized_dict)
 
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -664,11 +707,7 @@ class ForecastAPI:
                 x_input
             )
 
-            # 5. Normalize JSON-unsafe values
-            arr = np.asarray(preds, dtype=np.float32)
-            arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
-
-            return arr.tolist()
+            return preds
 
         except ValueError as exc:
             print(f"[InferenceChain] Value error: {exc}")
@@ -724,11 +763,13 @@ def main() -> None:
     preprocess = PreprocessingService.bind(model)  # type: ignore[attr-defined]
     # pylint: disable=no-member
     feast = FeastService.bind()  # type: ignore[attr-defined]
-
+    # pylint: disable=no-member
+    postprocess = PostprocessingService.bind()  # type: ignore[attr-defined]
     # Deploy API with all 3 handles
     # pylint: disable=no-member
     serve.run(
-        ForecastAPI.bind(preprocess, model, feast),  # type: ignore[attr-defined]
+        ForecastAPI.bind(preprocess, model, feast, postprocess),
+        # type: ignore[attr-defined]
         route_prefix="/",
     )
 
