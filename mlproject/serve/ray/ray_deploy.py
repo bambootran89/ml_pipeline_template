@@ -508,7 +508,7 @@ class ForecastAPI:
             ) from exc
 
     @app.post("/predict/feast", response_model=PredictResponse)
-    async def predict_feast(self, req: FeastPredictRequest) -> Dict[str, List[float]]:
+    async def predict_feast(self, req: FeastPredictRequest) -> PredictResponse:
         """
         Feast-native prediction for single or few entities.
 
@@ -582,7 +582,7 @@ class ForecastAPI:
     @app.post("/predict/feast/batch", response_model=BatchPredictResponse)
     async def predict_feast_batch(
         self, req: FeastBatchPredictRequest
-    ) -> Dict[str, Dict[Union[int, str], List[float]]]:
+    ) -> BatchPredictResponse:
         """
         Batch prediction for multiple entities from Feast.
 
@@ -652,7 +652,7 @@ class ForecastAPI:
                     )
 
             if not tasks:
-                return {"predictions": {}}
+                return BatchPredictResponse(predictions={})
 
             # 3. Collect predictions in parallel
             batch_preds = await asyncio.gather(*tasks, return_exceptions=True)
@@ -768,8 +768,9 @@ def main() -> None:
     # Deploy API with all 3 handles
     # pylint: disable=no-member
     serve.run(
-        ForecastAPI.bind(preprocess, model, feast, postprocess),
-        # type: ignore[attr-defined]
+        ForecastAPI.bind(  # type: ignore[attr-defined]
+            preprocess, model, feast, postprocess
+        ),
         route_prefix="/",
     )
 

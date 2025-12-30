@@ -155,6 +155,10 @@ Test API services: mlproject/configs/experiments/etth1etth1_feast.yaml
 curl -X POST http://localhost:8000/predict/feast/batch \
   -H "Content-Type: application/json" \
   -d '{"time_point":"now","entities":[1,2,3,4,5],"entity_key":"location_id"}'
+
+curl -X POST http://localhost:8000/predict/feast \
+  -H "Content-Type: application/json" \
+  -d '{"time_point":"now","entities":[1,2,3,4,5],"entity_key":"location_id"}'
 ```
 
 ## Docker & Kubernetes
@@ -176,26 +180,4 @@ kubectl apply -f k8s/job-training.yaml
 # Apply API Service
 kubectl apply -f k8s/deployment-api.yaml
 kubectl apply -f k8s/service-api.yaml
-```
-
-----
-
-## Documentation
-- [Architecture](docs/architecture.md)
-- [Training-Safe Preprocessing & Data Transformation](docs/preprocessing.md)
-- [Model Integration Guide](docs/adding_new_model.md)
-- [Directory Structure](docs/directorystructure.md)
-
-```mermaid
-flowchart TD
-    A[Feature Engineering] --> B[Training Pipeline]
-    B --> C[Evaluation Pipeline]
-    C --> D[Hyperparameter Tuning]
-    D --> E[Online Serving]
-
-    A -->|Raw CSV → Engineer Features → Register to Feast| A
-    B -->|Feast Offline → Preprocessing → Model Training → MLflow| B
-    C -->|Feast Offline → Load Model → Evaluate → Log Metrics| C
-    D -->|Feast Offline → Cross-validation → Optuna → Best Model| D
-    E -->|Feast Online → Load Model → Real-time Inference| E
 ```
