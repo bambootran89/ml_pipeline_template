@@ -16,18 +16,27 @@ This ML platform is engineered for **production-grade time series forecasting** 
 ```mermaid
 %%{init: {
   "theme": "base",
-  "flowchart": {"nodeSpacing":95,"rankSpacing":120,"curve":"linear","padding":14},
-  "themeVariables": {"primaryColor":"#e3f2fd","edgeLabelBackground":"#fff","lineColor":"#000","edgeStrokeWidth":"3px","fontFamily":"Inter, Arial, sans-serif","fontSize":"15px","fontWeight":"600","clusterBorderRadius":"10px","nodeBorderRadius":"8px"}
+  "flowchart": {"nodeSpacing":40,"rankSpacing":50,"curve":"linear","padding":10},
+  "themeVariables": {
+    "primaryColor":"#e3f2fd",
+    "lineColor":"#2196f3",
+    "edgeLabelBackground":"#fff",
+    "fontFamily":"Inter, Arial, sans-serif",
+    "fontSize":"14px",
+    "fontWeight":"600",
+    "clusterBorderRadius":"10px",
+    "nodeBorderRadius":"6px"
+  }
 }}%%
 
 flowchart TB
     %% Styles
-    classDef dataSource fill:#fff9c4,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef featureStore fill:#c8e6c9,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef training fill:#bbdefb,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef registry fill:#e1bee7,stroke:#000,stroke-width:3px,color:#000,font-weight:800
-    classDef serving fill:#ffccbc,stroke:#000,stroke-width:3px,color:#000,font-weight:700
-    classDef monitoring fill:#b0bec5,stroke:#000,stroke-width:3px,color:#000,font-weight:700
+    classDef dataSource fill:#fff9c4,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
+    classDef featureStore fill:#c8e6c9,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
+    classDef training fill:#bbdefb,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
+    classDef registry fill:#e1bee7,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:800
+    classDef serving fill:#ffccbc,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
+    classDef monitoring fill:#b0bec5,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
 
     %% Data Layer
     subgraph DataLayer["Data Layer"]
@@ -58,24 +67,24 @@ flowchart TB
         Dashboard["Ray Dashboard<br/>MLflow UI"]:::monitoring
     end
 
-    %% Connections (bold main flow)
-    RawData ==> Feast:::dataSource
-    Feast ==> Pipeline:::featureStore
-    Pipeline ==> Artifacts:::training
-    Artifacts ==> MLflow:::training
+    %% Connections
+    RawData ==> Feast
+    Feast ==> Pipeline
+    Pipeline ==> Artifacts
+    Artifacts ==> MLflow
 
-    MLflow ==> FastAPI:::registry
-    MLflow ==> RayServe:::registry
+    MLflow ==> FastAPI
+    MLflow ==> RayServe
 
-    Feast ==> FastAPI:::featureStore
-    Feast ==> RayServe:::featureStore
+    Feast ==> FastAPI
+    Feast ==> RayServe
 
-    FastAPI ==> Metrics:::serving
-    RayServe ==> Metrics:::serving
-    Metrics ==> Dashboard:::monitoring
+    FastAPI ==> Metrics
+    RayServe ==> Metrics
+    Metrics ==> Dashboard
 
     %% Edge emphasis
-    linkStyle default stroke:#000,stroke-width:3px
+    linkStyle default stroke:#2196f3,stroke-width:3px
 ```
 
 ---
