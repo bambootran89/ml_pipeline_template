@@ -1,15 +1,40 @@
 # Production-Grade ML Pipeline
 
-[![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
-[![MLflow](https://img.shields.io/badge/MLflow-Tracking-blue)](https://mlflow.org/)
-[![Optuna](https://img.shields.io/badge/Optuna-Tuning-blue)](https://optuna.org/)
-[![Ray Serve](https://img.shields.io/badge/Ray-Serving-blue)](https://docs.ray.io/en/latest/serve/index.html)
-[![Hydra](https://img.shields.io/badge/Hydra-Configuration-blue)](https://hydra.cc/)
-![Docker](https://img.shields.io/badge/deployment-Docker%20%7C%20K8s-2496ED)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-2b5b84?logo=python&logoColor=white)](https://www.python.org/)
+[![Feast](https://img.shields.io/badge/Feast-Feature%20Store-388e3c?logo=feast&logoColor=white)](https://feast.dev/)
+[![MLflow](https://img.shields.io/badge/MLflow-Tracking-0d47a1?logo=mlflow&logoColor=white)](https://mlflow.org/)
+[![Optuna](https://img.shields.io/badge/Optuna-Tuning-6a1b9a?logo=optuna&logoColor=white)](https://optuna.org/)
+[![Ray Serve](https://img.shields.io/badge/Ray%20Serve-Serving-1565c0?logo=ray&logoColor=white)](https://docs.ray.io/en/latest/serve/index.html)
+[![Hydra](https://img.shields.io/badge/Hydra-Config-ef6c00?logo=hydra&logoColor=white)](https://hydra.cc/)
+[![Docker](https://img.shields.io/badge/Deployment-Docker%20%7C%20K8s-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
-A robust, modular, and extensible machine learning framework for end-to-end data science workflows.
-It bridges the gap between experimental research code and production-ready systems through **explicit architectural boundaries**, **reproducible pipelines**, and **first-class MLOps practices**.
+## Overview
+This ML platform is engineered for **production-grade time series forecasting** with emphasis on:
+- **Eliminating training-serving skew** through unified artifact packaging
+- **Feature Store integration** for consistent feature engineering
+- **Distributed serving** with Ray for scalability
+- **Design patterns** (Strategy, Facade, Factory) for maintainability
+- **MLOps best practices** (versioning, monitoring, reproducibility)
 
+## Key Takeaways
+
+### For Data Scientists
+- **Focus on modeling**: Preprocessing handled automatically
+- **Experiment tracking**: All runs logged to MLflow
+- **Easy experimentation**: Change config, not code
+- **Reproducibility**: Versioned artifacts + configs
+
+### For MLOps Engineers
+- **Zero-skew deployment**: Preprocessor + Model bundled
+- **Alias-based rollout**: production/staging/latest
+- **Scalable serving**: Ray Serve auto-scaling
+- **Monitoring**: Built-in metrics and dashboards
+
+### For Data Engineers
+- **Feature Store**: Feast for feature management
+- **Consistent features**: Same definitions for training/serving
+- **Materialization**: Offline → Online sync
+- **Multi-entity**: Batch queries for efficiency
 
 ---
 # Getting Started
