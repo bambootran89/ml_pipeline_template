@@ -9,7 +9,7 @@
 [![Docker](https://img.shields.io/badge/Deployment-Docker%20%7C%20K8s-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
 ## Overview
-This ML platform is engineered for **production-grade time series forecasting** with emphasis on:
+This ML platform is designed for **production-ready ML projects**, emphasizing:
 - **Eliminating training-serving skew** through unified artifact packaging
 - **Feature Store integration** for consistent feature engineering
 - **Distributed serving** with Ray for scalability
@@ -36,7 +36,16 @@ This ML platform is engineered for **production-grade time series forecasting** 
 - **Materialization**: Offline → Online sync
 - **Multi-entity**: Batch queries for efficiency
 
+## Documentation
+- [Architecture](docs/architecture.md)
+- [Directory Structure](docs/directorystructure.md)
+- [Offline Workflow](docs/offlineworkflow.md)
+- [Online Workflow](docs/onlineworkflow.md)
+- [Preprocessing](docs/preprocessing.md)
+- [Adding New Model](docs/adding_new_model.md)
+
 ---
+
 # Getting Started
 ## 1. Prerequisites
 Python 3.10+
@@ -75,7 +84,6 @@ Start the MLflow server to visualize results:
 ```bash
 mlflow ui --port 5000
 ```
-
 
 Run a standard training experiment:
 ```bash
