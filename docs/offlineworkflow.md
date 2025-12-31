@@ -21,7 +21,7 @@ The training pipeline orchestrates model development with emphasis on:
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -145,7 +145,7 @@ flowchart TD
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -304,7 +304,7 @@ src/datamodule/
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -384,7 +384,7 @@ else:
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -466,7 +466,7 @@ src/datamodule/
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -563,7 +563,7 @@ transform_manager.fit(all_df)  # This is data leakage!
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -674,7 +674,7 @@ class MLModelWrapper(ABC):
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -778,7 +778,7 @@ src/tuning/
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",

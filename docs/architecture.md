@@ -20,7 +20,7 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -99,7 +99,7 @@ flowchart TB
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -200,7 +200,7 @@ flowchart TB
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -331,7 +331,7 @@ Models/
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -425,7 +425,7 @@ flowchart TB
     "nodeSpacing": 30,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 6
+    "padding": 16
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
