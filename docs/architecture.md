@@ -16,16 +16,15 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
 ```mermaid
 %%{init: {
   "theme": "base",
-  "flowchart": {"nodeSpacing":40,"rankSpacing":50,"curve":"linear","padding":10},
+  "flowchart": {
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
+    "padding": 6
+  },
   "themeVariables": {
-    "primaryColor":"#e3f2fd",
-    "lineColor":"#2196f3",
-    "edgeLabelBackground":"#fff",
-    "fontFamily":"Inter, Arial, sans-serif",
-    "fontSize":"14px",
-    "fontWeight":"600",
-    "clusterBorderRadius":"10px",
-    "nodeBorderRadius":"6px"
+    "fontFamily": "Inter, Arial, sans-serif",
+    "fontSize": "14px"
   }
 }}%%
 
@@ -84,7 +83,7 @@ flowchart TB
     Metrics ==> Dashboard
 
     %% Edge emphasis
-    linkStyle default stroke:#2196f3,stroke-width:3px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 ---
@@ -96,14 +95,15 @@ flowchart TB
 ```mermaid
 %%{init: {
   "theme": "base",
-  "flowchart": {"nodeSpacing":40,"rankSpacing":50,"curve":"linear","padding":8},
+  "flowchart": {
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
+    "padding": 6
+  },
   "themeVariables": {
-    "primaryColor":"#e3f2fd",
-    "lineColor":"#2196f3",
-    "edgeLabelBackground":"#fff",
-    "fontFamily":"Inter, Arial, sans-serif",
-    "fontSize":"14px",
-    "fontWeight":"700"
+    "fontFamily": "Inter, Arial, sans-serif",
+    "fontSize": "14px"
   }
 }}%%
 
@@ -179,7 +179,7 @@ flowchart TB
     Note3 -.-> Output
 
     %% Global link emphasis
-    linkStyle default stroke:#2196f3,stroke-width:3px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Key Design:**
@@ -196,14 +196,15 @@ flowchart TB
 ```mermaid
 %%{init: {
   "theme": "base",
-  "flowchart": {"nodeSpacing":40,"rankSpacing":50,"curve":"linear","padding":8},
+  "flowchart": {
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
+    "padding": 6
+  },
   "themeVariables": {
-    "primaryColor":"#e3f2fd",
-    "lineColor":"#2196f3",
-    "edgeLabelBackground":"#fff",
-    "fontFamily":"Inter, Arial, sans-serif",
-    "fontSize":"14px",
-    "fontWeight":"700"
+    "fontFamily": "Inter, Arial, sans-serif",
+    "fontSize": "14px"
   }
 }}%%
 
@@ -263,7 +264,7 @@ flowchart LR
     Production ==>|"Load pair"| Prod
 
     %% Global link emphasis
-    linkStyle default stroke:#2196f3,stroke-width:3px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **MLflow UI View:**
@@ -326,14 +327,15 @@ Models/
 ```mermaid
 %%{init: {
   "theme": "base",
-  "flowchart": {"nodeSpacing":40,"rankSpacing":50,"curve":"linear","padding":8},
+  "flowchart": {
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
+    "padding": 6
+  },
   "themeVariables": {
-    "primaryColor":"#e3f2fd",
-    "lineColor":"#2196f3",
-    "edgeLabelBackground":"#fff",
-    "fontFamily":"Inter, Arial, sans-serif",
-    "fontSize":"14px",
-    "fontWeight":"700"
+    "fontFamily": "Inter, Arial, sans-serif",
+    "fontSize": "14px"
   }
 }}%%
 
@@ -394,7 +396,7 @@ flowchart TB
     API ==>|"6. JSON"| Client
 
     %% Global link emphasis
-    linkStyle default stroke:#2196f3,stroke-width:3px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Service Scaling:**
@@ -421,7 +423,7 @@ flowchart TB
   "theme": "base",
   "flowchart": {
     "nodeSpacing": 30,
-    "rankSpacing": 40,
+    "rankSpacing": 50,
     "curve": "basis",
     "padding": 6
   },
@@ -510,7 +512,7 @@ flowchart TB
     Alert -.->|"Retrain trigger"| Pipeline
 
     %% Edge styling
-    linkStyle default stroke:#2196f3,stroke-width:2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Timeline:**

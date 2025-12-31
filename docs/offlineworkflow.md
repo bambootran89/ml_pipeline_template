@@ -18,19 +18,14 @@ The training pipeline orchestrates model development with emphasis on:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3",
-    "edgeStrokeWidth": "2.2px",
-    "nodeBorderRadius": "10px",
-    "clusterBorderRadius": "12px"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -134,7 +129,7 @@ flowchart TD
     N4 -.-> Alias
 
     %% Global edge style
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 ---
@@ -147,16 +142,14 @@ flowchart TD
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -219,7 +212,7 @@ flowchart TB
     MLDataModule ==> TestData
 
     %% Global styling
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 ### 1.2 DataIO Pattern (Source Abstraction)
@@ -308,16 +301,14 @@ src/datamodule/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -357,7 +348,7 @@ flowchart LR
     MLSplit --> MLOutput
 
     %% Global styling
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Code Example:**
@@ -390,16 +381,14 @@ else:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -440,7 +429,7 @@ flowchart TB
     KFoldSplitter --> K1 & K2 & K3
 
     %% Global styling
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Timeline Visual (Timeseries):**
@@ -474,16 +463,14 @@ src/datamodule/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -538,7 +525,7 @@ flowchart TB
     Warning -.-> Fit
 
     %% Global styling
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Directory Structure:**
@@ -573,16 +560,14 @@ transform_manager.fit(all_df)  # This is data leakage!
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -637,7 +622,7 @@ flowchart TB
     TrainerFactory -->|"ML models"| MLTrainer
 
     %% Global styling
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Directory Structure:**
@@ -686,16 +671,14 @@ class MLModelWrapper(ABC):
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -749,7 +732,7 @@ flowchart TB
     Retrain ==> Final
 
     %% Global styling
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Config Example:**
@@ -792,16 +775,14 @@ src/tuning/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 25,
-    "rankSpacing": 30,
-    "curve": "linear",
+    "nodeSpacing": 30,
+    "rankSpacing": 50,
+    "curve": "basis",
     "padding": 6
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "15px",
-    "fontWeight": "600",
-    "lineColor": "#2196f3"
+    "fontSize": "14px"
   }
 }}%%
 
@@ -847,7 +828,7 @@ flowchart LR
     ModelPyFunc ==> ModelReg
 
     %% Global styling
-    linkStyle default stroke:#2196f3,stroke-width:2.2px
+    linkStyle default stroke:#2196f3,stroke-width:5px
 ```
 
 **Logging Code:**
