@@ -17,14 +17,14 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -33,26 +33,27 @@ flowchart TB
     classDef dataSource fill:#fff9c4,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
     classDef featureStore fill:#c8e6c9,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
     classDef training fill:#bbdefb,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
-    classDef registry fill:#e1bee7,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:800
+    classDef registry fill:#e1bee7,stroke:#2196f3,stroke-width:3px,color:#000, font-weight:700
     classDef serving fill:#ffccbc,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
     classDef monitoring fill:#b0bec5,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:700
 
     %% Data Layer
     subgraph DataLayer["Data Layer"]
         RawData["Raw Data<br/>(CSV/DB/Streaming)"]:::dataSource
-        Feast["Feast Feature Store<br/>Offline + Online"]:::featureStore
+        Feast["Feast <br/>Feature Store<br/>Offline + Online"]:::featureStore
     end
 
     %% Training Layer
     subgraph TrainingLayer["Training Layer"]
-        Pipeline["Training Pipeline<br/>- CV/Tuning<br/>- Preprocessing Training<br/>- Model Training"]:::training
-        Artifacts["Artifacts<br/>Preprocessor (PyFunc)<br/>Model (PyFunc)<br/>(Paired by version)"]:::training
+        Pipeline["Training Pipeline<br/>- CV/Tuning<br/>- Fit Preprocessing<br/>- Fit Model"]:::training
+        Artifacts["Artifacts<br/>- Preprocessor <br/>(PyFunc)<br/>- Model <br/>(PyFunc)<br/>(Paired by version)"]:::training
     end
 
     %% Registry Layer
     subgraph RegistryLayer["Model Registry"]
-        MLflow["MLflow Registry<br/>- xgboost_preprocessor@production<br/>- xgboost_model@production<br/>(Same alias pairing)"]:::registry
+        MLflow["MLflow Registry<br/>- xgboost_preprocessor<br/>@production<br/>- xgboost_model<br/>@production<br/>(Same alias pairing)"]:::registry
     end
+
 
     %% Serving Layer
     subgraph ServingLayer["Serving Layer"]
@@ -62,8 +63,8 @@ flowchart TB
 
     %% Monitoring Layer
     subgraph MonitoringLayer["Monitoring"]
-        Metrics["Metrics<br/>Latency/Throughput"]:::monitoring
-        Dashboard["Ray Dashboard<br/>MLflow UI"]:::monitoring
+        Metrics["Metrics<br/>- Latency<br/>-Throughput"]:::monitoring
+        Dashboard["Ray <br/>Dashboard<br/>MLflow UI"]:::monitoring
     end
 
     %% Connections
@@ -96,14 +97,14 @@ flowchart TB
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 flowchart TB
@@ -117,9 +118,9 @@ flowchart TB
     %% Training Phase
     subgraph Training["Training Phase"]
         direction TB
-        TrainData["Training Data"]:::training
-        FitPreproc["Fit Preprocessor<br/>Learn: mean, std, encoders"]:::training
-        TrainModel["Train Model<br/>XGBoost/TFT/NLinear"]:::training
+        TrainData["Training <br/>Data"]:::training
+        FitPreproc["Fit Preprocessor<br/>Learn: <br/>mean, std, encoders"]:::training
+        TrainModel["Train Model<br/>- XGBoost<br/>- TFT<br/>- NLinear"]:::training
     end
 
     %% Separate PyFunc Artifacts
@@ -138,8 +139,9 @@ flowchart TB
     %% MLflow Registry
     subgraph Registry["MLflow Registry (Paired by Alias)"]
         direction TB
-        PrepReg["xgboost_preprocessor<br/>Alias: production → v3"]:::registry
-        ModelReg["xgboost_model<br/>Alias: production → v3"]:::registry
+        PrepReg["xgboost_preprocessor<br/>Alias:<br/> production → v3"]:::registry
+        ModelReg["xgboost_model<br/>Alias: <br/>production → v3"]:::registry
+
     end
 
     %% Serving Phase
@@ -196,14 +198,14 @@ flowchart TB
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -327,14 +329,14 @@ Models/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -421,14 +423,14 @@ flowchart TB
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 

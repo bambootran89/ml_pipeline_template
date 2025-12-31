@@ -18,14 +18,14 @@ The training pipeline orchestrates model development with emphasis on:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -142,14 +142,14 @@ flowchart TD
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -301,14 +301,14 @@ src/datamodule/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -381,14 +381,14 @@ else:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -463,14 +463,14 @@ src/datamodule/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -560,14 +560,14 @@ transform_manager.fit(all_df)  # This is data leakage!
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -671,14 +671,14 @@ class MLModelWrapper(ABC):
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
@@ -775,14 +775,14 @@ src/tuning/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 5,
+    "nodeSpacing": 10,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 20
+    "padding": 10
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
-    "fontSize": "14px"
+    "fontSize": "12px"
   }
 }}%%
 
