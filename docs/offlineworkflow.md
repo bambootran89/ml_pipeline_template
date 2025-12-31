@@ -18,10 +18,10 @@ The training pipeline orchestrates model development with emphasis on:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -142,10 +142,10 @@ flowchart TD
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -301,10 +301,10 @@ src/datamodule/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -381,10 +381,10 @@ else:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -463,10 +463,10 @@ src/datamodule/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -560,10 +560,10 @@ transform_manager.fit(all_df)  # This is data leakage!
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -671,10 +671,10 @@ class MLModelWrapper(ABC):
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -775,10 +775,10 @@ src/tuning/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",

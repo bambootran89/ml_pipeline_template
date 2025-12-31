@@ -17,10 +17,10 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -96,17 +96,16 @@ flowchart TB
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
     "fontSize": "14px"
   }
 }}%%
-
 flowchart TB
     %% Stronger Styles
     classDef training fill:#bbdefb,stroke:#2196f3,stroke-width:3px,color:#000,font-weight:800
@@ -197,10 +196,10 @@ flowchart TB
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -328,10 +327,10 @@ Models/
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
@@ -422,10 +421,10 @@ flowchart TB
 %%{init: {
   "theme": "base",
   "flowchart": {
-    "nodeSpacing": 30,
+    "nodeSpacing": 5,
     "rankSpacing": 50,
     "curve": "basis",
-    "padding": 16
+    "padding": 20
   },
   "themeVariables": {
     "fontFamily": "Inter, Arial, sans-serif",
