@@ -56,16 +56,20 @@ Virtual Environment (recommended)
 
 ```bash
 # Clone the repository
-git clone [https://github.com/bambootran89/ml_pipeline_template.git](https://github.com/bambootran89/ml_pipeline_template.git)
+git clone https://github.com/bambootran89/ml_pipeline_template.git
 cd ml_pipeline_template
 
-# Create Virtual Environment (Recommended)
-python -m venv venv
-source venv/bin/activate
+# 1. Create virtual environment using Python 3.10
+python3.10 -m venv py3.10
 
-# Install Dependencies
+# 2. Activate virtual environment (Linux/macOS)
+source py3.10/bin/activate
+
+# 3. Install dependencies
 pip install -r requirements/prod.txt
-pip install -r requirements/dev.txt (optional, it is for test)
+pip install -r requirements/dev.txt   # optional, for testing
+
+# 4. Install project in editable mode
 pip install -e .
 ```
 
@@ -153,13 +157,15 @@ python -m mlproject.src.pipeline.run test \
 ## 1. Cross-Validation (Backtesting)
 Validates model stability across time folds.
 ```bash
-python -m mlproject.src.pipeline.run cv --config mlproject/configs/experiments/etth2.yaml
+python -m mlproject.src.pipeline.run cv \
+  --config mlproject/configs/experiments/etth2.yaml
 ```
 
 ## 2. Hyperparameter Tuning (Optuna)
 Runs Bayesian Optimization to find best parameters, then auto-retrains the best model.
 ```bash
-python -m mlproject.src.pipeline.run tune --config mlproject/configs/experiments/etth3_tuning.yaml
+python -m mlproject.src.pipeline.run tune \
+  --config mlproject/configs/experiments/etth3_tuning.yaml
 ```
 ## 3. Serving (Inference)
 Deploys the model using FastAPI.
@@ -174,7 +180,9 @@ python mlproject/serve/ray/ray_deploy.py
 ```
 Test API services: mlproject/configs/experiments/etth1.yaml
 ```bash
-curl -X POST http://localhost:8000/predict   -H "Content-Type: application/json"   -d '{
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json"
+  -d '{
     "data": {
       "HUFL": [-0.15, 0.08, 0.01, -0.01, 0.21, -0.15, 0.12, 0.05, -0.08, 0.18, -0.12, 0.22, 0.03, -0.18, 0.15, -0.05, 0.28, -0.22, 0.08, -0.15, 0.32, -0.28, 0.12, -0.18],
       "MUFL": [1.14, 1.06, 0.93, 1.11, 0.96, 1.05, 0.98, 1.12, 0.95, 1.08, 0.92, 1.15, 0.88, 1.22, 0.85, 1.18, 0.82, 1.25, 0.78, 1.32, 0.75, 1.38, 0.72, 1.42],
