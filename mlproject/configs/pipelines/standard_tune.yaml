@@ -1,0 +1,53 @@
+# Tune Pipeline
+pipeline:
+  steps:
+    # Stage 0: Data preparation
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+
+    # ========================================
+    # Stage 1: TUNING (nested MLflow runs)
+    # ========================================
+    - id: "tune_model"
+      type: "tuning"
+      enabled: true
+      depends_on: ["preprocess"]
+      # Outputs: best_params, best_value, study
+      # Does NOT train final model
+
+    # ========================================
+    # Stage 2: RETRAIN (separate MLflow run)
+    # ========================================
+    - id: "train_best"
+      type: "model"
+      enabled: true
+      depends_on: ["tune_model"]
+      use_tuned_params: true       # ← Use best_params from tune_model
+      tune_step_id: "tune_model"   # ← Where to read best_params
+      # Trains model with best hyperparameters
+      # Creates separate MLflow run for deployment
+
+    # ========================================
+    # Stage 3: EVALUATE
+    # ========================================
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["train_best"]
+      model_step_id: "train_best"  # ← Evaluate the retrained model
+
+    # ========================================
+    # Stage 4: LOG RESULTS
+    # ========================================
+    - id: "log_results"
+      type: "logger"
+      enabled: true
+      depends_on: ["evaluate"]
+      model_step_id: "train_best"
+      eval_step_id: "evaluate"
+      # Logs final model + metrics to MLflow

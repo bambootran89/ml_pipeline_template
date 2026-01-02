@@ -12,6 +12,7 @@ from mlproject.src.pipeline.steps.mlflow_log import MLflowLogStep
 from mlproject.src.pipeline.steps.model_loader import ModelLoaderStep
 from mlproject.src.pipeline.steps.model_training import ModelTrainingStep
 from mlproject.src.pipeline.steps.preprocessing import PreprocessingStep
+from mlproject.src.pipeline.steps.tuning_step import TuningStep  # ← ADD
 
 
 class StepFactory:
@@ -29,6 +30,7 @@ class StepFactory:
         "inference": InferenceStep,
         "evaluator": EvaluationStep,
         "logger": MLflowLogStep,
+        "tuning": TuningStep,  # ← ADD
     }
 
     @classmethod

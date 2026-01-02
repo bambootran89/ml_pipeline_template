@@ -1,0 +1,23 @@
+# Train Pipeline configuration
+pipeline:
+  steps:
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+
+    - id: "train_model"
+      type: "model"
+      enabled: true
+
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      model_step_id: "train_model"
+
+    - id: "log_results"
+      type: "logger"
+      enabled: true

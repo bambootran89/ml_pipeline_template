@@ -116,7 +116,6 @@ class EvaluationStep(BasePipelineStep):
             _, _, _, _, x_test, y_test = dm.get_data()
 
         # Predict and evaluate
-        print(x_test.shape)
         preds = wrapper.predict(x_test)
         metrics = self.evaluator.evaluate(
             y_test, preds, x=x_test, model=wrapper.get_model()

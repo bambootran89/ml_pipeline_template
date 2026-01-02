@@ -1,0 +1,25 @@
+# Evaluation Pipeline - Load model instead of training
+pipeline:
+  steps:
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      is_train: false  # ← CRITICAL: Load saved preprocessor, don't fit!
+
+    - id: "load_model"
+      type: "model_loader"
+      enabled: true
+      alias: "latest"  # ← Load from MLflow Registry, not file!
+
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      model_step_id: "load_model"
+
+    - id: "log_results"
+      type: "logger"
+      enabled: true
