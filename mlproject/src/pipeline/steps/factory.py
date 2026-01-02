@@ -7,7 +7,9 @@ from omegaconf import DictConfig
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.data_loader import DataLoaderStep
 from mlproject.src.pipeline.steps.evaluation import EvaluationStep
+from mlproject.src.pipeline.steps.inference import InferenceStep
 from mlproject.src.pipeline.steps.mlflow_log import MLflowLogStep
+from mlproject.src.pipeline.steps.model_loader import ModelLoaderStep
 from mlproject.src.pipeline.steps.model_training import ModelTrainingStep
 from mlproject.src.pipeline.steps.preprocessing import PreprocessingStep
 
@@ -23,6 +25,8 @@ class StepFactory:
         "data_loader": DataLoaderStep,
         "preprocessor": PreprocessingStep,
         "model": ModelTrainingStep,
+        "model_loader": ModelLoaderStep,
+        "inference": InferenceStep,
         "evaluator": EvaluationStep,
         "logger": MLflowLogStep,
     }

@@ -131,6 +131,7 @@ class ModelTrainingStep(BasePipelineStep):
 
         # Store in context
         context[f"{self.step_id}_model"] = trained_wrapper
+        context[f"{self.step_id}_datamodule"] = datamodule
 
         # Optionally generate features for downstream steps
         if self.output_as_feature:

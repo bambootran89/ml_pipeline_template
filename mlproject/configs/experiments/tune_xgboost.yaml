@@ -1,0 +1,107 @@
+# XGBoost Hyperparameter Tuning Pipeline
+# Search for optimal hyperparameters using Optuna
+# Usage: python -m mlproject.src.pipeline.dag_run tune --config configs/experiments/tune_xgboost.yaml --trials 100
+
+defaults:
+  - ../base/preprocessing.yaml
+  - ../base/evaluation.yaml
+  - ../base/mlflow.yaml
+  - ../base/tuning.yaml
+
+data:
+  path: "mlproject/data/ETTh1.csv"
+  index_col: "date"
+  target_columns: ["HUFL", "MUFL"]
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  return_type: pandas
+  type: timeseries
+
+experiment:
+  name: "xgboost_tuning"
+  type: "timeseries"
+  model: "xgboost"
+  model_type: "ml"
+  hyperparams:
+    input_chunk_length: 24
+    output_chunk_length: 6
+    n_targets: 2
+    type: "regression"
+
+# Hyperparameter search space
+tuning:
+  n_trials: 100
+  timeout: 3600  # 1 hour
+  metric: "rmse"
+  direction: "minimize"
+
+  search_space:
+    n_estimators:
+      type: "int"
+      low: 50
+      high: 300
+      step: 50
+
+    max_depth:
+      type: "int"
+      low: 3
+      high: 10
+
+    learning_rate:
+      type: "float"
+      low: 0.01
+      high: 0.3
+      log: true
+
+    min_child_weight:
+      type: "int"
+      low: 1
+      high: 10
+
+    subsample:
+      type: "float"
+      low: 0.6
+      high: 1.0
+
+    colsample_bytree:
+      type: "float"
+      low: 0.6
+      high: 1.0
+
+    gamma:
+      type: "float"
+      low: 0.0
+      high: 5.0
+
+    reg_alpha:
+      type: "float"
+      low: 0.0
+      high: 1.0
+
+    reg_lambda:
+      type: "float"
+      low: 0.0
+      high: 1.0
+
+# Tuning Pipeline
+pipeline:
+  steps:
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+
+    - id: "tune_model"
+      type: "tuning"
+      enabled: true
+
+    - id: "evaluate_best"
+      type: "evaluator"
+      enabled: true
+      model_step_id: "tune_model"
+
+    - id: "log_results"
+      type: "logger"
+      enabled: true

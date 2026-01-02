@@ -98,6 +98,17 @@ class EvaluationStep(BasePipelineStep):
         wrapper = context[model_key]
         dm = context[dm_key]
 
+        # Build datamodule if None (from ModelLoaderStep)
+        if dm is None:
+            print(f"[{self.step_id}] Building datamodule from preprocessed_data")
+            if "preprocessed_data" not in context:
+                raise ValueError(f"Missing 'preprocessed_data' in context")
+
+            df = context["preprocessed_data"]
+            from mlproject.src.datamodule.factory import DataModuleFactory
+
+            dm = DataModuleFactory.build(self.cfg, df)
+
         # Get test data
         if hasattr(dm, "get_test_windows"):
             x_test, y_test = dm.get_test_windows()
@@ -105,6 +116,7 @@ class EvaluationStep(BasePipelineStep):
             _, _, _, _, x_test, y_test = dm.get_data()
 
         # Predict and evaluate
+        print(x_test.shape)
         preds = wrapper.predict(x_test)
         metrics = self.evaluator.evaluate(
             y_test, preds, x=x_test, model=wrapper.get_model()

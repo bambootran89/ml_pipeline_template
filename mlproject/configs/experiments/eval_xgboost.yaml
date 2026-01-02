@@ -1,0 +1,62 @@
+# XGBoost Evaluation Pipeline
+# Load pre-trained model and evaluate on data
+# Usage: python -m mlproject.src.pipeline.dag_run eval --config configs/experiments/eval_xgboost.yaml
+
+defaults:
+  - ../base/preprocessing.yaml
+  - ../base/model.yaml
+  - ../base/training.yaml
+  - ../base/evaluation.yaml
+  - ../base/mlflow.yaml
+
+data:
+  path: "mlproject/data/ETTh1.csv"
+  index_col: "date"
+  target_columns: ["HUFL", "MUFL"]
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  return_type: pandas
+  type: timeseries
+
+experiment:
+  name: "xgboost_eval"
+  type: "timeseries"
+  model: "xgboost"
+  model_type: "ml"
+  hyperparams:
+    input_chunk_length: 24
+    output_chunk_length: 6
+    n_targets: 2
+    type: "regression"
+
+# Model registry - required by DataModuleFactory
+model_registry:
+  xgboost:
+    type: "ml"
+    model_type: "ml"
+    datamodule_type: "ml"
+
+# Evaluation Pipeline - Load model instead of training
+pipeline:
+  steps:
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      is_train: false  # ← CRITICAL: Load saved preprocessor, don't fit!
+
+    - id: "load_model"
+      type: "model_loader"
+      enabled: true
+      model_path: "mlproject/artifacts/models/model.pkl"
+
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      model_step_id: "load_model"
+
+    - id: "log_results"
+      type: "logger"
+      enabled: true

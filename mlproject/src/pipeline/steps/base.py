@@ -38,6 +38,7 @@ class BasePipelineStep(ABC):
         cfg: DictConfig,
         enabled: bool = True,
         depends_on: Optional[List[str]] = None,
+        **kwargs,  # ← ADD: Accept step-specific parameters
     ) -> None:
         """
         Initialize pipeline step.
@@ -52,11 +53,15 @@ class BasePipelineStep(ABC):
             Whether step should execute.
         depends_on : Optional[List[str]], default=None
             IDs of prerequisite steps.
+        **kwargs
+            Step-specific parameters (e.g., is_train, model_path, etc.)
         """
         self.step_id = step_id
         self.cfg = cfg
         self.enabled = enabled
         self.depends_on = depends_on or []
+        # Store extra kwargs for subclasses to use
+        self._kwargs = kwargs
 
     @abstractmethod
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -85,19 +90,14 @@ class BasePipelineStep(ABC):
         """
         Validate that all dependencies are satisfied.
 
+        Note: This only validates execution order, not context keys.
+        Each step should validate its own required context keys in execute().
+
         Parameters
         ----------
         context : Dict[str, Any]
             Current pipeline context.
-
-        Raises
-        ------
-        ValueError
-            If required dependencies are missing from context.
         """
-        for dep in self.depends_on:
-            if dep not in context:
-                raise ValueError(
-                    f"Step '{self.step_id}' requires "
-                    f"'{dep}' but it's missing from context"
-                )
+        # Dependencies are satisfied by DAG execution order
+        # No need to check context keys here as steps use different key patterns
+        pass

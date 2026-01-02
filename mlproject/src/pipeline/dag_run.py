@@ -7,13 +7,13 @@ Usage
 -----
 Training::
 
-    python -m mlproject.src.pipeline.dag_run train \\
-        --config configs/experiments/xgboost.yaml
+    python -m mlproject.src.pipeline.dag_run train \
+        --config mlproject/configs/experiments/train_xgboost.yaml
 
 Evaluation::
 
-    python -m mlproject.src.pipeline.dag_run eval \\
-        --config configs/experiments/eval_xgboost.yaml \\
+    python -m mlproject.src.pipeline.dag_run eval \
+        --config mlproject/configs/experiments/eval_xgboost.yaml \
         --model artifacts/models/xgboost_best.pkl
 
 Testing/Inference::
@@ -32,11 +32,15 @@ Hyperparameter Tuning::
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Optional
 
 from mlproject.src.pipeline.flexible_training import FlexibleTrainingPipeline
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+os.environ["OMP_NUM_THREADS"] = "1"
 
 
 def run_training(cfg_path: str) -> None:
