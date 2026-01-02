@@ -8,6 +8,9 @@ defaults:
 
 data:
   path: "mlproject/data/ETTh1.csv"   # optional demo
+  # train_path: "mlproject/data/ETTh1.csv"   # optional demo
+  # test_path: "mlproject/data/ETTh1.csv"   # optional demo
+  # val_path: "mlproject/data/ETTh1.csv"   # optional demo
   index_col: "date"
   target_columns: ["HUFL","MUFL",]
   features: ["HUFL", "MUFL", "mobility_inflow"]

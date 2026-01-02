@@ -18,7 +18,7 @@ Training::
 Evaluation::
 
     python -m mlproject.src.pipeline.dag_run eval \
-        --experiment mlproject/configs/experiments/etth3.yaml
+        --experiment mlproject/configs/experiments/etth3.yaml \
         --pipeline mlproject/configs/pipelines/standard_eval.yaml
 
 Testing/Inference::

@@ -46,6 +46,35 @@ class PreprocessingStep(BasePipelineStep):
         super().__init__(*args, **kwargs)
         self.is_train = is_train
 
+    def _attach_targets_if_needed(
+        self, df_raw: pd.DataFrame, fea_df: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Attach target columns back for tabular datasets.
+
+        Parameters
+        ----------
+        df_raw : pd.DataFrame
+            Raw input data.
+        fea_df : pd.DataFrame
+            Transformed features.
+
+        Returns
+        -------
+        pd.DataFrame
+            Final dataset for evaluation.
+        """
+        data_cfg = self.cfg.get("data", {})
+        data_type = str(data_cfg.get("type", "timeseries")).lower()
+
+        if data_type == "timeseries":
+            return fea_df
+
+        target_cols = data_cfg.get("target_columns", [])
+        tar_df = df_raw[target_cols]
+
+        return pd.concat([fea_df, tar_df], axis=1)
+
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Fit preprocessor and transform data.
 
@@ -66,10 +95,10 @@ class PreprocessingStep(BasePipelineStep):
         """
         self.validate_dependencies(context)
 
-        if "raw_data" not in context:
-            raise RuntimeError(f"Step '{self.step_id}' requires 'raw_data' in context")
-
-        df: pd.DataFrame = context["raw_data"]
+        df: pd.DataFrame = context["df"]
+        train_df: pd.DataFrame = context["train_df"]
+        # val_df: pd.DataFrame = context["val_df"]
+        test_df: pd.DataFrame = context["test_df"]
 
         preprocessor = OfflinePreprocessor(is_train=self.is_train, cfg=self.cfg)
 
@@ -89,7 +118,25 @@ class PreprocessingStep(BasePipelineStep):
             # EVAL MODE: Load saved artifacts
             print(f"[{self.step_id}] Eval mode - loading saved preprocessor")
             preprocessor.transform_manager.load(self.cfg)
-            df_transformed = preprocessor.transform(df)
+
+            if not context["is_splited_input"]:
+                test_df = df.copy()
+
+            df_transformed = preprocessor.transform(test_df)
+
+            df_transformed = self._attach_targets_if_needed(test_df, df_transformed)
+            if context["is_splited_input"]:
+                df_transformed["dataset"] = "test"
+                print(
+                    "[DataCheck] Test split already performed upstream "
+                    "→ assigning dataset='test' label."
+                )
+            else:
+                print(
+                    "[DataCheck] Dataset column missing "
+                    "→ test data is generated via sliding windows "
+                    "+ ratio split from config."
+                )
 
         context["preprocessed_data"] = df_transformed
         context["preprocessor"] = preprocessor

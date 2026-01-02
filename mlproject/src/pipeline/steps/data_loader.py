@@ -33,15 +33,22 @@ class DataLoaderStep(BasePipelineStep):
         Dict[str, Any]
             Context with 'raw_data' key added.
         """
+        # Consolidate into single DataFrame if needed
         df, train_df, val_df, test_df = resolve_datasets_from_cfg(self.cfg)
 
-        # Consolidate into single DataFrame if needed
+        context["is_splited_input"] = False
         if len(df) == 0 and len(train_df) > 0:
             train_df["dataset"] = "train"
             val_df["dataset"] = "val"
             test_df["dataset"] = "test"
             df = pd.concat([train_df, val_df, test_df], axis=0)
-
-        context["raw_data"] = df
+            context["is_splited_input"] = True
+        context["df"] = df
+        context["train_df"] = train_df
+        context["val_df"] = val_df
+        context["test_df"] = test_df
         print(f"[{self.step_id}] Loaded data: {df.shape}")
+        print(f"[{self.step_id}] Loaded data: {train_df.shape}")
+        print(f"[{self.step_id}] Loaded data: {val_df.shape}")
+        print(f"[{self.step_id}] Loaded data: {test_df.shape}")
         return context
