@@ -1,0 +1,33 @@
+# Example: XGBoost training with standard pipeline
+
+defaults:
+  - ../base/data.yaml
+  - ../base/model.yaml
+  - ../base/training.yaml
+  - ../base/evaluation.yaml
+  - ../base/mlflow.yaml
+  - ../base/preprocessing.yaml
+  - ../pipelines/standard_training.yaml  # ← Pipeline config
+
+data:
+  path: "mlproject/data/ETTh1.csv"
+  index_col: "date"
+  target_columns: ["HUFL", "MUFL"]
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  type: timeseries
+
+experiment:
+  name: "flexible_xgboost"
+  type: "timeseries"
+  model: "xgboost"
+  model_type: "ml"
+  hyperparams:
+    input_chunk_length: 24
+    output_chunk_length: 6
+    n_targets: 2
+    type: "regression"
+    args:
+      n_estimators: 100
+      max_depth: 5
+      learning_rate: 0.1
+      objective: "reg:squarederror"

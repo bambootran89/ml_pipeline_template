@@ -1,0 +1,35 @@
+# Inference pipeline - skip training/logging
+# Load → Preprocess only (model loaded from MLflow)
+
+pipeline:
+  name: "inference_only"
+
+  steps:
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      depends_on: ["load_data"]
+
+    # Training steps disabled for inference
+    - id: "train_model"
+      type: "model"
+      model_name: "xgboost"
+      enabled: false
+      depends_on: ["preprocess"]
+
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: false
+      depends_on: ["train_model"]
+
+    - id: "log_mlflow"
+      type: "logger"
+      enabled: false
+      depends_on: ["evaluate"]
+
+# Note: For full inference, use TestPipeline instead
+# This config shows how to selectively disable steps
