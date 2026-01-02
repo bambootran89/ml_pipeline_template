@@ -114,6 +114,7 @@ class TuningPipeline(BasePipeline):
         print(f"{'=' * 60}\n")
 
         training_pipeline = TrainingPipeline(self.cfg_path)
+        training_pipeline.cfg.experiment.hyperparams = self.cfg.experiment.hyperparams
 
         # This will log the FINAL MODEL (artifacts enabled by default in
         # TrainingPipeline)

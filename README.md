@@ -147,9 +147,9 @@ python -m mlproject.src.pipeline.run eval \
   --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 
-Run the test stage with automatic feature loading from Feast
+Run the serving stage with automatic feature loading from Feast
 ```bash
-python -m mlproject.src.pipeline.run test \
+python -m mlproject.src.pipeline.run serve \
     --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 

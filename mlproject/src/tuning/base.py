@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
+# from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
+from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 # Forward reference for static type checking only
@@ -32,7 +33,7 @@ class BaseTuner(ABC):
     def __init__(
         self,
         cfg: DictConfig,
-        splitter: TimeSeriesFoldSplitter,
+        splitter: BaseSplitter,
         mlflow_manager: Optional[MLflowManager] = None,
         metric_name: str = "mae_mean",
         direction: str = "minimize",

@@ -1,12 +1,12 @@
 """
 Extended command-line interface (CLI) supporting Training, Evaluation,
-Testing, Cross-Validation (CV), and Hyperparameter Tuning.
+Serving, Cross-Validation (CV), and Hyperparameter Tuning.
 
 Usage examples:
     # Standard modes
     python -m mlproject.src.pipeline.run_pipeline train --config path.yaml
     python -m mlproject.src.pipeline.run_pipeline eval --config path.yaml
-    python -m mlproject.src.pipeline.run_pipeline test --config path.yaml \
+    python -m mlproject.src.pipeline.run_pipeline serve --config path.yaml \
         --input file.csv
 
     # Additional modes
@@ -24,7 +24,7 @@ from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.cv import CrossValidationPipeline
 from mlproject.src.pipeline.eval import EvalPipeline
-from mlproject.src.pipeline.serve import TestPipeline
+from mlproject.src.pipeline.serve import ServingPipeline
 from mlproject.src.pipeline.training import TrainingPipeline
 from mlproject.src.pipeline.tuning import TuningPipeline
 from mlproject.src.utils.config_loader import ConfigLoader
@@ -49,7 +49,7 @@ def run_evaluation(cfg_path: str, alias: str) -> None:
     pipeline.run()
 
 
-def run_testing(
+def run_serve(
     cfg_path: str, input_path: str | None, alias: str = "latest", time_point="now"
 ) -> Any:
     """Run inference at serving time using either a CSV input file or auto-loaded
@@ -73,17 +73,17 @@ def run_testing(
         Model predictions as a NumPy array or pandas DataFrame
           depending on pipeline output.
     """
-    pipeline = TestPipeline(cfg_path, alias=alias, time_point=time_point)
+    pipeline = ServingPipeline(cfg_path, alias=alias, time_point=time_point)
     logger.info(
-        "[TEST] Pipeline initialized (config='%s', alias='%s' , time_point='%s')",
+        "[SERVING] Pipeline initialized (config='%s', alias='%s' , time_point='%s')",
         cfg_path,
         alias,
         time_point,
     )
 
     if input_path:
-        logger.info("[TEST] CSV mode active (input='%s')", input_path)
-        print(f"[TEST] Loading data from CSV: {input_path}")
+        logger.info("[SERVING] CSV mode active (input='%s')", input_path)
+        print(f"[SERVING] Loading data from CSV: {input_path}")
 
         df = pd.read_csv(input_path)
 
@@ -93,23 +93,25 @@ def run_testing(
         df["date"] = pd.to_datetime(df["date"])
         df = df.set_index("date")
 
-        logger.info("[TEST] Input loaded with shape (%d, %d)", df.shape[0], df.shape[1])
+        logger.info(
+            "[SERVING] Input loaded with shape (%d, %d)", df.shape[0], df.shape[1]
+        )
         preds = pipeline.run_exp(data=df)
 
     else:
         uri = pipeline.cfg.data.get("path", "")
-        logger.info("[TEST] Feast mode active (config_uri='%s')", uri)
-        print("[TEST] No CSV provided, loading latest features from Feast")
+        logger.info("[SERVING] Feast mode active (config_uri='%s')", uri)
+        print("[SERVING] No CSV provided, loading latest features from Feast")
 
         if not uri.startswith("feast://"):
             raise ValueError(
-                "Testing requires either a CSV input or a Feast URI in the config"
+                "SERVING requires either a CSV input or a Feast URI in the config"
             )
 
         preds = pipeline.run_exp(data=None)
 
     print("\n" + "=" * 70)
-    print("INFERENCE COMPLETED")
+    print("SERVING COMPLETED")
     print("=" * 70)
     print(f"Prediction output type: {type(preds)}")
 
@@ -117,7 +119,7 @@ def run_testing(
         print(f"Prediction shape: {preds.shape}")
 
     print("=" * 70)
-    logger.info("[TEST] Inference completed successfully")
+    logger.info("[SERVING] Inference completed successfully")
 
     return preds
 
@@ -161,7 +163,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """Build unified CLI parser."""
     parser = argparse.ArgumentParser(
         description=(
-            "Unified entrypoint for Training, Evaluation, Testing, "
+            "Unified entrypoint for Training, Evaluation, Serving, "
             "Cross-Validation, and Hyperparameter Tuning."
         )
     )
@@ -169,7 +171,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "mode",
         type=str,
-        choices=["train", "eval", "test", "cv", "tune"],
+        choices=["train", "eval", "serve", "cv", "tune"],
         help="Which workflow pipeline to execute.",
     )
     parser.add_argument(
@@ -182,7 +184,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--input",
         type=str,
         default="",
-        help="CSV path to use only for test mode.",
+        help="CSV path to use only for serve mode.",
     )
 
     parser.add_argument(
@@ -211,8 +213,8 @@ def main() -> None:
         run_training(args.config)
     elif args.mode == "eval":
         run_evaluation(args.config, args.alias)
-    elif args.mode == "test":
-        run_testing(
+    elif args.mode == "serve":
+        run_serve(
             args.config,
             args.input,
             args.alias,
@@ -232,8 +234,8 @@ def main_run(mode: str, cfg_path: str = "", input_path: str = "") -> None:
         run_training(cfg_path)
     elif mode == "eval":
         run_evaluation(cfg_path, alias="latest")
-    elif mode == "test":
-        run_testing(
+    elif mode == "serve":
+        run_serve(
             cfg_path,
             input_path,
             alias="latest",

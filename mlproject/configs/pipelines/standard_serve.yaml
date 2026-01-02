@@ -1,0 +1,31 @@
+# Serving/Inference Pipeline - Runtime Data Injection
+# NO load_data step - data comes from runtime (CSV or API)
+
+pipeline:
+  steps:
+    # ========================================
+    # Step 1: Preprocessing
+    # ========================================
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      is_train: false  # ← CRITICAL: Load saved preprocessor, don't fit!
+    # ========================================
+    # Step 2: Model Loading
+    # ========================================
+    - id: "load_model"
+      type: "model_loader"
+      enabled: true
+      depends_on: []  # No dependencies in serving mode
+      alias: "latest"  # ← Load from MLflow Registry!
+      # Options: "latest", "production", "staging"
+
+    # ========================================
+    # Step 3: Inference
+    # ========================================
+    - id: "inference"
+      type: "inference"
+      enabled: true
+      depends_on: ["preprocess", "load_model"]
+      model_step_id: "load_model"
+      include_inputs: false

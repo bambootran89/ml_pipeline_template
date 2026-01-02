@@ -1,5 +1,5 @@
 """
-TestPipeline: Simple inference pipeline for online serving.
+ServingPipeline: Simple inference pipeline for online serving.
 
 Responsibilities:
 - Load trained models from MLflow Registry or local artifacts.
@@ -22,7 +22,7 @@ from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
 
 
-class TestPipeline(BasePipeline):
+class ServingPipeline(BasePipeline):
     """
     Inference pipeline for online evaluation.
 
@@ -143,22 +143,26 @@ class TestPipeline(BasePipeline):
         if data_type == "timeseries":
             entity_key: str = self.cfg.data.get("entity_key", "location_id")
             win: int = int(
-                self.exp.get("hyperparams", {}).get("input_chunk_length", 24)
+                self.cfg.experiment.get("hyperparams", {}).get("input_chunk_length", 24)
             )
+            if "entity_key" in df.columns:
+                arr_list: List[np.ndarray] = [
+                    self._prepare_input_window(
+                        g.drop(columns=[entity_key], errors="ignore"),
+                        win,
+                    )
+                    for _, g in df.groupby(entity_key)
+                ]
+                print(f"[INFERENCE] Building input window of length {win}")
 
-            arr_list: List[np.ndarray] = [
-                self._prepare_input_window(
-                    g.drop(columns=[entity_key], errors="ignore"),
+                x = np.vstack(arr_list).astype(np.float32)
+
+                print(f"[INFERENCE] Input window shape: {x.shape}")
+            else:
+                x = self._prepare_input_window(
+                    df,
                     win,
-                )
-                for _, g in data.groupby(entity_key)
-            ]
-
-            print(f"[INFERENCE] Building input window of length {win}")
-
-            x: np.ndarray = np.vstack(arr_list).astype(np.float32)
-
-            print(f"[INFERENCE] Input window shape: {x.shape}")
+                ).astype(np.float32)
 
         else:
             # For tabular, no sequence window; use full preprocessed DataFrame

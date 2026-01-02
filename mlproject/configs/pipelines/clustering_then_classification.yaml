@@ -1,0 +1,44 @@
+# Two-stage pipeline: KMeans → XGBoost
+# Cluster labels become features for downstream model
+
+pipeline:
+  name: "clustering_then_classification"
+
+  steps:
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      depends_on: ["load_data"]
+
+    # Stage 1: Clustering for feature engineering
+    - id: "clustering"
+      type: "model"
+      model_name: "kmean"
+      enabled: true
+      depends_on: ["preprocess"]
+      output_as_feature: true  # ← Cluster labels → features
+
+    # Stage 2: Final model with injected features
+    - id: "train_model"
+      type: "model"
+      model_name: "xgboost"
+      enabled: true
+      depends_on: ["clustering"]  # ← Uses cluster features
+      output_as_feature: false
+
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["train_model"]
+      model_step_id: "train_model"
+
+    - id: "log_mlflow"
+      type: "logger"
+      enabled: true
+      depends_on: ["evaluate"]
+      model_step_id: "train_model"
+      eval_step_id: "evaluate"
