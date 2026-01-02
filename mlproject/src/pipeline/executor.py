@@ -1,6 +1,9 @@
-"""Pipeline executor with dependency resolution."""
+"""Pipeline executor with dependency resolution.
 
-from typing import Any, Dict, List
+Enhanced to support runtime context pre-initialization for serving mode.
+"""
+
+from typing import Any, Dict, List, Optional
 
 from omegaconf import DictConfig
 
@@ -15,6 +18,7 @@ class PipelineExecutor:
     - Resolves step dependencies using topological sort
     - Manages shared context across steps
     - Handles step enablement and skipping
+    - Supports runtime context pre-initialization (serving mode)
     """
 
     def __init__(self, cfg: DictConfig) -> None:
@@ -85,16 +89,54 @@ class PipelineExecutor:
 
         return [step_map[step_id] for step_id in sorted_ids]
 
-    def execute(self) -> Dict[str, Any]:
+    def execute(
+        self, initial_context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Execute all enabled steps in dependency order.
+
+        Enhanced to support runtime context pre-initialization for serving mode.
+
+        Parameters
+        ----------
+        initial_context : Dict[str, Any], optional
+            Pre-initialized context for serving mode.
+            If provided, these keys are available before first step executes.
+
+            Common use case: serving mode where data is loaded outside pipeline
+            - df: Input dataframe
+            - train_df: Empty (not used in serving)
+            - test_df: Same as df (will be preprocessed)
+            - is_splited_input: False
+
+            Default is None (backward compatible with existing usage).
 
         Returns
         -------
         Dict[str, Any]
             Final pipeline context with all outputs.
+
+        Examples
+        --------
+        # Training mode (normal - backward compatible)
+        >>> executor = PipelineExecutor(cfg)
+        >>> context = executor.execute()
+
+        # Serving mode (with pre-initialized context)
+        >>> executor = PipelineExecutor(cfg)
+        >>> initial_ctx = {"df": df, "test_df": df, "is_splited_input": False}
+        >>> context = executor.execute(initial_context=initial_ctx)
+
+        Notes
+        -----
+        - When initial_context is None, starts with empty dict (backward compatible)
+        - When initial_context is provided, those keys are available to all steps
+        - Steps execute in topological order based on dependencies
         """
         sorted_steps = self._topological_sort()
-        context: Dict[str, Any] = {}
+
+        # Initialize context (use provided context or empty dict)
+        # This is the ONLY change to existing code!
+        context: Dict[str, Any] = initial_context.copy() if initial_context else {}
 
         print("[Pipeline] Execution order:")
         for i, step in enumerate(sorted_steps, 1):
