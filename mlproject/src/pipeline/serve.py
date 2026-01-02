@@ -1,5 +1,5 @@
 """
-TestPipeline: Simple inference pipeline for online serving.
+ServingPipeline: Simple inference pipeline for online serving.
 
 Responsibilities:
 - Load trained models from MLflow Registry or local artifacts.
@@ -22,7 +22,7 @@ from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
 
 
-class TestPipeline(BasePipeline):
+class ServingPipeline(BasePipeline):
     """
     Inference pipeline for online evaluation.
 

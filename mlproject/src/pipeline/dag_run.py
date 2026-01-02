@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from mlproject.src.features.facade import FeatureStoreFacade
 from mlproject.src.pipeline.flexible_pipeline import FlexiblePipeline
@@ -120,7 +120,8 @@ def merge_configs(
 
     # Merge: experiment < pipeline (pipeline has priority)
     merged = OmegaConf.merge(exp_cfg, pipe_cfg)
-
+    if isinstance(merged, ListConfig):
+        merged = OmegaConf.create({"config": merged})
     print("\n[CONFIG] Merged configuration:")
     print(f"  - Experiment: {experiment_path}")
     print(f"  - Pipeline:   {pipeline_path}")

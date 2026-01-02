@@ -7,7 +7,7 @@ This implementation follows the clean separation pattern:
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
@@ -75,7 +75,7 @@ class TuningStep(BasePipelineStep):
               model_step_id: "train_best"
     """
 
-    def __init__(self, *args, n_trials: int = None, **kwargs) -> None:
+    def __init__(self, *args, n_trials: Optional[int] = None, **kwargs) -> None:
         """Initialize tuning step.
 
         Parameters
