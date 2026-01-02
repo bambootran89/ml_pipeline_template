@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
 from mlproject.src.eval.classification import ClassificationEvaluator
 from mlproject.src.eval.clustering import ClusteringEvaluator
@@ -102,10 +103,9 @@ class EvaluationStep(BasePipelineStep):
         if dm is None:
             print(f"[{self.step_id}] Building datamodule from preprocessed_data")
             if "preprocessed_data" not in context:
-                raise ValueError(f"Missing 'preprocessed_data' in context")
+                raise ValueError("Missing 'preprocessed_data' in context")
 
             df = context["preprocessed_data"]
-            from mlproject.src.datamodule.factory import DataModuleFactory
 
             dm = DataModuleFactory.build(self.cfg, df)
 

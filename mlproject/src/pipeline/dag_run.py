@@ -13,19 +13,17 @@ Training::
 Evaluation::
 
     python -m mlproject.src.pipeline.dag_run eval \
-        --config mlproject/configs/experiments/eval_xgboost.yaml \
-        --model artifacts/models/xgboost_best.pkl
+        --config mlproject/configs/experiments/eval_xgboost.yaml
 
 Testing/Inference::
 
-    python -m mlproject.src.pipeline.dag_run test \\
-        --config configs/experiments/test_inference.yaml \\
-        --output outputs/predictions.csv
+    python -m mlproject.src.pipeline.dag_run test \
+        --config mlproject/configs/experiments/test_xgboost.yaml
 
 Hyperparameter Tuning::
 
-    python -m mlproject.src.pipeline.dag_run tune \\
-        --config configs/experiments/tune_xgboost.yaml \\
+    python -m mlproject.src.pipeline.dag_run tune \
+        --config configs/experiments/tune_xgboost.yaml \
         --trials 100
 """
 
@@ -61,7 +59,7 @@ def run_training(cfg_path: str) -> None:
         raise FileNotFoundError(f"Config not found: {cfg_path}")
 
     print(f"\n{'='*60}")
-    print(f"[RUN] Starting TRAINING pipeline")
+    print("[RUN] Starting TRAINING pipeline")
     print(f"[RUN] Config: {cfg_path}")
     print(f"{'='*60}\n")
 
@@ -97,14 +95,12 @@ def run_eval(cfg_path: str, model_path: Optional[str] = None) -> None:
         raise FileNotFoundError(f"Config not found: {cfg_path}")
 
     print(f"\n{'='*60}")
-    print(f"[RUN] Starting EVALUATION pipeline")
+    print("[RUN] Starting EVALUATION pipeline")
     print(f"[RUN] Config: {cfg_path}")
     if model_path:
         print(f"[RUN] Model override: {model_path}")
     print(f"{'='*60}\n")
 
-    # TODO: Create FlexibleEvalPipeline
-    # For now, reuse FlexibleTrainingPipeline with eval config
     pipeline = FlexibleTrainingPipeline(cfg_path)
     context = pipeline.run_exp()
 
@@ -117,7 +113,9 @@ def run_eval(cfg_path: str, model_path: Optional[str] = None) -> None:
     print(f"{'='*60}\n")
 
 
-def run_test(cfg_path: str, output_path: Optional[str] = None) -> None:
+def run_test(
+    cfg_path: str,
+) -> None:
     """Run test/inference pipeline.
 
     Parameters
@@ -137,11 +135,8 @@ def run_test(cfg_path: str, output_path: Optional[str] = None) -> None:
         raise FileNotFoundError(f"Config not found: {cfg_path}")
 
     print(f"\n{'='*60}")
-    print(f"[RUN] Starting TEST/INFERENCE pipeline")
+    print("[RUN] Starting TEST/INFERENCE pipeline")
     print(f"[RUN] Config: {cfg_path}")
-    if output_path:
-        print(f"[RUN] Output override: {output_path}")
-    print(f"{'='*60}\n")
 
     pipeline = FlexibleTrainingPipeline(cfg_path)
     context = pipeline.run_exp()
@@ -155,10 +150,6 @@ def run_test(cfg_path: str, output_path: Optional[str] = None) -> None:
         for key in pred_keys:
             preds = context[key]
             print(f"[RUN] {key}: {len(preds)} predictions generated")
-
-    if output_path:
-        print(f"[RUN] Predictions saved to: {output_path}")
-    print(f"{'='*60}\n")
 
 
 def run_tune(cfg_path: str, n_trials: Optional[int] = None) -> None:
@@ -181,13 +172,12 @@ def run_tune(cfg_path: str, n_trials: Optional[int] = None) -> None:
         raise FileNotFoundError(f"Config not found: {cfg_path}")
 
     print(f"\n{'='*60}")
-    print(f"[RUN] Starting HYPERPARAMETER TUNING pipeline")
+    print("[RUN] Starting HYPERPARAMETER TUNING pipeline")
     print(f"[RUN] Config: {cfg_path}")
     if n_trials:
         print(f"[RUN] Trials override: {n_trials}")
     print(f"{'='*60}\n")
 
-    # TODO: Handle n_trials override by modifying config
     pipeline = FlexibleTrainingPipeline(cfg_path)
     context = pipeline.run_exp()
 
@@ -300,7 +290,7 @@ Examples:
         elif args.command == "eval":
             run_eval(args.config, args.model)
         elif args.command == "test":
-            run_test(args.config, args.output)
+            run_test(args.config)
         elif args.command == "tune":
             run_tune(args.config, args.trials)
         else:

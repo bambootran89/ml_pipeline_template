@@ -100,4 +100,3 @@ class BasePipelineStep(ABC):
         """
         # Dependencies are satisfied by DAG execution order
         # No need to check context keys here as steps use different key patterns
-        pass

@@ -97,7 +97,7 @@ pipeline:
       type: "tuning"
       enabled: true
 
-    - id: "evaluate_best"
+    - id: "evaluate"
       type: "evaluator"
       enabled: true
       model_step_id: "tune_model"

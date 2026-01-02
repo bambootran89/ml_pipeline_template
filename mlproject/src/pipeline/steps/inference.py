@@ -6,8 +6,7 @@ evaluation metrics, useful for production inference.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -123,68 +122,72 @@ class InferenceStep(BasePipelineStep):
             )
 
         df: pd.DataFrame = context["preprocessed_data"]
+
         model = context[model_key]
 
-        # Extract features (exclude target and metadata columns)
-        exclude_cols = ["target", "date", "dataset", "timestamp"]
-        feature_cols = [c for c in df.columns if c not in exclude_cols]
-
-        if len(feature_cols) == 0:
-            raise RuntimeError(
-                f"Step '{self.step_id}': No feature columns found "
-                f"after excluding {exclude_cols}"
+        # --- Handle timeseries vs tabular separately ---
+        data_type: str = self.cfg.data.get("type", "timeseries")
+        if data_type == "timeseries":
+            entity_key: str = self.cfg.data.get("entity_key", "location_id")
+            win: int = int(
+                self.cfg.experiment.get("hyperparams", {}).get("input_chunk_length", 24)
             )
+            if "entity_key" in df.columns:
+                arr_list: List[np.ndarray] = [
+                    self._prepare_input_window(
+                        g.drop(columns=[entity_key], errors="ignore"),
+                        win,
+                    )
+                    for _, g in df.groupby(entity_key)
+                ]
+                print(f"[INFERENCE] Building input window of length {win}")
 
-        X = df[feature_cols].values
+                x = np.vstack(arr_list).astype(np.float32)
 
-        # Run inference
-        predictions = model.predict(X)
+                print(f"[INFERENCE] Input window shape: {x.shape}")
+            else:
+                x = self._prepare_input_window(
+                    df,
+                    win,
+                ).astype(np.float32)
 
-        # Flatten if needed (some models return 2D arrays)
-        if isinstance(predictions, np.ndarray) and predictions.ndim > 1:
-            if predictions.shape[1] == 1:
-                predictions = predictions.flatten()
+        else:
+            # For tabular, no sequence window; use full preprocessed DataFrame
+            print("[INFERENCE] Tabular input, using full DataFrame")
+            x = df.values.astype(np.float32)
+            print(f"[INFERENCE] Input array shape: {x.shape}")
 
+        print("[INFERENCE] Running model.predict()")
+        y: np.ndarray = model.predict(x)
+        print(f"[INFERENCE] Output shape: {y.shape}")
+
+        if hasattr(y, "flatten"):
+            print(f"[INFERENCE] First 10 output values: {y[:10]}")
+
+        print("[INFERENCE] Inference completed")
         # Store in context
-        context[f"{self.step_id}_predictions"] = predictions
+        context[f"{self.step_id}_predictions"] = y
 
-        # Optionally save to CSV
-        if self.save_path:
-            self._save_predictions(df, predictions, feature_cols)
-
-        print(f"[{self.step_id}] Generated {len(predictions)} predictions")
         return context
 
-    def _save_predictions(
-        self, df: pd.DataFrame, predictions: np.ndarray, feature_cols: list
-    ) -> None:
-        """Save predictions to CSV file.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Original dataframe with input features.
-        predictions : np.ndarray
-            Model predictions.
-        feature_cols : list
-            List of feature column names.
+    def _prepare_input_window(
+        self, df: pd.DataFrame, input_chunk_length: int
+    ) -> np.ndarray:
         """
-        output_data = {"prediction": predictions}
+        Build model input window for prediction.
 
-        # Optionally include input features
-        if self.include_inputs:
-            for col in feature_cols:
-                output_data[col] = df[col].values
+        Args:
+            df: Preprocessed DataFrame.
+            input_chunk_length: Sequence length required by model.
 
-        pred_df = pd.DataFrame(output_data)
+        Returns:
+            Model input array with shape [1, seq_len, n_features].
 
-        # Create output directory if needed
-        output_path = Path(self.save_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        pred_df.to_csv(output_path, index=False)
-
-        print(
-            f"[{self.step_id}] Saved predictions to: {self.save_path} "
-            f"({len(pred_df)} rows)"
-        )
+        Raises:
+            ValueError: If input has fewer rows than input_chunk_length.
+        """
+        seq_len: int = input_chunk_length
+        if len(df) < seq_len:
+            raise ValueError(f"Input data has {len(df)} rows, need at least {seq_len}")
+        window: np.ndarray = df.iloc[-seq_len:].values
+        return window[np.newaxis, :].astype(np.float32)

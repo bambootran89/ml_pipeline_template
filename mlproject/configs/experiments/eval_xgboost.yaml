@@ -50,7 +50,7 @@ pipeline:
     - id: "load_model"
       type: "model_loader"
       enabled: true
-      model_path: "mlproject/artifacts/models/model.pkl"
+      alias: "latest"  # ← Load from MLflow Registry, not file!
 
     - id: "evaluate"
       type: "evaluator"

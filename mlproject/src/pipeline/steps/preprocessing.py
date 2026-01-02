@@ -25,7 +25,26 @@ class PreprocessingStep(BasePipelineStep):
         Transformed feature data.
     preprocessor : OfflinePreprocessor
         Fitted preprocessor instance.
+
+    Configuration Parameters
+    ------------------------
+    is_train : bool, default=True
+        If True, fit preprocessor on training data.
+        If False, load saved preprocessor artifacts.
     """
+
+    def __init__(self, *args, is_train: bool = True, **kwargs) -> None:
+        """Initialize preprocessing step.
+
+        Parameters
+        ----------
+        is_train : bool, default=True
+            Whether to fit (train mode) or load (eval mode).
+        *args, **kwargs
+            Passed to BasePipelineStep.
+        """
+        super().__init__(*args, **kwargs)
+        self.is_train = is_train
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Fit preprocessor and transform data.
@@ -52,18 +71,25 @@ class PreprocessingStep(BasePipelineStep):
 
         df: pd.DataFrame = context["raw_data"]
 
-        preprocessor = OfflinePreprocessor(is_train=True, cfg=self.cfg)
+        preprocessor = OfflinePreprocessor(is_train=self.is_train, cfg=self.cfg)
 
-        # Fit on training subset
-        if "dataset" in df.columns:
-            train_df = df[df["dataset"] == "train"]
+        if self.is_train:
+            # TRAINING MODE: Fit on training subset
+            print(f"[{self.step_id}] Training mode - fitting preprocessor")
+
+            if "dataset" in df.columns:
+                train_df = df[df["dataset"] == "train"]
+            else:
+                train_df = preprocessor.select_train_subset(df)
+
+            preprocessor.fit_manager(train_df)
+            df_transformed = preprocessor.transform(df)
+
         else:
-            train_df = preprocessor.select_train_subset(df)
-
-        preprocessor.fit_manager(train_df)
-
-        # Transform full dataset
-        df_transformed = preprocessor.transform(df)
+            # EVAL MODE: Load saved artifacts
+            print(f"[{self.step_id}] Eval mode - loading saved preprocessor")
+            preprocessor.transform_manager.load(self.cfg)
+            df_transformed = preprocessor.transform(df)
 
         context["preprocessed_data"] = df_transformed
         context["preprocessor"] = preprocessor

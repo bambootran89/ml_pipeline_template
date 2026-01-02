@@ -56,7 +56,7 @@ class PipelineExecutor:
         # Build adjacency list and in-degree count
         step_map = {s.step_id: s for s in self.steps}
         in_degree = {s.step_id: 0 for s in self.steps}
-        adjacency = {s.step_id: [] for s in self.steps}
+        adjacency: Dict[str, List[str]] = {s.step_id: [] for s in self.steps}
 
         for step in self.steps:
             for dep in step.depends_on:
