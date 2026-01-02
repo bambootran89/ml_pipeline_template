@@ -16,7 +16,7 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna import OptunaTuner
 
 
-class TuningStep(BasePipelineStep):
+class TunerStep(BasePipelineStep):
     """Run hyperparameter optimization using Optuna.
 
     This step performs cross-validation based hyperparameter search

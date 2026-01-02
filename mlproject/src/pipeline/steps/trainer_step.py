@@ -15,7 +15,7 @@ from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.trainer.factory import TrainerFactory
 
 
-class ModelTrainingStep(BasePipelineStep):
+class TrainerStep(BasePipelineStep):
     """Train a model on preprocessed data.
 
     This step supports:

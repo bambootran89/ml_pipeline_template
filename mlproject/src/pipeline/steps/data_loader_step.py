@@ -8,7 +8,7 @@ from mlproject.src.datamodule.loader import resolve_datasets_from_cfg
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 
 
-class DataLoadingStep(BasePipelineStep):
+class DataLoaderStep(BasePipelineStep):
     """Load raw data from configured source.
 
     This step loads data using the existing datamodule loader system

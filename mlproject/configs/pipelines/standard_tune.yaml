@@ -3,7 +3,7 @@ pipeline:
   steps:
     # Stage 0: Data preparation
     - id: "load_data"
-      type: "data_load"
+      type: "data_loader"
       enabled: true
 
     - id: "preprocess"
@@ -14,7 +14,7 @@ pipeline:
     # Stage 1: TUNING (nested MLflow runs)
     # ========================================
     - id: "tune_model"
-      type: "tuning"
+      type: "tuner"
       enabled: true
       depends_on: ["preprocess"]
       # Outputs: best_params, best_value, study
@@ -24,7 +24,7 @@ pipeline:
     # Stage 2: RETRAIN (separate MLflow run)
     # ========================================
     - id: "train_best"
-      type: "model"
+      type: "trainer"
       enabled: true
       depends_on: ["tune_model"]
       use_tuned_params: true       # ← Use best_params from tune_model

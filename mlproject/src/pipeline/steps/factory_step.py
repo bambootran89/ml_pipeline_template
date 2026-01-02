@@ -5,14 +5,14 @@ from typing import Any, Dict, Type
 from omegaconf import DictConfig
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
-from mlproject.src.pipeline.steps.data_load_step import DataLoadingStep
-from mlproject.src.pipeline.steps.evaluation_step import EvaluationStep
+from mlproject.src.pipeline.steps.data_loader_step import DataLoaderStep
+from mlproject.src.pipeline.steps.evaluator_step import EvaluatorStep
 from mlproject.src.pipeline.steps.inference_step import InferenceStep
 from mlproject.src.pipeline.steps.logger_step import LoggerStep
 from mlproject.src.pipeline.steps.model_loader_step import ModelLoaderStep
-from mlproject.src.pipeline.steps.model_training_step import ModelTrainingStep
-from mlproject.src.pipeline.steps.preprocessing_step import PreprocessingStep
-from mlproject.src.pipeline.steps.tuning_step import TuningStep
+from mlproject.src.pipeline.steps.preprocessor_step import PreprocessorStep
+from mlproject.src.pipeline.steps.trainer_step import TrainerStep
+from mlproject.src.pipeline.steps.tuner_step import TunerStep
 
 
 class StepFactory:
@@ -23,14 +23,14 @@ class StepFactory:
     """
 
     STEP_REGISTRY: Dict[str, Type[BasePipelineStep]] = {
-        "data_load": DataLoadingStep,
-        "preprocessor": PreprocessingStep,
-        "model": ModelTrainingStep,
+        "data_loader": DataLoaderStep,
+        "preprocessor": PreprocessorStep,
+        "trainer": TrainerStep,
         "model_loader": ModelLoaderStep,
         "inference": InferenceStep,
-        "evaluator": EvaluationStep,
+        "evaluator": EvaluatorStep,
         "logger": LoggerStep,
-        "tuning": TuningStep,  # ← ADD
+        "tuner": TunerStep,
     }
 
     @classmethod

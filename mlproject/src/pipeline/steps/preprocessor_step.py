@@ -8,7 +8,7 @@ from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 
 
-class PreprocessingStep(BasePipelineStep):
+class PreprocessorStep(BasePipelineStep):
     """Fit and apply preprocessing transformations.
 
     This step fits preprocessing on training data and transforms

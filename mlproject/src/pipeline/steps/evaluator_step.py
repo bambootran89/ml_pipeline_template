@@ -13,7 +13,7 @@ from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 
 
-class EvaluationStep(BasePipelineStep):
+class EvaluatorStep(BasePipelineStep):
     """
     Evaluate trained model on test data.
 

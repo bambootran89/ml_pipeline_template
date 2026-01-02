@@ -30,7 +30,7 @@ class FlexiblePipeline(BasePipeline):
       name: "two_stage_kmeans_xgb"
       steps:
         - id: load_data
-          type: data_load
+          type: data_loader
           enabled: true
 
         - id: preprocess
