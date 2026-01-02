@@ -3,7 +3,7 @@ pipeline:
   steps:
     # Stage 0: Data preparation
     - id: "load_data"
-      type: "data_loader"
+      type: "data_load"
       enabled: true
 
     - id: "preprocess"

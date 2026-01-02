@@ -6,7 +6,7 @@ pipeline:
 
   steps:
     - id: "load_data"
-      type: "data_loader"
+      type: "data_load"
       enabled: true
 
     - id: "preprocess"

@@ -1,7 +1,7 @@
 """CLI entry point for running ML pipelines.
 
 This module provides a command-line interface for executing different
-pipeline types: train, eval, test, and tune.
+pipeline types: train, eval, serve, and tune.
 
 Key Feature: Separation of pipeline structure and experiment config.
 - Pipeline configs define step DAG (standard_train.yaml, standard_tune.yaml)
@@ -23,15 +23,15 @@ Evaluation::
 
 Serving::
 
-    python -m mlproject.src.pipeline.dag_run test \
+    python -m mlproject.src.pipeline.dag_run serve \
         --experiment mlproject/configs/experiments/etth3.yaml \
-        --pipeline mlproject/configs/pipelines/standard_test.yaml \
+        --pipeline mlproject/configs/pipelines/standard_serve.yaml \
         --input ./sample_input.csv \
         --alias latest
 
-    python -m mlproject.src.pipeline.dag_run test \
+    python -m mlproject.src.pipeline.dag_run serve \
         --experiment mlproject/configs/experiments/etth3_feast.yaml \
-        --pipeline mlproject/configs/pipelines/standard_test.yaml \
+        --pipeline mlproject/configs/pipelines/standard_serve.yaml \
         --alias latest \
         --time_point "now"
 
@@ -58,7 +58,7 @@ import pandas as pd
 from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.features.facade import FeatureStoreFacade
-from mlproject.src.pipeline.flexible_training import FlexibleTrainingPipeline
+from mlproject.src.pipeline.flexible_pipeline import FlexiblePipeline
 from mlproject.src.utils.config_loader import ConfigLoader
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
@@ -68,7 +68,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 DEFAULT_PIPELINES = {
     "train": "mlproject/configs/pipelines/standard_train.yaml",
     "eval": "mlproject/configs/pipelines/standard_eval.yaml",
-    "test": "mlproject/configs/pipelines/standard_test.yaml",
+    "serve": "mlproject/configs/pipelines/standard_serve.yaml",
     "tune": "mlproject/configs/pipelines/standard_tune.yaml",
 }
 
@@ -89,7 +89,7 @@ def merge_configs(
         Path to pipeline config (step DAG).
         If None, uses default for mode.
     mode : str
-        Pipeline mode (train/eval/test/tune).
+        Pipeline mode (train/eval/serve/tune).
 
     Returns
     -------
@@ -286,7 +286,7 @@ def run_training(experiment_path: str, pipeline_path: Optional[str] = None) -> N
     save_merged_config(merged_cfg, temp_config)
 
     try:
-        pipeline = FlexibleTrainingPipeline(temp_config)
+        pipeline = FlexiblePipeline(temp_config)
         context = pipeline.run_exp()
 
         print(f"\n{'='*60}")
@@ -334,7 +334,7 @@ def run_eval(
     save_merged_config(merged_cfg, temp_config)
 
     try:
-        pipeline = FlexibleTrainingPipeline(temp_config)
+        pipeline = FlexiblePipeline(temp_config)
         context = pipeline.run_exp()
 
         print(f"\n{'='*60}")
@@ -349,7 +349,7 @@ def run_eval(
         Path(temp_config).unlink(missing_ok=True)
 
 
-def _check_initial_context_support(pipeline: FlexibleTrainingPipeline) -> bool:
+def _check_initial_context_support(pipeline: FlexiblePipeline) -> bool:
     """Check if pipeline supports initial_context parameter.
 
     Parameters
@@ -375,7 +375,7 @@ def _check_initial_context_support(pipeline: FlexibleTrainingPipeline) -> bool:
 
 
 def _run_pipeline_with_context(
-    pipeline: FlexibleTrainingPipeline, initial_context: Dict[str, Any]
+    pipeline: FlexiblePipeline, initial_context: Dict[str, Any]
 ) -> Dict[str, Any]:
     """Run pipeline with initial context (with fallback).
 
@@ -415,14 +415,14 @@ def _run_pipeline_with_context(
     )
 
 
-def run_test(
+def run_serve(
     experiment_path: str,
     pipeline_path: Optional[str] = None,
     input_path: Optional[str] = None,
     alias: str = "latest",
     time_point: str = "now",
 ) -> Any:
-    """Run test/inference pipeline with runtime data injection.
+    """Run serve pipeline with runtime data injection.
 
     This function supports two serving modes:
     1. CSV Mode: Load data from file
@@ -456,19 +456,19 @@ def run_test(
     Examples
     --------
     # CSV Mode
-    python -m mlproject.src.pipeline.dag_run test \
+    python -m mlproject.src.pipeline.dag_run serve \
         --experiment config.yaml \
         --input data.csv \
         --alias production
 
     # Feast Mode
-    python -m mlproject.src.pipeline.dag_run test \
+    python -m mlproject.src.pipeline.dag_run serve \
         --experiment config.yaml \
         --alias production \
         --time_point "2024-01-01T12:00:00"
     """
     print(f"\n{'='*60}")
-    print("[RUN] Starting TEST/INFERENCE pipeline")
+    print("[RUN] Starting SERVING pipeline")
     print(f"[RUN] Model alias: {alias}")
     if input_path:
         print(f"[RUN] Data source: CSV ({input_path})")
@@ -477,7 +477,7 @@ def run_test(
         print(f"[RUN] Time point: {time_point}")
     print(f"{'='*60}\n")
 
-    merged_cfg = merge_configs(experiment_path, pipeline_path, mode="test")
+    merged_cfg = merge_configs(experiment_path, pipeline_path, mode="serve")
 
     # Update model alias
     if alias != "latest":
@@ -485,11 +485,11 @@ def run_test(
             if step.get("type") == "model_loader":
                 step.alias = alias
 
-    temp_config = ".temp_merged_test.yaml"
+    temp_config = ".temp_merged_serve.yaml"
     save_merged_config(merged_cfg, temp_config)
 
     try:
-        pipeline = FlexibleTrainingPipeline(temp_config)
+        pipeline = FlexiblePipeline(temp_config)
 
         # Pre-initialize context with data
         initial_context = prepare_serving_data(
@@ -502,7 +502,7 @@ def run_test(
         context = _run_pipeline_with_context(pipeline, initial_context)
 
         print(f"\n{'='*60}")
-        print("[RUN] Test/Inference COMPLETE")
+        print("[RUN] Serving COMPLETE")
 
         # Get predictions
         pred_keys = [k for k in context.keys() if "_predictions" in k]
@@ -567,7 +567,7 @@ def run_tune(
     save_merged_config(merged_cfg, temp_config)
 
     try:
-        pipeline = FlexibleTrainingPipeline(temp_config)
+        pipeline = FlexiblePipeline(temp_config)
         context = pipeline.run_exp()
 
         print(f"\n{'='*60}")
@@ -595,7 +595,7 @@ def run_tune(
 def main() -> None:
     """Main CLI entry point with subcommands."""
     parser = argparse.ArgumentParser(
-        description="Run ML pipelines (train/eval/test/tune)",
+        description="Run ML pipelines (train/eval/serve/tune)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -605,8 +605,8 @@ Examples:
   # Evaluation
   %(prog)s eval --experiment configs/experiments/xgboost.yaml --alias production
 
-  # Testing with CSV input (runtime data injection)
-  %(prog)s test --experiment configs/experiments/xgboost.yaml \
+  # Serving with CSV input (runtime data injection)
+  %(prog)s serve --experiment configs/experiments/xgboost.yaml \
       --input data/test.csv --alias production
 
   # Tuning
@@ -640,19 +640,19 @@ Examples:
         help="Model alias (latest/production/staging)",
     )
 
-    # Test command
-    test_parser = subparsers.add_parser("test", help="Run test/inference pipeline")
-    test_parser.add_argument(
+    # Serve command
+    serve_parser = subparsers.add_parser("serve", help="Run serve pipeline")
+    serve_parser.add_argument(
         "--experiment", "-e", required=True, help="Experiment config YAML"
     )
-    test_parser.add_argument(
-        "--pipeline", "-p", help="Pipeline config YAML (default: standard_test.yaml)"
+    serve_parser.add_argument(
+        "--pipeline", "-p", help="Pipeline config YAML (default: standard_serve.yaml)"
     )
-    test_parser.add_argument(
+    serve_parser.add_argument(
         "--input", "-i", help="Input CSV file (if omitted, uses Feast)"
     )
-    test_parser.add_argument("--alias", "-a", default="latest", help="Model alias")
-    test_parser.add_argument(
+    serve_parser.add_argument("--alias", "-a", default="latest", help="Model alias")
+    serve_parser.add_argument(
         "--time_point",
         "-t",
         default="now",
@@ -677,8 +677,8 @@ Examples:
             run_training(args.experiment, args.pipeline)
         elif args.command == "eval":
             run_eval(args.experiment, args.pipeline, args.alias)
-        elif args.command == "test":
-            run_test(
+        elif args.command == "serve":
+            run_serve(
                 args.experiment, args.pipeline, args.input, args.alias, args.time_point
             )
         elif args.command == "tune":

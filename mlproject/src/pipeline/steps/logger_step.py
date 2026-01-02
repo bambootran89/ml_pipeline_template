@@ -9,7 +9,7 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
 
 
-class MLflowLogStep(BasePipelineStep):
+class LoggerStep(BasePipelineStep):
     """
     Log artifacts and metrics to MLflow.
 

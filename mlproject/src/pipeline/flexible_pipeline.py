@@ -13,7 +13,7 @@ from mlproject.src.pipeline.executor import PipelineExecutor
 from mlproject.src.utils.config_loader import ConfigLoader
 
 
-class FlexibleTrainingPipeline(BasePipeline):
+class FlexiblePipeline(BasePipeline):
     """Configuration-driven flexible training pipeline.
 
     This pipeline replaces hardcoded logic with YAML-configured steps
@@ -30,7 +30,7 @@ class FlexibleTrainingPipeline(BasePipeline):
       name: "two_stage_kmeans_xgb"
       steps:
         - id: load_data
-          type: data_loader
+          type: data_load
           enabled: true
 
         - id: preprocess
