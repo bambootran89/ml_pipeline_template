@@ -1,6 +1,6 @@
-"""Data loading step for flexible pipeline."""
+"""Data loading step for flexible pipeline với wiring support."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -12,13 +12,67 @@ class DataLoaderStep(BasePipelineStep):
     """Load raw data from configured source.
 
     This step loads data using the existing datamodule loader system
-    and stores the result in context under 'raw_data'.
+    and stores the result in context. Supports data wiring for
+    custom output keys.
 
-    Context Outputs
-    ---------------
-    raw_data : pd.DataFrame
-        Loaded raw dataset.
+    Context Outputs (configurable via wiring)
+    ------------------------------------------
+    df : pd.DataFrame
+        Full dataset.
+    train_df : pd.DataFrame
+        Training subset.
+    val_df : pd.DataFrame
+        Validation subset.
+    test_df : pd.DataFrame
+        Test subset.
+    is_splited_input : bool
+        Whether data was pre-split.
+    data_size : int
+        Number of samples (for conditional branching).
+
+    Wiring Example
+    --------------
+    ::
+
+        - id: "load_data"
+          type: "data_loader"
+          wiring:
+            outputs:
+              df: "raw_data"  # Custom output key
     """
+
+    # Default output keys for backward compatibility
+    DEFAULT_OUTPUTS = {
+        "df": "df",
+        "train_df": "train_df",
+        "val_df": "val_df",
+        "test_df": "test_df",
+    }
+
+    def __init__(
+        self,
+        step_id: str,
+        cfg: Any,
+        enabled: bool = True,
+        depends_on: Optional[List[str]] = None,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize data loading step.
+
+        Parameters
+        ----------
+        step_id : str
+            Unique step identifier.
+        cfg : DictConfig
+            Configuration object.
+        enabled : bool, default=True
+            Whether step is active.
+        depends_on : Optional[List[str]], default=None
+            Prerequisite steps.
+        **kwargs
+            Additional parameters including wiring config.
+        """
+        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Load data from configuration.
@@ -26,29 +80,36 @@ class DataLoaderStep(BasePipelineStep):
         Parameters
         ----------
         context : Dict[str, Any]
-            Pipeline context (unused for this step).
+            Pipeline context.
 
         Returns
         -------
         Dict[str, Any]
-            Context with 'raw_data' key added.
+            Context with data keys added.
         """
-        # Consolidate into single DataFrame if needed
         df, train_df, val_df, test_df = resolve_datasets_from_cfg(self.cfg)
 
-        context["is_splited_input"] = False
+        is_splited = False
         if len(df) == 0 and len(train_df) > 0:
             train_df["dataset"] = "train"
             val_df["dataset"] = "val"
             test_df["dataset"] = "test"
             df = pd.concat([train_df, val_df, test_df], axis=0)
-            context["is_splited_input"] = True
-        context["df"] = df
-        context["train_df"] = train_df
-        context["val_df"] = val_df
-        context["test_df"] = test_df
+            is_splited = True
+
+        # Use wiring to set outputs
+        self.set_output(context, "df", df)
+        self.set_output(context, "train_df", train_df)
+        self.set_output(context, "val_df", val_df)
+        self.set_output(context, "test_df", test_df)
+        context["is_splited_input"] = is_splited
+
+        # Set data_size for conditional branching
+        context["data_size"] = len(df)
+
         print(f"[{self.step_id}] Loaded data: {df.shape}")
-        print(f"[{self.step_id}] Loaded data: {train_df.shape}")
-        print(f"[{self.step_id}] Loaded data: {val_df.shape}")
-        print(f"[{self.step_id}] Loaded data: {test_df.shape}")
+        print(f"[{self.step_id}] Train: {train_df.shape}")
+        print(f"[{self.step_id}] Val: {val_df.shape}")
+        print(f"[{self.step_id}] Test: {test_df.shape}")
+
         return context

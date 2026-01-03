@@ -1,7 +1,7 @@
-# Tune Pipeline
 pipeline:
+  name: "standard_tune"
   steps:
-    # Stage 0: Data preparation
+    # Stage 1: Data preparation
     - id: "load_data"
       type: "data_loader"
       enabled: true
@@ -9,45 +9,38 @@ pipeline:
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
+      depends_on: ["load_data"]
+      is_train: true
 
-    # ========================================
-    # Stage 1: TUNING (nested MLflow runs)
-    # ========================================
+    # Stage 2: Hyperparameter Tuning (Optuna)
+    # Creates nested MLflow runs for each trial
     - id: "tune_model"
       type: "tuner"
       enabled: true
       depends_on: ["preprocess"]
-      # Outputs: best_params, best_value, study
-      # Does NOT train final model
+      # Outputs: tune_model_best_params, tune_model_best_value, tune_model_study
+      # Does NOT train final model!
 
-    # ========================================
-    # Stage 2: RETRAIN (separate MLflow run)
-    # ========================================
+    # Stage 3: Retrain with best params
+    # Creates separate MLflow run for deployment
     - id: "train_best"
       type: "trainer"
       enabled: true
-      depends_on: ["tune_model"]
-      use_tuned_params: true       # ← Use best_params from tune_model
-      tune_step_id: "tune_model"   # ← Where to read best_params
-      # Trains model with best hyperparameters
-      # Creates separate MLflow run for deployment
+      depends_on: ["tune_model", "preprocess"]
+      use_tuned_params: true       # Use best_params from tuning
+      tune_step_id: "tune_model"   # Where to read best_params
 
-    # ========================================
-    # Stage 3: EVALUATE
-    # ========================================
+    # Stage 4: Evaluate final model
     - id: "evaluate"
       type: "evaluator"
       enabled: true
       depends_on: ["train_best"]
-      model_step_id: "train_best"  # ← Evaluate the retrained model
+      model_step_id: "train_best"
 
-    # ========================================
-    # Stage 4: LOG RESULTS
-    # ========================================
+    # Stage 5: Log to MLflow
     - id: "log_results"
       type: "logger"
       enabled: true
-      depends_on: ["evaluate"]
+      depends_on: ["train_best", "evaluate"]
       model_step_id: "train_best"
       eval_step_id: "evaluate"
-      # Logs final model + metrics to MLflow

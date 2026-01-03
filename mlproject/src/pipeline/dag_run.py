@@ -15,11 +15,21 @@ Training::
         --experiment mlproject/configs/experiments/etth3.yaml \
         --pipeline mlproject/configs/pipelines/standard_train.yaml
 
+    python -m mlproject.src.pipeline.dag_run train \
+        -e mlproject/configs/experiments/etth3.yaml \
+        -p mlproject/configs/pipelines/standard_train.yaml
+
 Evaluation::
 
     python -m mlproject.src.pipeline.dag_run eval \
         --experiment mlproject/configs/experiments/etth3.yaml \
-        --pipeline mlproject/configs/pipelines/standard_eval.yaml
+        --pipeline mlproject/configs/pipelines/standard_eval.yaml \
+        --alias latest
+
+    python -m mlproject.src.pipeline.dag_run eval \
+        --e mlproject/configs/experiments/etth3.yaml \
+        --p mlproject/configs/pipelines/standard_eval.yaml \
+        --a latest
 
 Serving::
 
@@ -42,7 +52,7 @@ Hyperparameter Tuning::
     python -m mlproject.src.pipeline.dag_run tune \
         --experiment mlproject/configs/experiments/etth3.yaml \
         --pipeline mlproject/configs/pipelines/standard_tune.yaml \
-        --trials 100
+        --trials 50
 """
 
 from __future__ import annotations
@@ -325,11 +335,17 @@ def run_eval(
 
     merged_cfg = merge_configs(experiment_path, pipeline_path, mode="eval")
 
-    # Update model alias if provided
-    if alias != "latest":
-        for step in merged_cfg.pipeline.steps:
-            if step.get("type") == "model_loader":
-                step.alias = alias
+    # Update alias for model_loader AND preprocessor
+    for step in merged_cfg.pipeline.steps:
+        step_type = step.get("type", "")
+        # Update model_loader
+        if step_type == "model_loader":
+            step.alias = alias
+            print(f"[CONFIG] Override: model_loader alias='{alias}'")
+        # Update preprocessor (only if is_train=False)
+        elif step_type == "preprocessor" and not step.get("is_train", True):
+            step.alias = alias
+            print(f"[CONFIG] Override: preprocessor alias='{alias}'")
 
     temp_config = ".temp_merged_eval.yaml"
     save_merged_config(merged_cfg, temp_config)

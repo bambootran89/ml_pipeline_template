@@ -7,7 +7,7 @@ from mlproject.src.eval.classification import ClassificationEvaluator
 from mlproject.src.eval.clustering import ClusteringEvaluator
 from mlproject.src.eval.regression import RegressionEvaluator
 from mlproject.src.eval.timeseries import TimeSeriesEvaluator
-from mlproject.src.pipeline.base import BasePipeline
+from mlproject.src.pipeline.compat.v1.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.utils.config_loader import ConfigLoader
@@ -107,7 +107,7 @@ class TrainingPipeline(BasePipeline):
         dm, wrapper, trainer = self._get_components(df)
         dm.setup()
         if self.mlflow_manager:
-            run_name: str = f"{self.model_name}_run"
+            run_name: str = f"{self.experiment_name}_run"
 
             with self.mlflow_manager.start_run(run_name=run_name) as logger:
                 transform_manager: Optional[
@@ -117,7 +117,7 @@ class TrainingPipeline(BasePipeline):
                 # Log Preprocessor (với interface thống nhất)
                 logger.log_component(
                     obj=transform_manager,
-                    name=f"{self.model_name}_preprocessor",
+                    name=f"{self.experiment_name}_preprocessor",
                     artifact_type="preprocess",
                 )
 
@@ -126,7 +126,9 @@ class TrainingPipeline(BasePipeline):
                 )
                 # Log Model
                 logger.log_component(
-                    obj=wrapper, name=f"{self.model_name}_model", artifact_type="model"
+                    obj=wrapper,
+                    name=f"{self.experiment_name}_model",
+                    artifact_type="model",
                 )
 
                 logger.log_metadata(params=hyperparams, metrics=metrics)

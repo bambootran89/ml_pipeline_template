@@ -97,15 +97,16 @@ python -m mlproject.src.pipeline.run train \
 
 Run a eval experiment.  (alias: latest, production, staging)
 ```bash
-python -m mlproject.src.pipeline.run eval \
+python -m mlproject.src.pipeline.compat.v1.run eval \
   --config mlproject/configs/experiments/etth1.yaml \
   --alias latest
 ```
 
 Run a serving. (alias: latest, production, staging)
 ```bash
-python -m mlproject.src.pipeline.run test \
+python -m mlproject.src.pipeline.compat.v1.run serve \
   --config mlproject/configs/experiments/etth1.yaml \
+  --input ./sample_input.csv \
   --alias latest
 ```
 
@@ -137,19 +138,19 @@ python -m mlproject.src.pipeline.feature_ops.materialize_titanic \
 
 Training with automatic data loading from Feast:
 ```bash
-python -m mlproject.src.pipeline.run train \
+python -m mlproject.src.pipeline.compat.v1.run train \
   --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 
 Evaluation with automatic data loading from Feast:
 ```bash
-python -m mlproject.src.pipeline.run eval \
+python -m mlproject.src.pipeline.compat.v1.run eval \
   --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 
 Run the serving stage with automatic feature loading from Feast
 ```bash
-python -m mlproject.src.pipeline.run serve \
+python -m mlproject.src.pipeline.compat.v1.run serve \
     --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 
@@ -157,26 +158,30 @@ python -m mlproject.src.pipeline.run serve \
 ## 1. Cross-Validation (Backtesting)
 Validates model stability across time folds.
 ```bash
-python -m mlproject.src.pipeline.run cv \
+python -m mlproject.src.pipeline.compat.v1.run cv \
   --config mlproject/configs/experiments/etth2.yaml
 ```
 
 ## 2. Hyperparameter Tuning (Optuna)
 Runs Bayesian Optimization to find best parameters, then auto-retrains the best model.
 ```bash
-python -m mlproject.src.pipeline.run tune \
-  --config mlproject/configs/experiments/etth3_tuning.yaml
+python -m mlproject.src.pipeline.compat.v1.run tune \
+  --config mlproject/configs/experiments/etth1_tuning.yaml
+
+
+python -m mlproject.src.pipeline.compat.v1.run tune \
+  --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 ## 3. Serving (Inference)
 Deploys the model using FastAPI.
 ```bash
 # Start FastAPI
-uvicorn mlproject.serve.api:app --reload
+CONFIG_PATH=mlproject/configs/experiments/etth1_feast.yaml uvicorn mlproject.serve.api:app --reload
 ```
 Deploys the model using Ray Serve.
 ```bash
 # OR Start Ray Serve
-python mlproject/serve/ray/ray_deploy.py
+CONFIG_PATH=mlproject/configs/experiments/etth1_feast.yaml python mlproject/serve/ray/ray_deploy.py
 ```
 Test API services: mlproject/configs/experiments/etth1.yaml
 ```bash

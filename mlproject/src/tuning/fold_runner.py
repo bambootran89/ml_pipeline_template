@@ -167,7 +167,7 @@ class FoldRunner:
 
     def _log_fold_results(
         self,
-        model_name: str,
+        experiment_name: str,
         model_trained: Any,
         x_sample: Any,
         metrics: dict,
@@ -179,7 +179,7 @@ class FoldRunner:
 
         Parameters
         ----------
-        model_name : str
+        experiment_name : str
             Name of model.
         model_trained : Any
             Trained model.
@@ -194,7 +194,7 @@ class FoldRunner:
             return
 
         run_suffix = f"_fold_{fold_index}" if fold_index is not None else "_run"
-        run_name = f"{model_name}{run_suffix}"
+        run_name = f"{experiment_name}{run_suffix}"
 
         with self.mlflow_manager.start_run(run_name=run_name, nested=True):
             self.mlflow_manager.log_metadata(metrics=metrics)
@@ -248,9 +248,8 @@ class FoldRunner:
 
         # small test batch for logging
         x_sample = x_test[:5]
-
         self._log_fold_results(
-            model_name=model_name,
+            experiment_name=self.cfg.experiment["name"],
             model_trained=model_trained,
             x_sample=x_sample,
             metrics=metrics,

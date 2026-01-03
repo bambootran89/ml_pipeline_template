@@ -1,5 +1,5 @@
-# Evaluation Pipeline - Load model instead of training
 pipeline:
+  name: "standard_eval"
   steps:
     - id: "load_data"
       type: "data_loader"
@@ -8,18 +8,26 @@ pipeline:
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
-      is_train: false  # ← CRITICAL: Load saved preprocessor, don't fit!
+      depends_on: ["load_data"]
+      is_train: false  # CRITICAL: Load from MLflow, don't fit!
+      alias: "latest"  # Same alias as model (can override via CLI)
 
     - id: "load_model"
       type: "model_loader"
       enabled: true
-      alias: "latest"  # ← Load from MLflow Registry, not file!
+      depends_on: ["preprocess"]
+      alias: "latest"  # Override với --alias
 
     - id: "evaluate"
       type: "evaluator"
       enabled: true
+      depends_on: ["load_model", "preprocess"]
       model_step_id: "load_model"
 
+    # Optional: Log evaluation results
     - id: "log_results"
       type: "logger"
-      enabled: true
+      enabled: false  # Disabled by default for eval
+      depends_on: ["evaluate"]
+      model_step_id: "load_model"
+      eval_step_id: "evaluate"

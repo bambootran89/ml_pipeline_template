@@ -1,8 +1,8 @@
-"""Model evaluation pipeline step."""
+"""Model evaluation pipeline step with data wiring support."""
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
@@ -18,7 +18,37 @@ class EvaluatorStep(BasePipelineStep):
     Evaluate trained model on test data.
 
     Computes metrics based on evaluation type configured
-    in the experiment.
+    in the experiment. Supports data wiring for flexible
+    model/data source configuration.
+
+    Context Inputs (configurable via wiring)
+    -----------------------------------------
+    <model_step_id>_model : ModelWrapper
+        Trained model to evaluate (default: train_model_model).
+    <model_step_id>_datamodule : DataModule
+        DataModule with test data (default: train_model_datamodule).
+    preprocessed_data : pd.DataFrame
+        Fallback if datamodule is None.
+
+    Context Outputs (configurable via wiring)
+    ------------------------------------------
+    <step_id>_metrics : Dict[str, float]
+        Evaluation metrics.
+
+    Wiring Example
+    --------------
+    ::
+
+        - id: "eval_ensemble"
+          type: "evaluator"
+          depends_on: ["train_xgb", "train_catboost"]
+          wiring:
+            inputs:
+              model: "ensemble_model"      # Custom model key
+              datamodule: "shared_dm"      # Custom datamodule key
+            outputs:
+              metrics: "ensemble_metrics"  # Custom output key
+          model_step_id: "train_xgb"       # Fallback if wiring not set
     """
 
     def __init__(
@@ -26,8 +56,9 @@ class EvaluatorStep(BasePipelineStep):
         step_id: str,
         cfg: Any,
         enabled: bool = True,
-        depends_on: Any = None,
+        depends_on: Optional[List[str]] = None,
         model_step_id: str = "train_model",
+        **kwargs: Any,
     ) -> None:
         """
         Initialize evaluation step.
@@ -44,8 +75,11 @@ class EvaluatorStep(BasePipelineStep):
             Prerequisite steps.
         model_step_id : str, default="train_model"
             ID of step that trained the model to evaluate.
+            Used for default key patterns.
+        **kwargs
+            Additional parameters including wiring config.
         """
-        super().__init__(step_id, cfg, enabled, depends_on)
+        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.model_step_id = model_step_id
         self.evaluator = self._build_evaluator()
 
@@ -75,6 +109,8 @@ class EvaluatorStep(BasePipelineStep):
         """
         Evaluate model and store metrics.
 
+        Uses wiring configuration for input/output key mapping.
+
         Parameters
         ----------
         context : Dict[str, Any]
@@ -87,26 +123,19 @@ class EvaluatorStep(BasePipelineStep):
         """
         self.validate_dependencies(context)
 
-        # Get model and data from context
+        # Get model using wiring or default pattern
         model_key = f"{self.model_step_id}_model"
         dm_key = f"{self.model_step_id}_datamodule"
 
-        if model_key not in context or dm_key not in context:
-            raise ValueError(
-                f"Step '{self.step_id}' requires " f"'{model_key}' and '{dm_key}'"
-            )
-
-        wrapper = context[model_key]
-        dm = context[dm_key]
+        wrapper = self.get_input(context, "model", default_key=model_key, required=True)
+        dm = self.get_input(context, "datamodule", default_key=dm_key, required=False)
 
         # Build datamodule if None (from ModelLoaderStep)
         if dm is None:
             print(f"[{self.step_id}] Building datamodule from preprocessed_data")
-            if "preprocessed_data" not in context:
-                raise ValueError("Missing 'preprocessed_data' in context")
-
-            df = context["preprocessed_data"]
-
+            df = self.get_input(
+                context, "data", default_key="preprocessed_data", required=True
+            )
             dm = DataModuleFactory.build(self.cfg, df)
 
         # Get test data
@@ -121,7 +150,8 @@ class EvaluatorStep(BasePipelineStep):
             y_test, preds, x=x_test, model=wrapper.get_model()
         )
 
-        context[f"{self.step_id}_metrics"] = metrics
+        # Store output using wiring
+        self.set_output(context, "metrics", metrics)
 
         print(f"[{self.step_id}] Evaluation complete")
         print(f"  Metrics: {metrics}")

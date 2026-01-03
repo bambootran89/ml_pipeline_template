@@ -1,0 +1,69 @@
+# Nested Sub-Pipeline Example
+# Demonstrates encapsulating a feature engineering workflow
+#
+# Flow:
+#   load_data → feature_pipeline(sub) → train → evaluate
+#
+# The feature_pipeline is a nested pipeline that runs multiple
+# feature engineering steps as a single unit.
+
+pipeline:
+  name: "nested_feature_engineering"
+  steps:
+    # Stage 1: Data Loading
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    # Stage 2: Feature Engineering Sub-Pipeline
+    - id: "feature_pipeline"
+      type: "sub_pipeline"
+      enabled: true
+      depends_on: ["load_data"]
+      output_prefix: "feat_"  # Prefix all outputs to avoid collisions
+      isolated: false         # Inherit parent context
+
+      # Inline pipeline definition
+      pipeline:
+        steps:
+          # Sub-step 1: Basic preprocessing
+          - id: "normalize"
+            type: "preprocessor"
+            wiring:
+              outputs:
+                data: "normalized_data"
+
+          # Sub-step 2: Clustering for feature generation
+          - id: "cluster"
+            type: "trainer"
+            depends_on: ["normalize"]
+            output_as_feature: true
+            wiring:
+              inputs:
+                data: "normalized_data"
+              outputs:
+                features: "cluster_features"
+
+    # Stage 3: Model Training (uses features from sub-pipeline)
+    - id: "train_model"
+      type: "trainer"
+      enabled: true
+      depends_on: ["feature_pipeline"]
+      wiring:
+        inputs:
+          data: "feat_normalized_data"  # Uses prefixed output
+
+    # Stage 4: Evaluation
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["train_model"]
+      model_step_id: "train_model"
+
+    # Stage 5: Log Results
+    - id: "log_results"
+      type: "logger"
+      enabled: true
+      depends_on: ["evaluate"]
+      model_step_id: "train_model"
+      eval_step_id: "evaluate"

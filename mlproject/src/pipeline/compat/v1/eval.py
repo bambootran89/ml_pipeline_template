@@ -21,7 +21,7 @@ from mlproject.src.eval.classification import ClassificationEvaluator
 from mlproject.src.eval.clustering import ClusteringEvaluator
 from mlproject.src.eval.regression import RegressionEvaluator
 from mlproject.src.eval.timeseries import TimeSeriesEvaluator
-from mlproject.src.pipeline.base import BasePipeline
+from mlproject.src.pipeline.compat.v1.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.utils.config_loader import ConfigLoader
 from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
@@ -45,10 +45,10 @@ class EvalPipeline(BasePipeline):
         if self.mlflow_manager.enabled:
             # Load artifacts đồng nhất
             self.preprocessor_model = self.mlflow_manager.load_component(
-                name=f"{self.model_name}_preprocessor", alias=alias
+                name=f"{self.experiment_name}_preprocessor", alias=alias
             )
             self.model = self.mlflow_manager.load_component(
-                name=f"{self.model_name}_model", alias=alias
+                name=f"{self.experiment_name}_model", alias=alias
             )
 
     def preprocess(self) -> pd.DataFrame:
@@ -179,7 +179,7 @@ class EvalPipeline(BasePipeline):
 
         x_test = np.asarray(x_test, dtype=np.float32)
 
-        run_name = f"eval_{self.model_name}_latest"
+        run_name = f"eval_{self.experiment_name}_latest"
 
         with self.mlflow_manager.start_run(run_name=run_name):
             preds = self.model.predict(x_test)

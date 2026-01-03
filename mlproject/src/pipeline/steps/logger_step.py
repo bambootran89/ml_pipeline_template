@@ -1,8 +1,8 @@
-"""MLflow logging pipeline step."""
+"""MLflow logging pipeline step with wiring support."""
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.tracking.mlflow_manager import MLflowManager
@@ -14,7 +14,31 @@ class LoggerStep(BasePipelineStep):
     Log artifacts and metrics to MLflow.
 
     Extracts outputs from previous steps and logs them
-    to MLflow Model Registry.
+    to MLflow Model Registry. Supports data wiring for
+    flexible input key mapping.
+
+    Context Inputs (configurable via wiring)
+    -----------------------------------------
+    <model_step_id>_model : ModelWrapper
+        Trained model to log.
+    preprocessor : OfflinePreprocessor
+        Fitted preprocessor.
+    <eval_step_id>_metrics : Dict
+        Evaluation metrics.
+
+    Wiring Example
+    --------------
+    ::
+
+        - id: "log_results"
+          type: "logger"
+          depends_on: ["evaluate"]
+          wiring:
+            inputs:
+              model: "ensemble_model"
+              metrics: "final_metrics"
+          model_step_id: "train_ensemble"
+          eval_step_id: "evaluate"
     """
 
     def __init__(
@@ -22,9 +46,10 @@ class LoggerStep(BasePipelineStep):
         step_id: str,
         cfg: Any,
         enabled: bool = True,
-        depends_on: Any = None,
+        depends_on: Optional[List[str]] = None,
         model_step_id: str = "train_model",
         eval_step_id: str = "evaluate",
+        **kwargs: Any,
     ) -> None:
         """
         Initialize MLflow logging step.
@@ -43,8 +68,10 @@ class LoggerStep(BasePipelineStep):
             Step ID that trained the model.
         eval_step_id : str, default="evaluate"
             Step ID that computed metrics.
+        **kwargs
+            Additional parameters including wiring config.
         """
-        super().__init__(step_id, cfg, enabled, depends_on)
+        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.model_step_id = model_step_id
         self.eval_step_id = eval_step_id
         self.mlflow_manager = MLflowManager(cfg)
@@ -53,10 +80,12 @@ class LoggerStep(BasePipelineStep):
         """
         Log components to MLflow.
 
+        Uses wiring configuration for input key mapping.
+
         Parameters
         ----------
         context : Dict[str, Any]
-            Must contain model, preprocessor, and metrics.
+            Pipeline context.
 
         Returns
         -------
@@ -69,21 +98,31 @@ class LoggerStep(BasePipelineStep):
             print(f"[{self.step_id}] MLflow disabled, skipping")
             return context
 
-        model_name = self.cfg.experiment.get("model", "model")
+        experiment_name = self.cfg.experiment.get("name", "undefined")
 
-        # Get components from context
-        wrapper = context.get(f"{self.model_step_id}_model")
-        preprocessor = context.get("preprocessor")
-        metrics = context.get(f"{self.eval_step_id}_metrics", {})
+        # Get inputs using wiring or default patterns
+        model_key = f"{self.model_step_id}_model"
+        metrics_key = f"{self.eval_step_id}_metrics"
 
-        run_name = f"{model_name}_run"
+        wrapper = self.get_input(
+            context, "model", default_key=model_key, required=False
+        )
+        preprocessor = self.get_input(
+            context, "preprocessor", default_key="preprocessor", required=False
+        )
+        metrics = (
+            self.get_input(context, "metrics", default_key=metrics_key, required=False)
+            or {}
+        )
+
+        run_name = f"{experiment_name}_run"
 
         with self.mlflow_manager.start_run(run_name=run_name):
             # Log preprocessor
             if preprocessor is not None:
                 self.mlflow_manager.log_component(
                     obj=preprocessor.transform_manager,
-                    name=f"{model_name}_preprocessor",
+                    name=f"{experiment_name}_preprocessor",
                     artifact_type="preprocess",
                 )
 
@@ -91,7 +130,7 @@ class LoggerStep(BasePipelineStep):
             if wrapper is not None:
                 self.mlflow_manager.log_component(
                     obj=wrapper,
-                    name=f"{model_name}_model",
+                    name=f"{experiment_name}_model",
                     artifact_type="model",
                 )
 

@@ -8,8 +8,8 @@ from typing import Any, Dict, Optional
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.pipeline.base import BasePipeline
-from mlproject.src.pipeline.executor import PipelineExecutor
+from mlproject.src.pipeline.compat.v1.base import BasePipeline
+from mlproject.src.pipeline.steps.factory_step import PipelineExecutor
 from mlproject.src.utils.config_loader import ConfigLoader
 
 
