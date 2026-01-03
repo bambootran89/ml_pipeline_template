@@ -1,66 +1,53 @@
-# Two-stage pipeline: KMeans clustering → XGBoost classification
-# Demonstrates flexible data wiring between steps
-
+# Flow: load_data → preprocess → kmeans_features → xgboost_model → evaluate → log
 pipeline:
   name: "kmeans_then_xgboost"
 
   steps:
-    # Stage 0: Data Loading
+    # Stage 1: Data Loading
     - id: "load_data"
       type: "data_loader"
       enabled: true
-      # No wiring needed - outputs to default keys:
-      # - df, train_df, val_df, test_df
+      # Outputs: df, train_df, val_df, test_df, data_size
 
-    # Stage 1: Preprocessing
+    # Stage 2: Preprocessing
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
       depends_on: ["load_data"]
-      # Wiring configuration for explicit routing
-      wiring:
-        inputs:
-          data: "df"                      # Read from context["df"]
-        outputs:
-          data: "preprocessed_data"       # Write to context["preprocessed_data"]
+      is_train: true
+      # Outputs: preprocessed_data, preprocessor
 
-    # Stage 2: Clustering for Feature Engineering
+    # Stage 3: Clustering for Feature Engineering
     - id: "kmeans_features"
       type: "clustering"
       enabled: true
       depends_on: ["preprocess"]
       model_name: "kmean"
-      output_as_feature: true            # Generate cluster labels as features
+      output_as_feature: true
       hyperparams:
         n_clusters: 5
         max_iter: 100
       wiring:
         inputs:
-          data: "preprocessed_data"      # Input from preprocessing
+          data: "preprocessed_data"
         outputs:
-          features: "cluster_labels"     # Cluster assignments
-          model: "kmeans_model"          # Fitted KMeans model
+          features: "cluster_labels"
+          model: "kmeans_model"
 
-    # Stage 3: Classification with Cluster Features
+    # Stage 4: Classification with Cluster Features
     - id: "xgboost_model"
-      type: "generic_model"
+      type: "trainer"
       enabled: true
       depends_on: ["kmeans_features"]
-      model_name: "xgboost"
-      model_type: "ml"
-      hyperparams:
-        n_estimators: 100
-        max_depth: 6
-        learning_rate: 0.1
       wiring:
         inputs:
-          data: "preprocessed_data"      # Original features
-          features: "cluster_labels"     # Injected cluster features
+          data: "preprocessed_data"
         outputs:
           model: "xgb_model"
-          predictions: "xgb_predictions"
+          datamodule: "xgb_datamodule"
+      # Note: cluster_labels sẽ được inject tự động qua depends_on
 
-    # Stage 4: Evaluation
+    # Stage 5: Evaluation
     - id: "evaluate"
       type: "evaluator"
       enabled: true
@@ -69,10 +56,11 @@ pipeline:
       wiring:
         inputs:
           model: "xgb_model"
+          datamodule: "xgb_datamodule"
         outputs:
           metrics: "evaluation_metrics"
 
-    # Stage 5: MLflow Logging
+    # Stage 6: MLflow Logging
     - id: "log_results"
       type: "logger"
       enabled: true

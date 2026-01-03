@@ -53,6 +53,27 @@ Hyperparameter Tuning::
         --experiment mlproject/configs/experiments/etth3.yaml \
         --pipeline mlproject/configs/pipelines/standard_tune.yaml \
         --trials 50
+
+
+# 2. Two-stage (kmeans → xgboost)
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/kmeans_then_xgboost.yaml
+
+# 3. Parallel ensemble
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/parallel_ensemble.yaml
+
+# 4. Conditional branch
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/conditional_branch.yaml
+
+# 5. Nested sub-pipeline
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/nested_feature_pipeline.yaml
 """
 
 from __future__ import annotations

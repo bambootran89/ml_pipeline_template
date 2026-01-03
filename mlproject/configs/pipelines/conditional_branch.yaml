@@ -1,16 +1,17 @@
 # Conditional Model Selection Pipeline
-# Demonstrates conditional execution based on data characteristics
+# Selects model based on data size
 #
-# Flow:
-#   load_data → preprocess → check_size → [TFT | XGBoost] → evaluate
+# Flow: load_data → preprocess → branch[TFT | XGBoost] → evaluate → log
 #
-# If dataset is large (>10000 samples), use deep learning (TFT).
-# Otherwise, use gradient boosting (XGBoost).
+# - If data_size > 10000: Use TFT (deep learning)
+# - Else: Use XGBoost (gradient boosting)
 
 pipeline:
   name: "conditional_model_selection"
+
   steps:
     # Stage 1: Data Loading
+    # DataLoaderStep automatically sets context["data_size"] = len(df)
     - id: "load_data"
       type: "data_loader"
       enabled: true
@@ -20,6 +21,7 @@ pipeline:
       type: "preprocessor"
       enabled: true
       depends_on: ["load_data"]
+      is_train: true
 
     # Stage 3: Conditional Model Selection
     - id: "model_selection"
@@ -27,24 +29,28 @@ pipeline:
       enabled: true
       depends_on: ["preprocess"]
       condition:
-        key: "data_size"      # Check this context key
-        operator: ">"         # Comparison operator
-        value: 10000          # Threshold value
+        key: "data_size"
+        operator: ">"
+        value: 10000
 
-      # Execute if condition is TRUE (large dataset)
+      # Execute if data_size > 10000 (large dataset)
       if_true:
         id: "train_tft"
         type: "trainer"
         wiring:
+          inputs:
+            data: "preprocessed_data"
           outputs:
             model: "selected_model"
             datamodule: "selected_dm"
 
-      # Execute if condition is FALSE (small dataset)
+      # Execute if data_size <= 10000 (small dataset)
       if_false:
         id: "train_xgb"
         type: "trainer"
         wiring:
+          inputs:
+            data: "preprocessed_data"
           outputs:
             model: "selected_model"
             datamodule: "selected_dm"
@@ -58,9 +64,15 @@ pipeline:
         inputs:
           model: "selected_model"
           datamodule: "selected_dm"
+        outputs:
+          metrics: "evaluation_metrics"
 
     # Stage 5: Log Results
     - id: "log_results"
       type: "logger"
       enabled: true
       depends_on: ["evaluate"]
+      wiring:
+        inputs:
+          model: "selected_model"
+          metrics: "evaluation_metrics"

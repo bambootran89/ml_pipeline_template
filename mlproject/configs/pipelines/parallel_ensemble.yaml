@@ -1,60 +1,54 @@
 # Parallel Ensemble Pipeline
-# Runs multiple models in parallel and collects predictions
+# Runs multiple models in parallel and evaluates each
+#
+# Flow: load_data → preprocess → [xgb | catboost | kmeans] parallel → eval_xgb, eval_cat → log
 
 pipeline:
   name: "parallel_ensemble"
 
   steps:
-    # Stage 0: Data Loading
+    # Stage 1: Data Loading
     - id: "load_data"
       type: "data_loader"
       enabled: true
 
-    # Stage 1: Preprocessing
+    # Stage 2: Preprocessing
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
       depends_on: ["load_data"]
+      is_train: true
 
-    # Stage 2: Parallel Model Training
+    # Stage 3: Parallel Model Training
     - id: "ensemble_models"
       type: "parallel"
       enabled: true
       depends_on: ["preprocess"]
       max_workers: 3
-      merge_strategy: "merge"  # or "collect"
+      merge_strategy: "merge"
       branches:
         # Branch 1: XGBoost
         - id: "xgboost_branch"
-          type: "generic_model"
-          model_name: "xgboost"
-          model_type: "ml"
-          hyperparams:
-            n_estimators: 100
-            max_depth: 5
+          type: "trainer"
           wiring:
             inputs:
               data: "preprocessed_data"
             outputs:
               model: "xgb_model"
-              predictions: "xgb_preds"
+              datamodule: "xgb_dm"
 
-        # Branch 2: CatBoost
+        # Branch 2: CatBoost (nếu có trong ModelFactory)
+        # Nếu chưa có catboost, comment out hoặc thay bằng model khác
         - id: "catboost_branch"
-          type: "generic_model"
-          model_name: "catboost"
-          model_type: "ml"
-          hyperparams:
-            iterations: 100
-            depth: 6
+          type: "trainer"
           wiring:
             inputs:
               data: "preprocessed_data"
             outputs:
               model: "cat_model"
-              predictions: "cat_preds"
+              datamodule: "cat_dm"
 
-        # Branch 3: KMeans (optional clustering)
+        # Branch 3: KMeans clustering features
         - id: "kmeans_branch"
           type: "clustering"
           model_name: "kmean"
@@ -68,34 +62,36 @@ pipeline:
               features: "cluster_features"
               model: "kmeans_model"
 
-    # Stage 3: Ensemble Evaluation
-    # Each model is evaluated separately
+    # Stage 4: Evaluate XGBoost
     - id: "eval_xgb"
       type: "evaluator"
       enabled: true
       depends_on: ["ensemble_models"]
-      model_step_id: "xgboost_branch"
       wiring:
         inputs:
           model: "xgb_model"
+          datamodule: "xgb_dm"
         outputs:
           metrics: "xgb_metrics"
 
+    # Stage 5: Evaluate CatBoost
     - id: "eval_cat"
       type: "evaluator"
       enabled: true
       depends_on: ["ensemble_models"]
-      model_step_id: "catboost_branch"
       wiring:
         inputs:
           model: "cat_model"
+          datamodule: "cat_dm"
         outputs:
           metrics: "cat_metrics"
 
-    # Stage 4: Logging
+    # Stage 6: Logging (log best model - xgboost as default)
     - id: "log_results"
       type: "logger"
       enabled: true
       depends_on: ["eval_xgb", "eval_cat"]
-      model_step_id: "xgboost_branch"
-      eval_step_id: "eval_xgb"
+      wiring:
+        inputs:
+          model: "xgb_model"
+          metrics: "xgb_metrics"
