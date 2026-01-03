@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 
@@ -134,3 +135,7 @@ class ModelLoaderStep(BasePipelineStep):
             f"{registry_name}@{self.alias}"
         )
         return context
+
+
+# Register step type
+StepFactory.register("model_loader", ModelLoaderStep)

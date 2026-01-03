@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
 
@@ -142,3 +143,7 @@ class LoggerStep(BasePipelineStep):
         print(f"[{self.step_id}] Logged to MLflow: {run_name}")
 
         return context
+
+
+# Register step type
+StepFactory.register("logger", LoggerStep)

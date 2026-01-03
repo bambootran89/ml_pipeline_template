@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
@@ -266,3 +267,7 @@ class PreprocessorStep(BasePipelineStep):
 
         print(f"[{self.step_id}] Preprocessed data: {df_transformed.shape}")
         return context
+
+
+# Register step type
+StepFactory.register("preprocessor", PreprocessorStep)

@@ -16,6 +16,7 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.trainer.factory import TrainerFactory
 
 
@@ -393,3 +394,8 @@ class ClusteringModelStep(GenericModelStep):
         kwargs.setdefault("model_type", "ml")
 
         super().__init__(step_id, cfg, **kwargs)
+
+
+# REGISTER STEP TYPES
+StepFactory.register("generic_model", GenericModelStep)
+StepFactory.register("clustering", ClusteringModelStep)

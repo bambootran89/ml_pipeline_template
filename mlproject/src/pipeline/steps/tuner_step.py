@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna import OptunaTuner
 
@@ -181,3 +182,7 @@ class TunerStep(BasePipelineStep):
         print(f"\n{'=' * 60}\n")
 
         return context
+
+
+# Register step type
+StepFactory.register("tuner", TunerStep)

@@ -6,6 +6,7 @@ import pandas as pd
 
 from mlproject.src.datamodule.loader import resolve_datasets_from_cfg
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
 class DataLoaderStep(BasePipelineStep):
@@ -38,10 +39,9 @@ class DataLoaderStep(BasePipelineStep):
           type: "data_loader"
           wiring:
             outputs:
-              df: "raw_data"  # Custom output key
+              df: "raw_data"
     """
 
-    # Default output keys for backward compatibility
     DEFAULT_OUTPUTS = {
         "df": "df",
         "train_df": "train_df",
@@ -57,36 +57,11 @@ class DataLoaderStep(BasePipelineStep):
         depends_on: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize data loading step.
-
-        Parameters
-        ----------
-        step_id : str
-            Unique step identifier.
-        cfg : DictConfig
-            Configuration object.
-        enabled : bool, default=True
-            Whether step is active.
-        depends_on : Optional[List[str]], default=None
-            Prerequisite steps.
-        **kwargs
-            Additional parameters including wiring config.
-        """
+        """Initialize data loading step."""
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Load data from configuration.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Context with data keys added.
-        """
+        """Load data from configuration."""
         df, train_df, val_df, test_df = resolve_datasets_from_cfg(self.cfg)
 
         is_splited = False
@@ -113,3 +88,7 @@ class DataLoaderStep(BasePipelineStep):
         print(f"[{self.step_id}] Test: {test_df.shape}")
 
         return context
+
+
+# Register step type
+StepFactory.register("data_loader", DataLoaderStep)

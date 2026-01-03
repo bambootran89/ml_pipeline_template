@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
 class InferenceStep(BasePipelineStep):
@@ -186,3 +187,7 @@ class InferenceStep(BasePipelineStep):
             raise ValueError(f"Input data has {len(df)} rows, need at least {seq_len}")
         window: np.ndarray = df.iloc[-seq_len:].values
         return window[np.newaxis, :].astype(np.float32)
+
+
+# Register step type
+StepFactory.register("inference", InferenceStep)

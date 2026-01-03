@@ -11,6 +11,7 @@ from mlproject.src.eval.clustering import ClusteringEvaluator
 from mlproject.src.eval.regression import RegressionEvaluator
 from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
 class EvaluatorStep(BasePipelineStep):
@@ -157,3 +158,7 @@ class EvaluatorStep(BasePipelineStep):
         print(f"  Metrics: {metrics}")
 
         return context
+
+
+# Register step type
+StepFactory.register("evaluator", EvaluatorStep)

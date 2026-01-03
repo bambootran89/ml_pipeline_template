@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.trainer.factory import TrainerFactory
 
 
@@ -262,3 +263,7 @@ class TrainerStep(BasePipelineStep):
 
         print(f"[{self.step_id}] Model trained successfully")
         return context
+
+
+# Register step type
+StepFactory.register("trainer", TrainerStep)
