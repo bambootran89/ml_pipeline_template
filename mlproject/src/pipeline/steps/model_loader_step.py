@@ -1,12 +1,11 @@
-"""Model loading step for evaluation and test pipelines.
+"""Model loading step with data wiring support.
 
-This module loads pre-trained models from MLflow Model Registry
-instead of local files for consistency.
+This module loads pre-trained models from MLflow Model Registry.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.tracking.mlflow_manager import MLflowManager
@@ -15,52 +14,68 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 class ModelLoaderStep(BasePipelineStep):
     """Load a pre-trained model from MLflow Model Registry.
 
-    Context Inputs
-    --------------
-    preprocessed_data : pd.DataFrame
-        Preprocessed data (for reference).
+    Supports data wiring for custom output key mapping.
 
-    Context Outputs
-    ---------------
-    <step_id>_model : Any
+    Context Outputs (configurable via wiring)
+    ------------------------------------------
+    model : Any
         Loaded model wrapper from MLflow.
-    <step_id>_datamodule : None
-        Set to None - EvaluationStep will build when needed.
+    datamodule : None
+        Set to None - EvaluatorStep will build when needed.
 
-    Configuration Parameters
-    ------------------------
+    Wiring Example
+    --------------
+    ::
+
+        - id: "load_model"
+          type: "model_loader"
+          alias: "production"
+          wiring:
+            outputs:
+              model: "production_model"
+
+    Configuration
+    -------------
     experiment_name : str, optional
         Model name in registry (defaults to cfg.experiment.name).
     alias : str, optional
         Model version alias (default: "latest").
-
-    Examples
-    --------
-    YAML configuration::
-
-        steps:
-          - id: "load_model"
-            type: "model_loader"
-            enabled: true
-            alias: "production"  # or "latest", "staging"
     """
 
-    def __init__(self, *args, alias: str = "latest", **kwargs) -> None:
+    def __init__(
+        self,
+        step_id: str,
+        cfg: Any,
+        enabled: bool = True,
+        depends_on: Optional[List[str]] = None,
+        alias: str = "latest",
+        **kwargs: Any,
+    ) -> None:
         """Initialize model loader step.
 
         Parameters
         ----------
+        step_id : str
+            Unique step identifier.
+        cfg : DictConfig
+            Configuration object.
+        enabled : bool, default=True
+            Whether step is active.
+        depends_on : Optional[List[str]], default=None
+            Prerequisite steps.
         alias : str, optional
             MLflow registry alias (default: "latest").
-        *args, **kwargs
-            Passed to BasePipelineStep.
+        **kwargs
+            Additional parameters including wiring config.
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.alias = alias
         self.mlflow_manager = MLflowManager(self.cfg)
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Load model from MLflow Model Registry.
+
+        Uses wiring configuration for output key mapping.
 
         Parameters
         ----------
@@ -83,7 +98,6 @@ class ModelLoaderStep(BasePipelineStep):
                 f"Set mlflow.enabled=true in config."
             )
 
-        # Get model name from config
         experiment_name = self.cfg.experiment.get("name", "")
         if not experiment_name:
             raise ValueError("experiment.name must be specified in config")
@@ -95,7 +109,6 @@ class ModelLoaderStep(BasePipelineStep):
             f"name='{registry_name}', alias='{self.alias}'"
         )
 
-        # Load model from MLflow
         model = self.mlflow_manager.load_component(
             name=registry_name,
             alias=self.alias,
@@ -103,21 +116,18 @@ class ModelLoaderStep(BasePipelineStep):
 
         if model is None:
             raise RuntimeError(
-                f"Failed to load model '{registry_name}' with alias '{self.alias}'. "
-                f"Make sure model is registered in MLflow."
+                f"Failed to load model '{registry_name}' with alias "
+                f"'{self.alias}'. Make sure model is registered in MLflow."
             )
 
-        # Verify model has predict method
         if not hasattr(model, "predict"):
             raise AttributeError(
                 f"Loaded model ({type(model)}) does not have 'predict' method."
             )
 
-        # Store model in context
-        context[f"{self.step_id}_model"] = model
-
-        # Set datamodule to None - EvaluationStep will build when needed
-        context[f"{self.step_id}_datamodule"] = None
+        # Store outputs using wiring
+        self.set_output(context, "model", model)
+        self.set_output(context, "datamodule", None)
 
         print(
             f"[{self.step_id}] Successfully loaded model: "

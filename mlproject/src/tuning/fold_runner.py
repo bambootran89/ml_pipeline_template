@@ -248,9 +248,8 @@ class FoldRunner:
 
         # small test batch for logging
         x_sample = x_test[:5]
-        experiment_name: str = self.cfg.experiment["name"]
         self._log_fold_results(
-            experiment_name=experiment_name,
+            experiment_name=self.cfg.experiment["name"],
             model_trained=model_trained,
             x_sample=x_sample,
             metrics=metrics,

@@ -1,9 +1,9 @@
-"""Model training step for flexible pipeline.
+"""Model training step with data wiring support.
 
 Enhanced to support using best params from TuningStep.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -19,78 +19,91 @@ class TrainerStep(BasePipelineStep):
     """Train a model on preprocessed data.
 
     This step supports:
+    - Data wiring for flexible input/output keys
     - Feature injection from upstream models
     - Multiple model types (ML/DL)
     - Using tuned hyperparameters from TuningStep
     - Saving trained artifacts
 
-    Context Inputs
-    --------------
-    preprocessed_data : pd.DataFrame
-        Transformed features (required).
-    <step_id>_features : np.ndarray, optional
-        Injected features from dependency steps if output_as_feature=True.
-    <tune_step_id>_best_params : Dict[str, Any], optional
-        Best hyperparameters from TuningStep if use_tuned_params=True.
+    Context Inputs (configurable via wiring)
+    -----------------------------------------
+    data : pd.DataFrame
+        Transformed features (default: preprocessed_data).
+    <dep_id>_features : np.ndarray, optional
+        Injected features from dependency steps.
+    <tune_step_id>_best_params : Dict, optional
+        Best hyperparameters from TuningStep.
 
-    Context Outputs
-    ---------------
-    <step_id>_model : Any
+    Context Outputs (configurable via wiring)
+    ------------------------------------------
+    model : Any
         Trained model wrapper.
-    <step_id>_datamodule : DataModule
+    datamodule : DataModule
         Built datamodule.
-    <step_id>_features : np.ndarray, optional
+    features : np.ndarray, optional
         Model predictions if output_as_feature=True.
+
+    Wiring Example
+    --------------
+    ::
+
+        - id: "train_xgb"
+          type: "trainer"
+          depends_on: ["preprocess", "kmeans"]
+          wiring:
+            inputs:
+              data: "custom_features"
+            outputs:
+              model: "xgb_model"
+              features: "xgb_predictions"
+          output_as_feature: true
 
     Configuration
     -------------
-    model : str
-        Model name to instantiate.
-    hyperparams : dict
-        Model hyperparameters.
     output_as_feature : bool, default=False
-        If True, store predictions in context for downstream injection.
+        If True, store predictions for downstream injection.
     use_tuned_params : bool, default=False
         If True, use best_params from upstream TuningStep.
     tune_step_id : str, optional
         ID of TuningStep (required if use_tuned_params=True).
-
-    Examples
-    --------
-    # Standard training
-    - id: "train_model"
-      type: "model"
-      enabled: true
-
-    # Training with tuned params
-    - id: "train_best"
-      type: "model"
-      enabled: true
-      depends_on: ["tune_model"]
-      use_tuned_params: true
-      tune_step_id: "tune_model"
     """
+
+    DEFAULT_INPUTS = {"data": "preprocessed_data"}
 
     def __init__(
         self,
-        *args,
+        step_id: str,
+        cfg: Any,
+        enabled: bool = True,
+        depends_on: Optional[List[str]] = None,
         use_tuned_params: bool = False,
         tune_step_id: Optional[str] = None,
-        **kwargs,
+        output_as_feature: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Initialize model training step.
 
         Parameters
         ----------
+        step_id : str
+            Unique step identifier.
+        cfg : DictConfig
+            Configuration object.
+        enabled : bool, default=True
+            Whether step is active.
+        depends_on : Optional[List[str]], default=None
+            Prerequisite steps.
         use_tuned_params : bool, default=False
             Whether to use best params from TuningStep.
         tune_step_id : str, optional
             ID of TuningStep to read best_params from.
-        *args, **kwargs
-            Passed to BasePipelineStep.
+        output_as_feature : bool, default=False
+            If True, store predictions for downstream steps.
+        **kwargs
+            Additional parameters including wiring config.
         """
-        super().__init__(*args, **kwargs)
-        self.output_as_feature = False
+        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
+        self.output_as_feature = output_as_feature
         self.use_tuned_params = use_tuned_params
         self.tune_step_id = tune_step_id
 
@@ -118,13 +131,16 @@ class TrainerStep(BasePipelineStep):
             if feature_key in context:
                 features = context[feature_key]
                 if isinstance(features, np.ndarray):
-                    # Add as new columns
-                    for i in range(features.shape[1]):
-                        df_out[f"{dep_id}_feat_{i}"] = features[:, i]
-                    print(
-                        f"[{self.step_id}] Injected {features.shape[1]} "
-                        f"features from '{dep_id}'"
-                    )
+                    if features.ndim == 1:
+                        df_out[f"{dep_id}_feat_0"] = features
+                        print(f"[{self.step_id}] Injected 1 feature from '{dep_id}'")
+                    else:
+                        for i in range(features.shape[1]):
+                            df_out[f"{dep_id}_feat_{i}"] = features[:, i]
+                        print(
+                            f"[{self.step_id}] Injected {features.shape[1]} "
+                            f"features from '{dep_id}'"
+                        )
 
         return df_out
 
@@ -142,7 +158,6 @@ class TrainerStep(BasePipelineStep):
             Hyperparameters to use for training.
         """
         if self.use_tuned_params:
-            # Use best params from TuningStep
             if self.tune_step_id is None:
                 raise ValueError(
                     f"Step '{self.step_id}': use_tuned_params=True requires "
@@ -152,8 +167,8 @@ class TrainerStep(BasePipelineStep):
             best_params_key = f"{self.tune_step_id}_best_params"
             if best_params_key not in context:
                 raise ValueError(
-                    f"Step '{self.step_id}': Expected '{best_params_key}' in context. "
-                    f"Make sure TuningStep '{self.tune_step_id}' runs before this step."
+                    f"Step '{self.step_id}': Expected '{best_params_key}' "
+                    f"in context. Make sure TuningStep runs before this step."
                 )
 
             best_params = context[best_params_key]
@@ -162,27 +177,26 @@ class TrainerStep(BasePipelineStep):
             for param, value in best_params.items():
                 print(f"  - {param}: {value}")
 
-            # Merge best_params into config
             cfg_copy = OmegaConf.create(OmegaConf.to_container(self.cfg, resolve=True))
             if "args" not in cfg_copy.experiment.hyperparams:
                 cfg_copy.experiment.hyperparams.args = {}
 
-            # Update with best params
             for param, value in best_params.items():
                 cfg_copy.experiment.hyperparams.args[param] = value
 
             return dict(cfg_copy.experiment.hyperparams)
         else:
-            # Use config hyperparams
             return dict(self.cfg.experiment.hyperparams)
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Train model on preprocessed data.
 
+        Uses wiring configuration for input/output key mapping.
+
         Parameters
         ----------
         context : Dict[str, Any]
-            Must contain 'preprocessed_data'.
+            Pipeline context.
 
         Returns
         -------
@@ -196,37 +210,28 @@ class TrainerStep(BasePipelineStep):
         """
         self.validate_dependencies(context)
 
-        if "preprocessed_data" not in context:
-            raise RuntimeError(f"Step '{self.step_id}' requires 'preprocessed_data'")
+        # Get input using wiring
+        df: pd.DataFrame = self.get_input(context, "data")
 
-        df: pd.DataFrame = context["preprocessed_data"]
-
-        # Inject features from dependencies if available
+        # Inject features from dependencies
         df = self._inject_features(df, context)
 
-        # Get hyperparams (from config or tuning)
+        # Get hyperparams
         hyperparams = self._get_hyperparams(context)
 
         # Build components
         model_name = self.cfg.experiment.model.lower()
         model_type = self.cfg.experiment.model_type.lower()
 
-        # Use updated config if tuned params
-        if self.use_tuned_params:
-            # cfg_copy = OmegaConf.create(
-            #     OmegaConf.to_container(self.cfg, resolve=True)
-            # )
+        if self.use_tuned_params and self.tune_step_id:
             if "args" not in self.cfg.experiment.hyperparams:
                 self.cfg.experiment.hyperparams.args = {}
             best_params = context[f"{self.tune_step_id}_best_params"]
             for param, value in best_params.items():
                 self.cfg.experiment.hyperparams.args[param] = value
-            wrapper = ModelFactory.create(model_name, self.cfg)
-            datamodule = DataModuleFactory.build(self.cfg, df)
-        else:
-            wrapper = ModelFactory.create(model_name, self.cfg)
-            datamodule = DataModuleFactory.build(self.cfg, df)
 
+        wrapper = ModelFactory.create(model_name, self.cfg)
+        datamodule = DataModuleFactory.build(self.cfg, df)
         datamodule.setup()
 
         trainer = TrainerFactory.create(
@@ -240,9 +245,9 @@ class TrainerStep(BasePipelineStep):
         print(f"\n[{self.step_id}] Training model...")
         trained_wrapper = trainer.train(datamodule, hyperparams)
 
-        # Store in context
-        context[f"{self.step_id}_model"] = trained_wrapper
-        context[f"{self.step_id}_datamodule"] = datamodule
+        # Store outputs using wiring
+        self.set_output(context, "model", trained_wrapper)
+        self.set_output(context, "datamodule", datamodule)
 
         # Optionally generate features for downstream steps
         if self.output_as_feature:
@@ -252,8 +257,7 @@ class TrainerStep(BasePipelineStep):
                 x_train, _ = datamodule.get_test_windows()
 
             preds = trained_wrapper.predict(x_train)
-            context[f"{self.step_id}_features"] = preds
-
+            self.set_output(context, "features", preds)
             print(f"[{self.step_id}] Generated features: {preds.shape}")
 
         print(f"[{self.step_id}] Model trained successfully")
