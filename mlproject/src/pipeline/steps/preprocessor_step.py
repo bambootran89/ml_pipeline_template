@@ -1,6 +1,6 @@
-"""Preprocessing step for flexible pipeline."""
+"""Preprocessing step with data wiring support."""
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
@@ -12,38 +12,75 @@ class PreprocessorStep(BasePipelineStep):
     """Fit and apply preprocessing transformations.
 
     This step fits preprocessing on training data and transforms
-    the full dataset.
+    the full dataset. Supports data wiring for flexible I/O.
 
-    Context Inputs
-    --------------
-    raw_data : pd.DataFrame
-        Raw input data (required).
+    Context Inputs (configurable via wiring)
+    -----------------------------------------
+    df : pd.DataFrame
+        Full input data (required).
+    train_df : pd.DataFrame
+        Training subset.
+    test_df : pd.DataFrame
+        Test subset.
 
-    Context Outputs
-    ---------------
+    Context Outputs (configurable via wiring)
+    ------------------------------------------
     preprocessed_data : pd.DataFrame
-        Transformed feature data.
+        Transformed feature data (default key).
     preprocessor : OfflinePreprocessor
         Fitted preprocessor instance.
 
-    Configuration Parameters
-    ------------------------
+    Wiring Example
+    --------------
+    ::
+
+        - id: "preprocess_v2"
+          type: "preprocessor"
+          wiring:
+            inputs:
+              df: "raw_data"           # Custom input key
+            outputs:
+              data: "features_v2"      # Custom output key
+          is_train: true
+
+    Configuration
+    -------------
     is_train : bool, default=True
         If True, fit preprocessor on training data.
         If False, load saved preprocessor artifacts.
     """
 
-    def __init__(self, *args, is_train: bool = True, **kwargs) -> None:
+    # Default keys for backward compatibility
+    DEFAULT_INPUTS = {"df": "df", "train_df": "train_df", "test_df": "test_df"}
+    DEFAULT_OUTPUTS = {"data": "preprocessed_data"}
+
+    def __init__(
+        self,
+        step_id: str,
+        cfg: Any,
+        enabled: bool = True,
+        depends_on: Optional[List[str]] = None,
+        is_train: bool = True,
+        **kwargs: Any,
+    ) -> None:
         """Initialize preprocessing step.
 
         Parameters
         ----------
+        step_id : str
+            Unique step identifier.
+        cfg : DictConfig
+            Configuration object.
+        enabled : bool, default=True
+            Whether step is active.
+        depends_on : Optional[List[str]], default=None
+            Prerequisite steps.
         is_train : bool, default=True
             Whether to fit (train mode) or load (eval mode).
-        *args, **kwargs
-            Passed to BasePipelineStep.
+        **kwargs
+            Additional parameters including wiring config.
         """
-        super().__init__(*args, **kwargs)
+        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.is_train = is_train
 
     def _attach_targets_if_needed(
@@ -78,27 +115,35 @@ class PreprocessorStep(BasePipelineStep):
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Fit preprocessor and transform data.
 
+        Uses wiring configuration for input/output key mapping.
+
         Parameters
         ----------
         context : Dict[str, Any]
-            Must contain 'raw_data' key.
+            Pipeline context.
 
         Returns
         -------
         Dict[str, Any]
-            Context with 'preprocessed_data' and 'preprocessor' added.
+            Context with preprocessed data and preprocessor added.
 
         Raises
         ------
         RuntimeError
-            If 'raw_data' is missing from context.
+            If required data is missing from context.
         """
         self.validate_dependencies(context)
 
-        df: pd.DataFrame = context["df"]
-        train_df: pd.DataFrame = context["train_df"]
-        # val_df: pd.DataFrame = context["val_df"]
-        test_df: pd.DataFrame = context["test_df"]
+        # Get inputs using wiring
+        df: pd.DataFrame = self.get_input(context, "df")
+        train_df: pd.DataFrame = (
+            self.get_input(context, "train_df", required=False) or pd.DataFrame()
+        )
+        test_df: pd.DataFrame = (
+            self.get_input(context, "test_df", required=False) or pd.DataFrame()
+        )
+
+        is_splited = context.get("is_splited_input", False)
 
         preprocessor = OfflinePreprocessor(is_train=self.is_train, cfg=self.cfg)
 
@@ -107,11 +152,11 @@ class PreprocessorStep(BasePipelineStep):
             print(f"[{self.step_id}] Training mode - fitting preprocessor")
 
             if "dataset" in df.columns:
-                train_df = df[df["dataset"] == "train"]
+                train_subset = df[df["dataset"] == "train"]
             else:
-                train_df = preprocessor.select_train_subset(df)
+                train_subset = preprocessor.select_train_subset(df)
 
-            preprocessor.fit_manager(train_df)
+            preprocessor.fit_manager(train_subset)
             df_transformed = preprocessor.transform(df)
 
         else:
@@ -119,13 +164,13 @@ class PreprocessorStep(BasePipelineStep):
             print(f"[{self.step_id}] Eval mode - loading saved preprocessor")
             preprocessor.transform_manager.load(self.cfg)
 
-            if not context["is_splited_input"]:
+            if not is_splited:
                 test_df = df.copy()
 
             df_transformed = preprocessor.transform(test_df)
-
             df_transformed = self._attach_targets_if_needed(test_df, df_transformed)
-            if context["is_splited_input"]:
+
+            if is_splited:
                 df_transformed["dataset"] = "test"
                 print(
                     "[DataCheck] Test split already performed upstream "
@@ -138,7 +183,8 @@ class PreprocessorStep(BasePipelineStep):
                     "+ ratio split from config."
                 )
 
-        context["preprocessed_data"] = df_transformed
+        # Store outputs using wiring
+        self.set_output(context, "data", df_transformed, "preprocessed_data")
         context["preprocessor"] = preprocessor
 
         print(f"[{self.step_id}] Preprocessed data: {df_transformed.shape}")

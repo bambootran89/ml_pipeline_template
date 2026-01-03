@@ -1,0 +1,101 @@
+# Parallel Ensemble Pipeline
+# Runs multiple models in parallel and collects predictions
+
+pipeline:
+  name: "parallel_ensemble"
+
+  steps:
+    # Stage 0: Data Loading
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    # Stage 1: Preprocessing
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      depends_on: ["load_data"]
+
+    # Stage 2: Parallel Model Training
+    - id: "ensemble_models"
+      type: "parallel"
+      enabled: true
+      depends_on: ["preprocess"]
+      max_workers: 3
+      merge_strategy: "merge"  # or "collect"
+      branches:
+        # Branch 1: XGBoost
+        - id: "xgboost_branch"
+          type: "generic_model"
+          model_name: "xgboost"
+          model_type: "ml"
+          hyperparams:
+            n_estimators: 100
+            max_depth: 5
+          wiring:
+            inputs:
+              data: "preprocessed_data"
+            outputs:
+              model: "xgb_model"
+              predictions: "xgb_preds"
+
+        # Branch 2: CatBoost
+        - id: "catboost_branch"
+          type: "generic_model"
+          model_name: "catboost"
+          model_type: "ml"
+          hyperparams:
+            iterations: 100
+            depth: 6
+          wiring:
+            inputs:
+              data: "preprocessed_data"
+            outputs:
+              model: "cat_model"
+              predictions: "cat_preds"
+
+        # Branch 3: KMeans (optional clustering)
+        - id: "kmeans_branch"
+          type: "clustering"
+          model_name: "kmean"
+          output_as_feature: true
+          hyperparams:
+            n_clusters: 3
+          wiring:
+            inputs:
+              data: "preprocessed_data"
+            outputs:
+              features: "cluster_features"
+              model: "kmeans_model"
+
+    # Stage 3: Ensemble Evaluation
+    # Each model is evaluated separately
+    - id: "eval_xgb"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["ensemble_models"]
+      model_step_id: "xgboost_branch"
+      wiring:
+        inputs:
+          model: "xgb_model"
+        outputs:
+          metrics: "xgb_metrics"
+
+    - id: "eval_cat"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["ensemble_models"]
+      model_step_id: "catboost_branch"
+      wiring:
+        inputs:
+          model: "cat_model"
+        outputs:
+          metrics: "cat_metrics"
+
+    # Stage 4: Logging
+    - id: "log_results"
+      type: "logger"
+      enabled: true
+      depends_on: ["eval_xgb", "eval_cat"]
+      model_step_id: "xgboost_branch"
+      eval_step_id: "eval_xgb"

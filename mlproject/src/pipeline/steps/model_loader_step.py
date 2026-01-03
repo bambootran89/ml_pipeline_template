@@ -29,8 +29,8 @@ class ModelLoaderStep(BasePipelineStep):
 
     Configuration Parameters
     ------------------------
-    model_name : str, optional
-        Model name in registry (defaults to cfg.experiment.model).
+    experiment_name : str, optional
+        Model name in registry (defaults to cfg.experiment.name).
     alias : str, optional
         Model version alias (default: "latest").
 
@@ -84,11 +84,11 @@ class ModelLoaderStep(BasePipelineStep):
             )
 
         # Get model name from config
-        model_name = self.cfg.experiment.get("model", "").lower()
-        if not model_name:
-            raise ValueError("experiment.model must be specified in config")
+        experiment_name = self.cfg.experiment.get("name", "").lower()
+        if not experiment_name:
+            raise ValueError("experiment.name must be specified in config")
 
-        registry_name = f"{model_name}_model"
+        registry_name = f"{experiment_name}_model"
 
         print(
             f"[{self.step_id}] Loading model from MLflow: "

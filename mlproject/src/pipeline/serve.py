@@ -49,12 +49,12 @@ class ServingPipeline(BasePipeline):
         if self.mlflow_manager.enabled:
             # self.model = self._load_model_from_mlflow()
             # Load artifacts đồng nhất
-            model_name: str = self.cfg.experiment["model"].lower()
+            experiment_name: str = self.cfg.experiment["name"]
             self.preprocessor_model = self.mlflow_manager.load_component(
-                name=f"{model_name}_preprocessor", alias=alias
+                name=f"{experiment_name}_preprocessor", alias=alias
             )
             self.model = self.mlflow_manager.load_component(
-                name=f"{model_name}_model", alias=alias
+                name=f"{experiment_name}_model", alias=alias
             )
 
     def preprocess(self, data: Any = None) -> Any:
@@ -145,7 +145,7 @@ class ServingPipeline(BasePipeline):
             win: int = int(
                 self.cfg.experiment.get("hyperparams", {}).get("input_chunk_length", 24)
             )
-            if "entity_key" in df.columns:
+            if entity_key in df.columns:
                 arr_list: List[np.ndarray] = [
                     self._prepare_input_window(
                         g.drop(columns=[entity_key], errors="ignore"),

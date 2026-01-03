@@ -1,0 +1,81 @@
+# Two-stage pipeline: KMeans clustering → XGBoost classification
+# Demonstrates flexible data wiring between steps
+
+pipeline:
+  name: "kmeans_then_xgboost"
+
+  steps:
+    # Stage 0: Data Loading
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+      # No wiring needed - outputs to default keys:
+      # - df, train_df, val_df, test_df
+
+    # Stage 1: Preprocessing
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      depends_on: ["load_data"]
+      # Wiring configuration for explicit routing
+      wiring:
+        inputs:
+          data: "df"                      # Read from context["df"]
+        outputs:
+          data: "preprocessed_data"       # Write to context["preprocessed_data"]
+
+    # Stage 2: Clustering for Feature Engineering
+    - id: "kmeans_features"
+      type: "clustering"
+      enabled: true
+      depends_on: ["preprocess"]
+      model_name: "kmean"
+      output_as_feature: true            # Generate cluster labels as features
+      hyperparams:
+        n_clusters: 5
+        max_iter: 100
+      wiring:
+        inputs:
+          data: "preprocessed_data"      # Input from preprocessing
+        outputs:
+          features: "cluster_labels"     # Cluster assignments
+          model: "kmeans_model"          # Fitted KMeans model
+
+    # Stage 3: Classification with Cluster Features
+    - id: "xgboost_model"
+      type: "generic_model"
+      enabled: true
+      depends_on: ["kmeans_features"]
+      model_name: "xgboost"
+      model_type: "ml"
+      hyperparams:
+        n_estimators: 100
+        max_depth: 6
+        learning_rate: 0.1
+      wiring:
+        inputs:
+          data: "preprocessed_data"      # Original features
+          features: "cluster_labels"     # Injected cluster features
+        outputs:
+          model: "xgb_model"
+          predictions: "xgb_predictions"
+
+    # Stage 4: Evaluation
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["xgboost_model"]
+      model_step_id: "xgboost_model"
+      wiring:
+        inputs:
+          model: "xgb_model"
+        outputs:
+          metrics: "evaluation_metrics"
+
+    # Stage 5: MLflow Logging
+    - id: "log_results"
+      type: "logger"
+      enabled: true
+      depends_on: ["evaluate"]
+      model_step_id: "xgboost_model"
+      eval_step_id: "evaluate"

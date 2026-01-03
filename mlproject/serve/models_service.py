@@ -73,13 +73,13 @@ class ModelsService:
 
         # Load model and preprocessor
         if self.mlflow_manager.enabled:
-            model_name: str = self.cfg.experiment["model"].lower()
+            experiment_name: str = self.cfg.experiment["name"]
             self.preprocessor_model = self.mlflow_manager.load_component(
-                name=f"{model_name}_preprocessor",
+                name=f"{experiment_name}_preprocessor",
                 alias="production",
             )
             self.model = self.mlflow_manager.load_component(
-                name=f"{model_name}_model", alias="production"
+                name=f"{experiment_name}_model", alias="production"
             )
 
     def _get_input_chunk_length(self) -> int:

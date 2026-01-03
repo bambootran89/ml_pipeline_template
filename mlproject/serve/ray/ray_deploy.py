@@ -208,9 +208,9 @@ class PreprocessingService:
             return
 
         if self.mlflow_manager.enabled:
-            model_name: str = self.cfg.experiment["model"].lower()
+            experiment_name: str = self.cfg.experiment["name"]
             self.preprocessor = self.mlflow_manager.load_component(
-                name=f"{model_name}_preprocessor", alias="production"
+                name=f"{experiment_name}_preprocessor", alias="production"
             )
 
         if self.preprocessor is None:
@@ -315,9 +315,9 @@ class ModelService:
     def _load_model(self) -> None:
         """Load model from MLflow or fallback to local artifacts."""
         if self.mlflow_manager.enabled:
-            model_name: str = self.cfg.experiment["model"].lower()
+            experiment_name: str = self.cfg.experiment["name"]
             self.model = self.mlflow_manager.load_component(
-                name=f"{model_name}_model", alias="production"
+                name=f"{experiment_name}_model", alias="production"
             )
             if self.model is not None:
                 self.model_loaded = True

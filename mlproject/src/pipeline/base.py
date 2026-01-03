@@ -44,6 +44,7 @@ class BasePipeline(ABC):
         self.exp: Dict[str, Any] = OmegaConf.select(self.cfg, "experiment") or {}
         model = self.exp.get("model")
         mtype = self.exp.get("model_type")
+        self.experiment_name = self.exp.name
 
         self.model_name = str(model).lower() if model else "undefined"
         self.model_type = str(mtype).lower() if mtype else "undefined"

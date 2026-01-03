@@ -104,8 +104,9 @@ python -m mlproject.src.pipeline.run eval \
 
 Run a serving. (alias: latest, production, staging)
 ```bash
-python -m mlproject.src.pipeline.run test \
+python -m mlproject.src.pipeline.run serve \
   --config mlproject/configs/experiments/etth1.yaml \
+  --input ./sample_input.csv \
   --alias latest
 ```
 
@@ -165,18 +166,22 @@ python -m mlproject.src.pipeline.run cv \
 Runs Bayesian Optimization to find best parameters, then auto-retrains the best model.
 ```bash
 python -m mlproject.src.pipeline.run tune \
-  --config mlproject/configs/experiments/etth3_tuning.yaml
+  --config mlproject/configs/experiments/etth1_tuning.yaml
+
+
+python -m mlproject.src.pipeline.run tune \
+  --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 ## 3. Serving (Inference)
 Deploys the model using FastAPI.
 ```bash
 # Start FastAPI
-uvicorn mlproject.serve.api:app --reload
+CONFIG_PATH=mlproject/configs/experiments/etth1_feast.yaml uvicorn mlproject.serve.api:app --reload
 ```
 Deploys the model using Ray Serve.
 ```bash
 # OR Start Ray Serve
-python mlproject/serve/ray/ray_deploy.py
+CONFIG_PATH=mlproject/configs/experiments/etth1_feast.yaml python mlproject/serve/ray/ray_deploy.py
 ```
 Test API services: mlproject/configs/experiments/etth1.yaml
 ```bash

@@ -1,0 +1,74 @@
+# Nested Sub-Pipeline Example
+# Uses reusable feature engineering as a sub-pipeline
+
+pipeline:
+  name: "nested_feature_pipeline"
+
+  steps:
+    # Stage 0: Data Loading
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    # Stage 1: Basic Preprocessing
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      depends_on: ["load_data"]
+
+    # Stage 2: Feature Engineering Sub-Pipeline
+    - id: "feature_pipeline"
+      type: "sub_pipeline"
+      enabled: true
+      depends_on: ["preprocess"]
+      output_prefix: "feat_"  # Prefix for all outputs
+      wiring:
+        inputs:
+          input_data: "preprocessed_data"
+        outputs:
+          features: "engineered_features"
+      pipeline:
+        steps:
+          - id: "cluster_features"
+            type: "clustering"
+            model_name: "kmean"
+            output_as_feature: true
+            hyperparams:
+              n_clusters: 4
+            wiring:
+              inputs:
+                data: "input_data"
+              outputs:
+                features: "cluster_labels"
+
+          - id: "normalize_features"
+            type: "preprocessor"
+            depends_on: ["cluster_features"]
+            is_train: false
+            wiring:
+              inputs:
+                data: "input_data"
+              outputs:
+                data: "features"
+
+    # Stage 3: Final Model Training
+    - id: "train_model"
+      type: "generic_model"
+      enabled: true
+      depends_on: ["feature_pipeline"]
+      model_name: "xgboost"
+      model_type: "ml"
+      wiring:
+        inputs:
+          data: "preprocessed_data"
+          features: "engineered_features"
+        outputs:
+          model: "final_model"
+          predictions: "predictions"
+
+    # Stage 4: Evaluation
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["train_model"]
+      model_step_id: "train_model"
