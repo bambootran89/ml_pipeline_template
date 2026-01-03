@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.compat.v2.steps.base import BasePipelineStep
 
 
 class InferenceStep(BasePipelineStep):
@@ -132,7 +132,7 @@ class InferenceStep(BasePipelineStep):
             win: int = int(
                 self.cfg.experiment.get("hyperparams", {}).get("input_chunk_length", 24)
             )
-            if entity_key in df.columns:
+            if "entity_key" in df.columns:
                 arr_list: List[np.ndarray] = [
                     self._prepare_input_window(
                         g.drop(columns=[entity_key], errors="ignore"),

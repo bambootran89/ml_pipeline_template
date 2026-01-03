@@ -8,9 +8,9 @@ topologies without modifying individual step implementations.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
-from omegaconf import DictConfig, ListConfig
+from omegaconf import DictConfig
 
 
 class ContextRouter:

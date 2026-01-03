@@ -23,11 +23,11 @@ import pandas as pd
 
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
-from mlproject.src.pipeline.cv import CrossValidationPipeline
-from mlproject.src.pipeline.eval import EvalPipeline
-from mlproject.src.pipeline.serve import ServingPipeline
-from mlproject.src.pipeline.training import TrainingPipeline
-from mlproject.src.pipeline.tuning import TuningPipeline
+from mlproject.src.pipeline.compat.v1.cv import CrossValidationPipeline
+from mlproject.src.pipeline.compat.v1.eval import EvalPipeline
+from mlproject.src.pipeline.compat.v1.serve import ServingPipeline
+from mlproject.src.pipeline.compat.v1.training import TrainingPipeline
+from mlproject.src.pipeline.compat.v1.tuning import TuningPipeline
 from mlproject.src.utils.config_loader import ConfigLoader
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"

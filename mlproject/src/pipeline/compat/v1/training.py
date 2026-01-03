@@ -7,7 +7,7 @@ from mlproject.src.eval.classification import ClassificationEvaluator
 from mlproject.src.eval.clustering import ClusteringEvaluator
 from mlproject.src.eval.regression import RegressionEvaluator
 from mlproject.src.eval.timeseries import TimeSeriesEvaluator
-from mlproject.src.pipeline.base import BasePipeline
+from mlproject.src.pipeline.compat.v1.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.utils.config_loader import ConfigLoader

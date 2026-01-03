@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.compat.v2.steps.base import BasePipelineStep
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 
@@ -29,8 +29,8 @@ class ModelLoaderStep(BasePipelineStep):
 
     Configuration Parameters
     ------------------------
-    experiment_name : str, optional
-        Model name in registry (defaults to cfg.experiment.name).
+    model_name : str, optional
+        Model name in registry (defaults to cfg.experiment.model).
     alias : str, optional
         Model version alias (default: "latest").
 
@@ -86,7 +86,7 @@ class ModelLoaderStep(BasePipelineStep):
         # Get model name from config
         experiment_name = self.cfg.experiment.get("name", "")
         if not experiment_name:
-            raise ValueError("experiment.name must be specified in config")
+            raise ValueError("experiment.model must be specified in config")
 
         registry_name = f"{experiment_name}_model"
 

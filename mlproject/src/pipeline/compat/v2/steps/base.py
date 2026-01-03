@@ -32,10 +32,6 @@ class BasePipelineStep(ABC):
         List of step IDs that must complete before this step.
     """
 
-    # Default input/output key patterns for backward compatibility
-    DEFAULT_INPUTS: Dict[str, str] = {}
-    DEFAULT_OUTPUTS: Dict[str, str] = {}
-
     def __init__(
         self,
         step_id: str,
@@ -66,58 +62,6 @@ class BasePipelineStep(ABC):
         self.depends_on = depends_on or []
         # Store extra kwargs for subclasses to use
         self._kwargs = kwargs
-
-    def get_input(
-        self,
-        context: Dict[str, Any],
-        local_name: str,
-        required: bool = True,
-    ) -> Any:
-        """
-        Retrieve input from context using router.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
-        local_name : str
-            Local name for the input (e.g., "data", "model").
-        required : bool, default=True
-            Raise error if not found.
-
-        Returns
-        -------
-        Any
-            Retrieved input value.
-        """
-        default_key = self.DEFAULT_INPUTS.get(local_name)
-        return self.router.get_input(context, local_name, default_key, required)
-
-    def set_output(
-        self,
-        context: Dict[str, Any],
-        local_name: str,
-        value: Any,
-    ) -> Dict[str, Any]:
-        """
-        Store output in context using router.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
-        local_name : str
-            Local name for the output.
-        value : Any
-            Value to store.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Updated context.
-        """
-        default_key = self.DEFAULT_OUTPUTS.get(local_name)
-        return self.router.set_output(context, local_name, value, default_key)
 
     @abstractmethod
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
