@@ -1,12 +1,15 @@
 """
-Generic model step with flexible data wiring.
+Generic model step with flexible data wiring and external config support.
 
-This module provides a unified model step that supports any model type
-with configurable input/output routing using BasePipelineStep's wiring.
+This module provides a unified model step that supports:
+- Any model type with configurable input/output routing
+- External experiment config override via YAML file
+- Inline hyperparameter override
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -24,64 +27,46 @@ class GenericModelStep(BasePipelineStep):
     """
     Generic model step supporting any registered model with data wiring.
 
-    This step provides a unified interface for training, prediction,
-    and feature generation from any ML/DL model.
-
-    Key Features:
-    - Configurable input/output routing via wiring
-    - Support for output_as_feature mode
-    - Model-agnostic implementation
-    - Hyperparameter override from step config
-
-    Context Inputs (configurable via wiring)
-    -----------------------------------------
-    data : pd.DataFrame
-        Training/prediction data.
-    features : np.ndarray, optional
-        Additional features to inject.
-
-    Context Outputs (configurable via wiring)
-    ------------------------------------------
-    model : Any
-        Trained model wrapper.
-    datamodule : Any
-        Built datamodule.
-    features : np.ndarray, optional
-        Feature array for downstream steps (if output_as_feature=True).
+    Supports 3 ways to configure model (priority order):
+    1. experiment_config: Load full config from external YAML file
+    2. model_config: Inline config block in pipeline YAML
+    3. model_name + hyperparams: Simple override (backward compatible)
 
     Examples
     --------
-    Clustering for feature engineering::
+    Method 1: External config file (RECOMMENDED for complex models)::
 
-        - id: "kmeans_features"
+        - id: "train_tft"
           type: "generic_model"
-          enabled: true
-          depends_on: ["preprocess"]
-          model_name: "kmean"
-          output_as_feature: true
+          experiment_config: "configs/experiments/tft_timeseries.yaml"
           wiring:
             inputs:
               data: "preprocessed_data"
             outputs:
-              features: "cluster_labels"
-              model: "kmeans_model"
+              model: "tft_model"
 
-    Training with custom hyperparams::
+    Method 2: Inline model_config block::
 
-        - id: "xgb_train"
+        - id: "train_xgb"
+          type: "generic_model"
+          model_config:
+            model_name: "xgboost"
+            model_type: "ml"
+            hyperparams:
+              n_estimators: 200
+              max_depth: 8
+              learning_rate: 0.05
+
+    Method 3: Simple override (backward compatible)::
+
+        - id: "train_simple"
           type: "generic_model"
           model_name: "xgboost"
+          model_type: "ml"
           hyperparams:
-            n_estimators: 200
-            max_depth: 8
-          wiring:
-            inputs:
-              data: "feature_data"
-            outputs:
-              model: "final_model"
+            n_estimators: 100
     """
 
-    # Default keys for backward compatibility
     DEFAULT_INPUTS = {"data": "preprocessed_data"}
 
     def __init__(
@@ -90,10 +75,16 @@ class GenericModelStep(BasePipelineStep):
         cfg: DictConfig,
         enabled: bool = True,
         depends_on: Optional[List[str]] = None,
+        # Method 1: External config file
+        experiment_config: Optional[str] = None,
+        # Method 2: Inline config block
+        model_config: Optional[Dict[str, Any]] = None,
+        # Method 3: Simple override (backward compatible)
         model_name: Optional[str] = None,
         model_type: Optional[str] = None,
-        output_as_feature: bool = False,
         hyperparams: Optional[Dict[str, Any]] = None,
+        # Common options
+        output_as_feature: bool = False,
         **kwargs: Any,
     ) -> None:
         """
@@ -104,57 +95,209 @@ class GenericModelStep(BasePipelineStep):
         step_id : str
             Unique step identifier.
         cfg : DictConfig
-            Full experiment configuration.
+            Base experiment configuration.
         enabled : bool, default=True
             Whether step should execute.
         depends_on : Optional[List[str]], default=None
             IDs of prerequisite steps.
+        experiment_config : Optional[str], default=None
+            Path to external YAML file with full experiment config.
+            This config will be merged with base config.
+        model_config : Optional[Dict[str, Any]], default=None
+            Inline config block with model_name, model_type, hyperparams.
         model_name : Optional[str], default=None
             Model name from registry. Falls back to cfg.experiment.model.
         model_type : Optional[str], default=None
             Model type (ml/dl). Falls back to cfg.experiment.model_type.
-        output_as_feature : bool, default=False
-            If True, store predictions as features for downstream steps.
         hyperparams : Optional[Dict[str, Any]], default=None
             Override hyperparameters for this step.
+        output_as_feature : bool, default=False
+            If True, store predictions as features for downstream steps.
         **kwargs
             Additional parameters including wiring config.
         """
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
 
-        self.model_name = model_name or cfg.experiment.get("model", "").lower()
-        self.model_type = model_type or cfg.experiment.get("model_type", "ml").lower()
+        # Store config sources
+        self.experiment_config_path = experiment_config
+        self.model_config = model_config or {}
+        self.simple_model_name = model_name
+        self.simple_model_type = model_type
+        self.simple_hyperparams = hyperparams or {}
         self.output_as_feature = output_as_feature
-        self.override_hyperparams = hyperparams or {}
 
-    def _get_effective_hyperparams(self) -> Dict[str, Any]:
+        # Build effective config
+        self.effective_cfg = self._build_effective_config()
+
+        # Extract final model settings
+        self.model_name = self.effective_cfg.experiment.get("model", "").lower()
+        self.model_type = self.effective_cfg.experiment.get("model_type", "ml").lower()
+
+    def _build_effective_config(self) -> DictConfig:
         """
-        Merge base hyperparams with step-level overrides.
+        Build effective config by merging sources in priority order.
+
+        Priority (later overrides earlier):
+        1. Base cfg (from pipeline)
+        2. External experiment_config file
+        3. Inline model_config block
+        4. Simple model_name/model_type/hyperparams
 
         Returns
         -------
-        Dict[str, Any]
-            Effective hyperparameters.
+        DictConfig
+            Merged effective configuration.
         """
-        base = dict(self.cfg.experiment.get("hyperparams", {}))
-        base.update(self.override_hyperparams)
-        return base
+        # Start with base config
+        base_container = OmegaConf.to_container(self.cfg, resolve=True)
+        if not isinstance(base_container, dict):
+            base_container = {}
+        effective = OmegaConf.create(base_container)
 
-    def _get_input_data(self, context: Dict[str, Any]) -> pd.DataFrame:
+        # Method 1: Merge external config file
+        if self.experiment_config_path:
+            effective = self._merge_external_config(effective)
+
+        # Method 2: Merge inline model_config
+        if self.model_config:
+            effective = self._merge_model_config(effective, self.model_config)
+
+        # Method 3: Apply simple overrides
+        effective = self._apply_simple_overrides(effective)
+        return effective
+
+    def _merge_external_config(self, base_cfg: DictConfig) -> DictConfig:
         """
-        Retrieve input data from context using wiring.
+        Merge external experiment config file.
 
         Parameters
         ----------
-        context : Dict[str, Any]
-            Pipeline context.
+        base_cfg : DictConfig
+            Base configuration.
 
         Returns
         -------
-        pd.DataFrame
-            Input data for model.
+        DictConfig
+            Merged configuration.
+
+        Raises
+        ------
+        FileNotFoundError
+            If experiment_config file not found.
         """
-        # Try configured input first using BasePipelineStep.get_input
+        config_path = Path(self.experiment_config_path)
+
+        if not config_path.exists():
+            # Try relative to project root
+            alt_paths = [
+                Path("mlproject") / self.experiment_config_path,
+                Path(self.experiment_config_path),
+            ]
+            for alt in alt_paths:
+                if alt.exists():
+                    config_path = alt
+                    break
+            else:
+                raise FileNotFoundError(
+                    f"[{self.step_id}] experiment_config not found: "
+                    f"'{self.experiment_config_path}'. "
+                    f"Tried: {[str(p) for p in alt_paths]}"
+                )
+
+        print(f"[{self.step_id}] Loading experiment config: {config_path}")
+        external_cfg = OmegaConf.load(config_path)
+        print(external_cfg)
+
+        # Merge: base < external (external has priority)
+        merged = OmegaConf.merge(base_cfg, external_cfg)
+
+        return merged
+
+    def _merge_model_config(
+        self, base_cfg: DictConfig, model_config: Dict[str, Any]
+    ) -> DictConfig:
+        """
+        Merge inline model_config block.
+
+        Parameters
+        ----------
+        base_cfg : DictConfig
+            Base configuration.
+        model_config : Dict[str, Any]
+            Inline config with model_name, model_type, hyperparams, etc.
+
+        Returns
+        -------
+        DictConfig
+            Merged configuration.
+        """
+        # Ensure experiment node exists
+        if "experiment" not in base_cfg:
+            base_cfg.experiment = {}
+
+        # Map model_config keys to experiment structure
+        if "model_name" in model_config:
+            base_cfg.experiment.model = model_config["model_name"]
+
+        if "model_type" in model_config:
+            base_cfg.experiment.model_type = model_config["model_type"]
+
+        if "hyperparams" in model_config:
+            if "hyperparams" not in base_cfg.experiment:
+                base_cfg.experiment.hyperparams = {}
+            # Deep merge hyperparams
+            for key, value in model_config["hyperparams"].items():
+                base_cfg.experiment.hyperparams[key] = value
+
+        # Also support nested 'experiment' key in model_config
+        if "experiment" in model_config:
+            base_cfg = OmegaConf.merge(
+                base_cfg, {"experiment": model_config["experiment"]}
+            )
+
+        # Support data config override
+        if "data" in model_config:
+            base_cfg = OmegaConf.merge(base_cfg, {"data": model_config["data"]})
+
+        return base_cfg
+
+    def _apply_simple_overrides(self, base_cfg: DictConfig) -> DictConfig:
+        """
+        Apply simple model_name/model_type/hyperparams overrides.
+
+        Parameters
+        ----------
+        base_cfg : DictConfig
+            Base configuration.
+
+        Returns
+        -------
+        DictConfig
+            Configuration with simple overrides applied.
+        """
+        # Ensure experiment node exists
+        if "experiment" not in base_cfg:
+            base_cfg.experiment = {}
+
+        # Override model name
+        if self.simple_model_name:
+            base_cfg.experiment.model = self.simple_model_name
+
+        # Override model type
+        if self.simple_model_type:
+            base_cfg.experiment.model_type = self.simple_model_type
+
+        # Override hyperparams
+        if self.simple_hyperparams:
+            if "hyperparams" not in base_cfg.experiment:
+                base_cfg.experiment.hyperparams = {}
+            for key, value in self.simple_hyperparams.items():
+                base_cfg.experiment.hyperparams[key] = value
+
+        return base_cfg
+
+    def _get_input_data(self, context: Dict[str, Any]) -> pd.DataFrame:
+        """Retrieve input data from context using wiring."""
         data = self.get_input(context, "data", required=False)
 
         if data is not None:
@@ -167,30 +310,14 @@ class GenericModelStep(BasePipelineStep):
                 return context[key]
 
         raise KeyError(
-            f"Step '{self.step_id}' could not find input data. "
+            f"[{self.step_id}] Could not find input data. "
             f"Available keys: {list(context.keys())}"
         )
 
     def _inject_upstream_features(
-        self,
-        df: pd.DataFrame,
-        context: Dict[str, Any],
+        self, df: pd.DataFrame, context: Dict[str, Any]
     ) -> pd.DataFrame:
-        """
-        Inject feature arrays from upstream steps into dataframe.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Base dataframe.
-        context : Dict[str, Any]
-            Pipeline context with potential feature arrays.
-
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with injected features.
-        """
+        """Inject feature arrays from upstream steps into dataframe."""
         df_out = df.copy()
 
         # Check for explicitly wired feature inputs
@@ -222,34 +349,34 @@ class GenericModelStep(BasePipelineStep):
         """
         Execute model training/prediction.
 
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Updated context with model outputs.
+        Uses effective_cfg built from merged config sources.
         """
         self.validate_dependencies(context)
 
-        print(f"[{self.step_id}] Executing model: {self.model_name}")
+        print(
+            f"[{self.step_id}] Executing model: {self.model_name} ({self.model_type})"
+        )
+
+        # Log config source
+        if self.experiment_config_path:
+            print(f"[{self.step_id}] Config source: {self.experiment_config_path}")
+        elif self.model_config:
+            print(f"[{self.step_id}] Config source: inline model_config")
+        else:
+            print(f"[{self.step_id}] Config source: simple override")
 
         # Get and prepare data
         df = self._get_input_data(context)
         df = self._inject_upstream_features(df, context)
 
-        # Get hyperparams
-        hyperparams = self._get_effective_hyperparams()
+        # Get hyperparams from effective config
+        hyperparams = dict(self.effective_cfg.experiment.get("hyperparams", {}))
 
-        # Build model with possibly updated config
-        step_cfg = self._build_step_config(hyperparams)
-
-        wrapper = ModelFactory.create(self.model_name, step_cfg)
+        # Build model
+        wrapper = ModelFactory.create(self.model_name, self.effective_cfg)
 
         # Build datamodule
-        datamodule = DataModuleFactory.build(step_cfg, df)
+        datamodule = DataModuleFactory.build(self.effective_cfg, df)
         datamodule.setup()
 
         # Build trainer
@@ -257,14 +384,16 @@ class GenericModelStep(BasePipelineStep):
             model_type=self.model_type,
             model_name=self.model_name,
             wrapper=wrapper,
-            save_dir=self.cfg.training.get("artifacts_dir", "artifacts/models"),
+            save_dir=self.effective_cfg.training.get(
+                "artifacts_dir", "artifacts/models"
+            ),
         )
 
         # Train
         print(f"[{self.step_id}] Training with hyperparams: {hyperparams}")
         trained_wrapper = trainer.train(datamodule, hyperparams)
 
-        # Store outputs using wiring (BasePipelineStep.set_output)
+        # Store outputs
         self.set_output(context, "model", trained_wrapper)
         self.set_output(context, "datamodule", datamodule)
 
@@ -277,74 +406,8 @@ class GenericModelStep(BasePipelineStep):
         print(f"[{self.step_id}] Model step completed")
         return context
 
-    def _build_step_config(
-        self,
-        hyperparams: Dict[str, Any],
-    ) -> DictConfig:
-        """
-        Build config for this step with hyperparams.
-
-        Parameters
-        ----------
-        hyperparams : Dict[str, Any]
-            Effective hyperparameters.
-
-        Returns
-        -------
-        DictConfig
-            Step-specific configuration.
-        """
-        # Convert to a plain Python container and enforce dict type
-        cfg_container = OmegaConf.to_container(self.cfg, resolve=True)
-        if not isinstance(cfg_container, dict):
-            raise TypeError(
-                f"Step '{self.step_id}': configuration must be DictConfig/dict, "
-                f"but received {type(cfg_container)}"
-            )
-
-        # Create a new DictConfig from the validated dict container
-        step_cfg: DictConfig = OmegaConf.create(cfg_container)
-
-        # Ensure the 'experiment' node exists and is a dict
-        if "experiment" not in step_cfg or not isinstance(step_cfg.experiment, dict):
-            step_cfg.experiment = {}
-
-        # Override model settings
-        step_cfg.experiment["model"] = self.model_name
-        step_cfg.experiment["model_type"] = self.model_type
-
-        # Ensure hyperparams node exists and is a dict
-        if "hyperparams" not in step_cfg.experiment or not isinstance(
-            step_cfg.experiment["hyperparams"], dict
-        ):
-            step_cfg.experiment["hyperparams"] = {}
-
-        # Update hyperparameters
-        step_cfg.experiment["hyperparams"].update(hyperparams)
-
-        return step_cfg
-
-    def _generate_features(
-        self,
-        wrapper: Any,
-        datamodule: Any,
-    ) -> np.ndarray:
-        """
-        Generate features from trained model.
-
-        Parameters
-        ----------
-        wrapper : Any
-            Trained model wrapper.
-        datamodule : Any
-            Data module with training data.
-
-        Returns
-        -------
-        np.ndarray
-            Feature array.
-        """
-        # Get training data for feature generation
+    def _generate_features(self, wrapper: Any, datamodule: Any) -> np.ndarray:
+        """Generate features from trained model."""
         if hasattr(datamodule, "get_data"):
             x_train, _, _, _, _, _ = datamodule.get_data()
         elif hasattr(datamodule, "get_test_windows"):
@@ -352,10 +415,8 @@ class GenericModelStep(BasePipelineStep):
         else:
             raise AttributeError("DataModule does not support data extraction")
 
-        # Generate predictions as features
         predictions = wrapper.predict(x_train)
 
-        # Ensure 2D output
         if predictions.ndim == 1:
             predictions = predictions.reshape(-1, 1)
 
@@ -366,36 +427,16 @@ class ClusteringModelStep(GenericModelStep):
     """
     Specialized step for clustering models.
 
-    Extends GenericModelStep with clustering-specific defaults
-    and automatic feature generation.
+    Extends GenericModelStep with clustering-specific defaults.
     """
 
-    def __init__(
-        self,
-        step_id: str,
-        cfg: DictConfig,
-        **kwargs: Any,
-    ) -> None:
-        """
-        Initialize clustering step.
-
-        Parameters
-        ----------
-        step_id : str
-            Unique step identifier.
-        cfg : DictConfig
-            Full experiment configuration.
-        **kwargs
-            Passed to GenericModelStep.
-        """
-        # Default to output_as_feature=True for clustering
+    def __init__(self, step_id: str, cfg: DictConfig, **kwargs: Any) -> None:
         kwargs.setdefault("output_as_feature", True)
         kwargs.setdefault("model_name", "kmean")
         kwargs.setdefault("model_type", "ml")
-
         super().__init__(step_id, cfg, **kwargs)
 
 
-# REGISTER STEP TYPES
+# Register step types
 StepFactory.register("generic_model", GenericModelStep)
 StepFactory.register("clustering", ClusteringModelStep)

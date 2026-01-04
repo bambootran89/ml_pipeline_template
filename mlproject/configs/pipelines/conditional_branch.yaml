@@ -1,17 +1,16 @@
 # Conditional Model Selection Pipeline
-# Selects model based on data size
+# Selects model based on data size, using EXTERNAL experiment configs
 #
 # Flow: load_data → preprocess → branch[TFT | XGBoost] → evaluate → log
 #
-# - If data_size > 10000: Use TFT (deep learning)
-# - Else: Use XGBoost (gradient boosting)
+# Each branch loads FULL config from separate experiment YAML files.
+# This allows complete customization of model, hyperparams, data settings.
 
 pipeline:
   name: "conditional_model_selection"
 
   steps:
     # Stage 1: Data Loading
-    # DataLoaderStep automatically sets context["data_size"] = len(df)
     - id: "load_data"
       type: "data_loader"
       enabled: true
@@ -31,12 +30,13 @@ pipeline:
       condition:
         key: "data_size"
         operator: ">"
-        value: 10000
+        value: 100
 
-      # Execute if data_size > 10000 (large dataset)
+      # Execute if data_size > 100 → Load TFT config from external file
       if_true:
         id: "train_tft"
-        type: "trainer"
+        type: "generic_model"
+        experiment_config: "mlproject/configs/model/tft_ts.yaml"
         wiring:
           inputs:
             data: "preprocessed_data"
@@ -44,10 +44,11 @@ pipeline:
             model: "selected_model"
             datamodule: "selected_dm"
 
-      # Execute if data_size <= 10000 (small dataset)
+      # Execute if data_size <= 100 → Load XGBoost config from external file
       if_false:
         id: "train_xgb"
-        type: "trainer"
+        type: "generic_model"
+        experiment_config: "mlproject/configs/model/xgboost_ts.yaml"
         wiring:
           inputs:
             data: "preprocessed_data"
@@ -55,7 +56,7 @@ pipeline:
             model: "selected_model"
             datamodule: "selected_dm"
 
-    # Stage 4: Evaluation (works with either model)
+    # Stage 4: Evaluation
     - id: "evaluate"
       type: "evaluator"
       enabled: true

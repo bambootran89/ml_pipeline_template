@@ -1,14 +1,11 @@
-# Nested Sub-Pipeline Example
-# Demonstrates encapsulating a feature engineering workflow
-#
-# Flow:
-#   load_data → feature_pipeline(sub) → train → evaluate
-#
-# The feature_pipeline is a nested pipeline that runs multiple
-# feature engineering steps as a single unit.
+# The feature_pipeline runs:
+#   1. Preprocessing (normalize)
+#   2. Clustering (generate features)
+# Then outputs are prefixed with "feat_" and merged to parent context
 
 pipeline:
   name: "nested_feature_engineering"
+
   steps:
     # Stage 1: Data Loading
     - id: "load_data"
@@ -20,38 +17,51 @@ pipeline:
       type: "sub_pipeline"
       enabled: true
       depends_on: ["load_data"]
-      output_prefix: "feat_"  # Prefix all outputs to avoid collisions
-      isolated: false         # Inherit parent context
+      output_prefix: "feat_"
+      isolated: false
 
       # Inline pipeline definition
       pipeline:
         steps:
-          # Sub-step 1: Basic preprocessing
+          # Sub-step 1: Preprocessing
           - id: "normalize"
             type: "preprocessor"
+            is_train: true
             wiring:
+              inputs:
+                df: "df"
+                train_df: "train_df"
+                test_df: "test_df"
               outputs:
                 data: "normalized_data"
 
           # Sub-step 2: Clustering for feature generation
           - id: "cluster"
-            type: "trainer"
+            type: "clustering"
             depends_on: ["normalize"]
+            model_name: "kmean"
             output_as_feature: true
+            hyperparams:
+              n_clusters: 4
             wiring:
               inputs:
                 data: "normalized_data"
               outputs:
                 features: "cluster_features"
+                model: "cluster_model"
 
-    # Stage 3: Model Training (uses features from sub-pipeline)
+    # Stage 3: Model Training
+    # Uses feat_normalized_data (prefixed output from sub-pipeline)
     - id: "train_model"
       type: "trainer"
       enabled: true
       depends_on: ["feature_pipeline"]
       wiring:
         inputs:
-          data: "feat_normalized_data"  # Uses prefixed output
+          data: "feat_normalized_data"
+        outputs:
+          model: "final_model"
+          datamodule: "final_dm"
 
     # Stage 4: Evaluation
     - id: "evaluate"
@@ -59,6 +69,12 @@ pipeline:
       enabled: true
       depends_on: ["train_model"]
       model_step_id: "train_model"
+      wiring:
+        inputs:
+          model: "final_model"
+          datamodule: "final_dm"
+        outputs:
+          metrics: "evaluation_metrics"
 
     # Stage 5: Log Results
     - id: "log_results"

@@ -110,6 +110,248 @@ python -m mlproject.src.pipeline.compat.v1.run serve \
   --alias latest
 ```
 
+---
+
+# DAG-Based Pipeline System (New!)
+
+## Why DAG Pipelines?
+
+The traditional monolithic pipeline approach has limitations when building complex ML workflows:
+
+| Challenge | Monolithic Approach | DAG Pipeline Approach |
+|-----------|--------------------|-----------------------|
+| **Reusability** | Copy-paste code between projects | Compose reusable steps via YAML |
+| **Flexibility** | Hard-coded execution order | Dynamic DAG with dependencies |
+| **Experimentation** | Change code to try new flows | Swap pipeline configs only |
+| **Complex Workflows** | Difficult to implement | Native support for parallel, branching, nesting |
+| **Separation of Concerns** | Config + Logic mixed | Experiment config vs Pipeline structure |
+
+### Key Design Principle: Separation of Concerns
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    EXPERIMENT CONFIG                        │
+│              (WHAT to train/evaluate)                       │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  • Data source (path, type, columns)                │   │
+│  │  • Model selection (xgboost, tft, nlinear)          │   │
+│  │  • Hyperparameters (learning_rate, n_estimators)    │   │
+│  │  • MLflow settings (tracking, registry)             │   │
+│  └─────────────────────────────────────────────────────┘   │
+│              configs/experiments/etth3.yaml                 │
+└─────────────────────────────────────────────────────────────┘
+                            +
+┌─────────────────────────────────────────────────────────────┐
+│                    PIPELINE CONFIG                          │
+│              (HOW to execute steps)                         │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  • Step definitions (id, type, depends_on)          │   │
+│  │  • Data wiring (input/output key mapping)           │   │
+│  │  • Execution flow (sequential, parallel, branch)    │   │
+│  │  • Advanced patterns (sub-pipelines, conditions)    │   │
+│  └─────────────────────────────────────────────────────┘   │
+│              configs/pipelines/standard_train.yaml          │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    MERGED EXECUTION                         │
+│  Same experiment config + Different pipeline configs        │
+│  = Different workflows without changing code!               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Available Pipeline Types
+
+### Standard Pipelines
+| Pipeline | Description | Use Case |
+|----------|-------------|----------|
+| `standard_train.yaml` | Linear training flow | Basic model training |
+| `standard_eval.yaml` | Model evaluation | Test model on new data |
+| `standard_serve.yaml` | Inference pipeline | Production predictions |
+| `standard_tune.yaml` | Hyperparameter tuning | Optuna optimization |
+
+### Advanced Pipelines
+| Pipeline | Description | Use Case |
+|----------|-------------|----------|
+| `kmeans_then_xgboost.yaml` | Two-stage: Clustering → Classification | Feature engineering with clustering |
+| `parallel_ensemble.yaml` | Train multiple models in parallel | Ensemble methods |
+| `conditional_branch.yaml` | Select model based on data size | Adaptive model selection |
+| `nested_feature_pipeline.yaml` | Sub-pipeline for feature engineering | Modular feature pipelines |
+
+## Basic Usage
+
+### Training
+```bash
+python -m mlproject.src.pipeline.dag_run train \
+    --experiment mlproject/configs/experiments/etth3.yaml \
+    --pipeline mlproject/configs/pipelines/standard_train.yaml
+
+# Short form
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/standard_train.yaml
+```
+
+### Evaluation
+```bash
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/standard_eval.yaml \
+    -a latest  # or production, staging
+```
+
+### Serving (CSV input)
+```bash
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/standard_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+```
+
+### Serving (Feast Feature Store)
+```bash
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3_feast.yaml \
+    -p mlproject/configs/pipelines/standard_serve.yaml \
+    -a latest \
+    --time_point "now"
+```
+
+### Hyperparameter Tuning
+```bash
+python -m mlproject.src.pipeline.dag_run tune \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/standard_tune.yaml \
+    -t 50  # number of trials
+```
+
+## Advanced Pipeline Examples
+
+### 1. Two-Stage Pipeline (KMeans → XGBoost)
+Use clustering labels as additional features for classification.
+
+```bash
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/kmeans_then_xgboost.yaml
+```
+
+**Flow:**
+```
+load_data → preprocess → kmeans_features → xgboost_model → evaluate → log
+                              ↓
+                    [cluster_labels injected as features]
+```
+
+### 2. Parallel Ensemble
+Train multiple models simultaneously and evaluate each.
+
+```bash
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/parallel_ensemble.yaml
+```
+
+**Flow:**
+```
+load_data → preprocess → ┬─ xgboost_branch -─┬→ eval_xgb ─┬→ log
+                         ├─ catboost_branch ─┤→ eval_cat ─┤
+                         └─ kmeans_branch ───┘            │
+                              (parallel)                  ↓
+```
+
+### 3. Conditional Branching
+Automatically select model based on dataset size.
+
+```bash
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/conditional_branch.yaml
+```
+
+**Flow:**
+```
+load_data → preprocess → branch ─┬─ [data_size > 100] → TFT (deep learning)
+                                 └─ [data_size ≤ 100] → XGBoost (ML)
+                                          ↓
+                                      evaluate → log
+```
+
+### 4. Nested Sub-Pipeline
+Encapsulate feature engineering as a reusable sub-pipeline.
+
+```bash
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/nested_suppipeline.yaml
+```
+
+**Flow:**
+```
+load_data → feature_pipeline (sub) → train_model → evaluate → log
+                   ↓
+           ┌──────────────┐
+           │  normalize   │
+           │      ↓       │
+           │   cluster    │
+           │ (features)   │
+           └──────────────┘
+```
+
+### 5. Nested Sub-Pipeline (Variant)
+Alternative sub-pipeline configuration.
+
+```bash
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/nested_suppipeline.yaml
+```
+
+## Data Wiring System
+
+The DAG pipeline supports flexible data routing between steps via `wiring` configuration:
+
+```yaml
+- id: "train_model"
+  type: "trainer"
+  depends_on: ["preprocess", "clustering"]
+  wiring:
+    inputs:
+      data: "preprocessed_data"      # Read from context["preprocessed_data"]
+      features: "cluster_labels"     # Read from context["cluster_labels"]
+    outputs:
+      model: "final_model"           # Write to context["final_model"]
+      datamodule: "final_dm"         # Write to context["final_dm"]
+```
+
+This enables:
+- **Custom key mapping**: Override default input/output keys
+- **Multi-input steps**: Combine outputs from multiple upstream steps
+- **Feature injection**: Automatically inject features from dependency steps
+
+## Step Types Reference
+
+| Type | Description | Key Parameters |
+|------|-------------|----------------|
+| `data_loader` | Load data from CSV/Feast | - |
+| `preprocessor` | Fit/transform features | `is_train`, `alias` |
+| `trainer` | Train model | `output_as_feature`, `use_tuned_params` |
+| `evaluator` | Compute metrics | `model_step_id` |
+| `logger` | Log to MLflow | `model_step_id`, `eval_step_id` |
+| `model_loader` | Load from MLflow Registry | `alias` |
+| `inference` | Generate predictions | `model_step_id`, `save_path` |
+| `tuner` | Optuna hyperparameter search | `n_trials` |
+| `parallel` | Execute branches concurrently | `branches`, `max_workers` |
+| `branch` | Conditional execution | `condition`, `if_true`, `if_false` |
+| `sub_pipeline` | Nested pipeline | `pipeline`, `output_prefix` |
+| `clustering` | Clustering with auto-feature output | `model_name`, `output_as_feature` |
+| `generic_model` | Unified model step | `model_name`, `model_type`, `hyperparams` |
+
+---
+
+# Feature Store Integration
+
 Create and populate the Feast feature store.
 Run scheduled periodic data ingestion (e.g., daily)
 ```bash
@@ -154,7 +396,10 @@ python -m mlproject.src.pipeline.compat.v1.run serve \
     --config mlproject/configs/experiments/etth1_feast.yaml
 ```
 
+---
+
 # Workflows & Capabilities
+
 ## 1. Cross-Validation (Backtesting)
 Validates model stability across time folds.
 ```bash
@@ -172,6 +417,7 @@ python -m mlproject.src.pipeline.compat.v1.run tune \
 python -m mlproject.src.pipeline.compat.v1.run tune \
   --config mlproject/configs/experiments/etth1_feast.yaml
 ```
+
 ## 3. Serving (Inference)
 Deploys the model using FastAPI.
 ```bash
@@ -207,7 +453,10 @@ curl -X POST http://localhost:8000/predict/feast \
   -d '{"time_point":"now","entities":[1,2,3,4,5],"entity_key":"location_id"}'
 ```
 
-## Docker & Kubernetes
+---
+
+# Docker & Kubernetes
+
 Build Docker Image
 ```bash
 docker build -t ml-pipeline:latest .

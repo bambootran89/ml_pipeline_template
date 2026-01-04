@@ -1,6 +1,5 @@
 # Feature Engineering Sub-Pipeline Template
 # Reusable workflow for feature engineering
-
 pipeline:
   name: "feature_engineering_template"
 
