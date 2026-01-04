@@ -1,13 +1,12 @@
-# Flow: load_data → preprocess → kmeans_features → xgboost_model → evaluate → log
 pipeline:
-  name: "kmeans_then_xgboost"
+  name: "kmeans_then_xgboost_v2"
+  description: "Two-stage pipeline with clustering profiling"
 
   steps:
     # Stage 1: Data Loading
     - id: "load_data"
       type: "data_loader"
       enabled: true
-      # Outputs: df, train_df, val_df, test_df, data_size
 
     # Stage 2: Preprocessing
     - id: "preprocess"
@@ -15,7 +14,6 @@ pipeline:
       enabled: true
       depends_on: ["load_data"]
       is_train: true
-      # Outputs: preprocessed_data, preprocessor
 
     # Stage 3: Clustering for Feature Engineering
     - id: "kmeans_features"
@@ -31,10 +29,17 @@ pipeline:
         inputs:
           data: "preprocessed_data"
         outputs:
-          features: "cluster_prediction"
+          features: "cluster_labels"
           model: "kmeans_model"
 
-    # Stage 4: Classification with Cluster Features
+    # Stage 4: Profile clusters (NEW - early profiling)
+    - id: "cluster_profiling"
+      type: "profiling"
+      enabled: true
+      depends_on: ["kmeans_features"]
+      include_keys: ["cluster_labels", "kmeans_model"]
+
+    # Stage 5: Classification with Cluster Features
     - id: "xgboost_model"
       type: "trainer"
       enabled: true
@@ -48,7 +53,7 @@ pipeline:
           datamodule: "xgb_datamodule"
           features: "xgboost_prediction"
 
-    # Stage 5: Evaluation
+    # Stage 6: Evaluation
     - id: "evaluate"
       type: "evaluator"
       enabled: true
@@ -61,10 +66,17 @@ pipeline:
         outputs:
           metrics: "evaluation_metrics"
 
-    # Stage 6: MLflow Logging
+    # Stage 7: Final profiling
+    - id: "final_profiling"
+      type: "profiling"
+      enabled: true
+      depends_on: ["evaluate", "cluster_profiling"]
+      exclude_keys: ["cfg", "preprocessor", "df", "train_df", "val_df"]
+
+    # Stage 8: MLflow Logging
     - id: "log_results"
       type: "logger"
       enabled: true
-      depends_on: ["evaluate"]
+      depends_on: ["evaluate", "final_profiling"]
       model_step_id: "xgboost_model"
       eval_step_id: "evaluate"

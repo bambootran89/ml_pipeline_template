@@ -138,13 +138,11 @@ class EvaluatorStep(BasePipelineStep):
                 context, "data", default_key="preprocessed_data", required=True
             )
             dm = DataModuleFactory.build(self.cfg, df)
-
         # Get test data
         if hasattr(dm, "get_test_windows"):
             x_test, y_test = dm.get_test_windows()
         else:
             _, _, _, _, x_test, y_test = dm.get_data()
-
         # Predict and evaluate
         preds = wrapper.predict(x_test)
         metrics = self.evaluator.evaluate(

@@ -125,9 +125,10 @@ class EvalPipeline(BasePipeline):
             return fea_df
 
         target_cols = data_cfg.get("target_columns", [])
-        tar_df = df_raw[target_cols]
-
-        return pd.concat([fea_df, tar_df], axis=1)
+        df = fea_df.copy()
+        for col in target_cols:
+            df[col] = df_raw[col]
+        return df
 
     def _build_evaluator(self) -> BaseEvaluator:
         """

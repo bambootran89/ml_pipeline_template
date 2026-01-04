@@ -1,11 +1,7 @@
 """CLI entry point for running ML pipelines.
 
 This module provides a command-line interface for executing different
-pipeline types: train, eval, serve, and tune.
-
-Key Feature: Separation of pipeline structure and experiment config.
-- Pipeline configs define step DAG (standard_train.yaml, standard_tune.yaml)
-- Experiment configs define data/model/hyperparams (xgboost.yaml, lstm.yaml)
+pipeline types: train, eval, serve, tune, and generate-configs.
 """
 
 from __future__ import annotations
@@ -22,13 +18,13 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from mlproject.src.features.facade import FeatureStoreFacade
 from mlproject.src.pipeline.flexible_pipeline import FlexiblePipeline
+from mlproject.src.utils.config_generator import ConfigGenerator
 from mlproject.src.utils.config_loader import ConfigLoader
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"
 
-# Default pipeline paths
-DEFAULT_PIPELINES = {
+DEFAULT_PIPELINES: Dict[str, str] = {
     "train": "mlproject/configs/pipelines/standard_train.yaml",
     "eval": "mlproject/configs/pipelines/standard_eval.yaml",
     "serve": "mlproject/configs/pipelines/standard_serve.yaml",
@@ -37,39 +33,35 @@ DEFAULT_PIPELINES = {
 
 
 def merge_configs(
-    experiment_path: str, pipeline_path: Optional[str] = None, mode: str = "train"
+    experiment_path: str,
+    pipeline_path: Optional[str] = None,
+    mode: str = "train",
 ) -> DictConfig:
     """Merge experiment config with pipeline config.
-
-    Uses ConfigLoader to resolve defaults in experiment config,
-    then merges with pipeline config.
 
     Parameters
     ----------
     experiment_path : str
-        Path to experiment config (data, model, hyperparams).
+        Path to experiment config.
     pipeline_path : str, optional
-        Path to pipeline config (step DAG).
-        If None, uses default for mode.
+        Path to pipeline config.
     mode : str
         Pipeline mode (train/eval/serve/tune).
 
     Returns
     -------
     DictConfig
-        Merged configuration ready for pipeline execution.
+        Merged configuration.
 
     Raises
     ------
-    FileNotFoundError
-        If config files don't exist.
     ValueError
-        If no default pipeline exists for mode.
+        If no default pipeline for mode.
+    FileNotFoundError
+        If pipeline config not found.
     """
-    # Load experiment config with defaults resolved
     exp_cfg = ConfigLoader.load(experiment_path)
 
-    # Load pipeline config
     if pipeline_path is None:
         pipeline_path = DEFAULT_PIPELINES.get(mode)
         if pipeline_path is None:
@@ -80,11 +72,11 @@ def merge_configs(
         raise FileNotFoundError(f"Pipeline config not found: {pipeline_path}")
 
     pipe_cfg = OmegaConf.load(pipe_file)
-
-    # Merge: experiment < pipeline (pipeline has priority)
     merged = OmegaConf.merge(exp_cfg, pipe_cfg)
+
     if isinstance(merged, ListConfig):
         merged = OmegaConf.create({"config": merged})
+
     print("\n[CONFIG] Merged configuration:")
     print(f"  - Experiment: {experiment_path}")
     print(f"  - Pipeline:   {pipeline_path}")
@@ -127,7 +119,7 @@ def _load_csv_data(input_path: str) -> pd.DataFrame:
     Raises
     ------
     FileNotFoundError
-        If file doesn't exist.
+        If file not found.
     """
     input_file = Path(input_path)
     if not input_file.exists():
@@ -136,7 +128,6 @@ def _load_csv_data(input_path: str) -> pd.DataFrame:
     print(f"[SERVE] Loading data from CSV: {input_path}")
     df = pd.read_csv(input_path)
 
-    # Handle date column
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
         df = df.set_index("date")
@@ -153,7 +144,7 @@ def _load_feast_data(cfg: DictConfig, time_point: str) -> pd.DataFrame:
     cfg : DictConfig
         Configuration with Feast settings.
     time_point : str
-        Timestamp for Feast (ISO format or "now").
+        Timestamp for Feast.
 
     Returns
     -------
@@ -167,10 +158,7 @@ def _load_feast_data(cfg: DictConfig, time_point: str) -> pd.DataFrame:
     """
     uri = cfg.data.get("path", "")
     if not uri.startswith("feast://"):
-        raise ValueError(
-            "Serving without input file requires Feast URI in config. "
-            "Set data.path to 'feast://...' or provide --input argument."
-        )
+        raise ValueError("Serving without input requires Feast URI in config.")
 
     print(f"[SERVE] Loading data from Feast: {uri}")
     print(f"[SERVE] Time point: {time_point}")
@@ -183,55 +171,58 @@ def _load_feast_data(cfg: DictConfig, time_point: str) -> pd.DataFrame:
 
 
 def prepare_serving_data(
-    cfg: DictConfig, input_path: Optional[str] = None, time_point: str = "now"
+    cfg: DictConfig,
+    input_path: Optional[str] = None,
+    time_point: str = "now",
 ) -> Dict[str, Any]:
-    """Prepare data for serving mode from CSV or Feast.
+    """Prepare data for serving mode.
 
     Parameters
     ----------
     cfg : DictConfig
-        Configuration with Feast settings.
+        Configuration.
     input_path : str, optional
-        Path to input CSV file. If None, loads from Feast.
-    time_point : str, default="now"
-        Timestamp for Feast (ISO format or "now").
+        Path to input CSV.
+    time_point : str
+        Timestamp for Feast.
 
     Returns
     -------
     Dict[str, Any]
-        Context dict with keys expected by PreprocessingStep:
-        - df: Full dataframe
-        - train_df: Empty (not used in serving)
-        - val_df: Empty (not used in serving)
-        - test_df: Same as df (will be preprocessed)
-        - is_splited_input: False
-
-    Raises
-    ------
-    FileNotFoundError
-        If CSV file doesn't exist.
-    ValueError
-        If neither CSV nor Feast URI is provided.
+        Context dict for pipeline.
     """
-    # Load data from CSV or Feast
-    if input_path:
-        df = _load_csv_data(input_path)
-    else:
-        df = _load_feast_data(cfg, time_point)
+    df = _load_csv_data(input_path) if input_path else _load_feast_data(cfg, time_point)
 
-    # Mimic DataLoaderStep output structure
-    context = {
+    return {
         "df": df.copy(),
-        "train_df": pd.DataFrame(),  # Empty (not used in serving)
-        "val_df": pd.DataFrame(),  # Empty (not used in serving)
-        "test_df": df.copy(),  # Will be preprocessed
+        "train_df": pd.DataFrame(),
+        "val_df": pd.DataFrame(),
+        "test_df": df.copy(),
         "is_splited_input": False,
     }
 
-    return context
+
+def _print_separator(title: str) -> None:
+    """Print formatted separator with title."""
+    print(f"\n{'=' * 60}")
+    print(f"[RUN] {title}")
+    print(f"{'=' * 60}\n")
 
 
-def run_training(experiment_path: str, pipeline_path: Optional[str] = None) -> None:
+def _print_metrics(context: Dict[str, Any], key: str = "evaluate_metrics") -> None:
+    """Print metrics from context if available."""
+    if key not in context:
+        return
+    print(f"[RUN] Metrics ({key}):")
+    for metric, value in context[key].items():
+        if isinstance(value, float):
+            print(f"  - {metric}: {value:.4f}")
+
+
+def run_training(
+    experiment_path: str,
+    pipeline_path: Optional[str] = None,
+) -> None:
     """Run training pipeline.
 
     Parameters
@@ -241,9 +232,7 @@ def run_training(experiment_path: str, pipeline_path: Optional[str] = None) -> N
     pipeline_path : str, optional
         Path to pipeline structure YAML.
     """
-    print(f"\n{'='*60}")
-    print("[RUN] Starting TRAINING pipeline")
-    print(f"{'='*60}\n")
+    _print_separator("Starting TRAINING pipeline")
 
     merged_cfg = merge_configs(experiment_path, pipeline_path, mode="train")
     temp_config = ".temp_merged_train.yaml"
@@ -253,14 +242,8 @@ def run_training(experiment_path: str, pipeline_path: Optional[str] = None) -> N
         pipeline = FlexiblePipeline(temp_config)
         context = pipeline.run_exp()
 
-        print(f"\n{'='*60}")
-        print("[RUN] Training COMPLETE")
-        if "evaluate_metrics" in context:
-            print("[RUN] Final metrics:")
-            for metric, value in context["evaluate_metrics"].items():
-                print(f"  - {metric}: {value:.4f}")
-        print(f"{'='*60}\n")
-
+        _print_separator("Training COMPLETE")
+        _print_metrics(context)
     finally:
         Path(temp_config).unlink(missing_ok=True)
 
@@ -278,24 +261,19 @@ def run_eval(
         Path to experiment configuration YAML.
     pipeline_path : str, optional
         Path to pipeline structure YAML.
-    alias : str, default="latest"
+    alias : str
         Model alias in MLflow Registry.
     """
-    print(f"\n{'='*60}")
-    print("[RUN] Starting EVALUATION pipeline")
+    _print_separator("Starting EVALUATION pipeline")
     print(f"[RUN] Model alias: {alias}")
-    print(f"{'='*60}\n")
 
     merged_cfg = merge_configs(experiment_path, pipeline_path, mode="eval")
 
-    # Update alias for model_loader AND preprocessor
     for step in merged_cfg.pipeline.steps:
         step_type = step.get("type", "")
-        # Update model_loader
         if step_type == "model_loader":
             step.alias = alias
             print(f"[CONFIG] Override: model_loader alias='{alias}'")
-        # Update preprocessor (only if is_train=False)
         elif step_type == "preprocessor" and not step.get("is_train", True):
             step.alias = alias
             print(f"[CONFIG] Override: preprocessor alias='{alias}'")
@@ -307,14 +285,8 @@ def run_eval(
         pipeline = FlexiblePipeline(temp_config)
         context = pipeline.run_exp()
 
-        print(f"\n{'='*60}")
-        print("[RUN] Evaluation COMPLETE")
-        if "evaluate_metrics" in context:
-            print("[RUN] Evaluation metrics:")
-            for metric, value in context["evaluate_metrics"].items():
-                print(f"  - {metric}: {value:.4f}")
-        print(f"{'='*60}\n")
-
+        _print_separator("Evaluation COMPLETE")
+        _print_metrics(context)
     finally:
         Path(temp_config).unlink(missing_ok=True)
 
@@ -324,8 +296,8 @@ def _check_initial_context_support(pipeline: FlexiblePipeline) -> bool:
 
     Parameters
     ----------
-    pipeline : FlexibleTrainingPipeline
-        Pipeline instance to check.
+    pipeline : FlexiblePipeline
+        Pipeline instance.
 
     Returns
     -------
@@ -339,19 +311,19 @@ def _check_initial_context_support(pipeline: FlexiblePipeline) -> bool:
     """
     if not hasattr(pipeline, "run_exp"):
         raise AttributeError("Pipeline missing run_exp() method")
-
     sig = inspect.signature(pipeline.run_exp)
     return "initial_context" in sig.parameters
 
 
 def _run_pipeline_with_context(
-    pipeline: FlexiblePipeline, initial_context: Dict[str, Any]
+    pipeline: FlexiblePipeline,
+    initial_context: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Run pipeline with initial context (with fallback).
+    """Run pipeline with initial context.
 
     Parameters
     ----------
-    pipeline : FlexibleTrainingPipeline
+    pipeline : FlexiblePipeline
         Pipeline instance.
     initial_context : Dict[str, Any]
         Pre-initialized context.
@@ -367,21 +339,14 @@ def _run_pipeline_with_context(
         If pipeline doesn't support context injection.
     """
     if _check_initial_context_support(pipeline):
-        # Direct support
         return pipeline.run_exp(initial_context=initial_context)
 
-    # Fallback: Set context before run
     if hasattr(pipeline, "executor") and hasattr(pipeline.executor, "context"):
         pipeline.executor.context = initial_context
         return pipeline.run_exp()
 
     raise NotImplementedError(
-        "FlexibleTrainingPipeline.run_exp() does not support "
-        "initial_context parameter. "
-        "Please update flexible_training.py:\n"
-        "def run_exp(self, initial_context=None):\n"
-        "    context = initial_context or {}\n"
-        "    ..."
+        "FlexiblePipeline.run_exp() does not support initial_context"
     )
 
 
@@ -394,10 +359,6 @@ def run_serve(
 ) -> Any:
     """Run serve pipeline with runtime data injection.
 
-    This function supports two serving modes:
-    1. CSV Mode: Load data from file
-    2. Feast Mode: Load data from Feature Store
-
     Parameters
     ----------
     experiment_path : str
@@ -405,51 +366,33 @@ def run_serve(
     pipeline_path : str, optional
         Path to pipeline structure YAML.
     input_path : str, optional
-        Path to input CSV file. If None, loads from Feast.
-    alias : str, default="latest"
+        Path to input CSV file.
+    alias : str
         Model alias in MLflow Registry.
-    time_point : str, default="now"
-        Timestamp for Feast (ISO format or "now").
+    time_point : str
+        Timestamp for Feast.
 
     Returns
     -------
-    np.ndarray
+    Any
         Model predictions.
 
     Raises
     ------
-    FileNotFoundError
-        If CSV file doesn't exist.
-    ValueError
-        If neither CSV nor Feast URI provided.
-
-    Examples
-    --------
-    # CSV Mode
-    python -m mlproject.src.pipeline.dag_run serve \
-        --experiment config.yaml \
-        --input data.csv \
-        --alias production
-
-    # Feast Mode
-    python -m mlproject.src.pipeline.dag_run serve \
-        --experiment config.yaml \
-        --alias production \
-        --time_point "2024-01-01T12:00:00"
+    RuntimeError
+        If no predictions found.
     """
-    print(f"\n{'='*60}")
-    print("[RUN] Starting SERVING pipeline")
+    _print_separator("Starting SERVING pipeline")
     print(f"[RUN] Model alias: {alias}")
+
     if input_path:
         print(f"[RUN] Data source: CSV ({input_path})")
     else:
         print("[RUN] Data source: Feast Feature Store")
         print(f"[RUN] Time point: {time_point}")
-    print(f"{'='*60}\n")
 
     merged_cfg = merge_configs(experiment_path, pipeline_path, mode="serve")
 
-    # Update model alias
     if alias != "latest":
         for step in merged_cfg.pipeline.steps:
             if step.get("type") == "model_loader":
@@ -460,22 +403,18 @@ def run_serve(
 
     try:
         pipeline = FlexiblePipeline(temp_config)
-
-        # Pre-initialize context with data
         initial_context = prepare_serving_data(
-            cfg=merged_cfg, input_path=input_path, time_point=time_point
+            cfg=merged_cfg,
+            input_path=input_path,
+            time_point=time_point,
         )
 
-        print(f"[SERVE] Pre-initialized context with {len(initial_context)} keys")
-
-        # Run pipeline with initial context
+        print(f"[SERVE] Pre-initialized context: {len(initial_context)} keys")
         context = _run_pipeline_with_context(pipeline, initial_context)
 
-        print(f"\n{'='*60}")
-        print("[RUN] Serving COMPLETE")
+        _print_separator("Serving COMPLETE")
 
-        # Get predictions
-        pred_keys = [k for k in context.keys() if "_predictions" in k]
+        pred_keys = [k for k in context if "_predictions" in k]
         if not pred_keys:
             raise RuntimeError("No predictions found in pipeline context")
 
@@ -489,7 +428,6 @@ def run_serve(
             preview_len = min(10, len(predictions))
             print(f"[RUN] First {preview_len}: {predictions[:preview_len]}")
 
-        print(f"{'='*60}\n")
         return predictions
 
     finally:
@@ -510,27 +448,23 @@ def run_tune(
     pipeline_path : str, optional
         Path to pipeline structure YAML.
     n_trials : int, optional
-        Number of trials to run (overrides config).
+        Number of trials to run.
     """
-    print(f"\n{'='*60}")
-    print("[RUN] Starting HYPERPARAMETER TUNING pipeline")
+    _print_separator("Starting HYPERPARAMETER TUNING pipeline")
     if n_trials:
         print(f"[RUN] Trials override: {n_trials}")
-    print(f"{'='*60}\n")
 
     merged_cfg = merge_configs(experiment_path, pipeline_path, mode="tune")
 
-    # Override n_trials if provided
     if n_trials:
         if "tuning" not in merged_cfg:
             merged_cfg.tuning = {}
         merged_cfg.tuning.n_trials = n_trials
 
-        # Update step config
         for step in merged_cfg.pipeline.steps:
-            if step.get("type") == "tuning":
+            if step.get("type") == "tuner":
                 step.n_trials = n_trials
-                print(f"[CONFIG] Override: n_trials={n_trials} in step '{step.id}'")
+                print(f"[CONFIG] Override: n_trials={n_trials}")
                 break
 
     temp_config = ".temp_merged_tune.yaml"
@@ -540,108 +474,144 @@ def run_tune(
         pipeline = FlexiblePipeline(temp_config)
         context = pipeline.run_exp()
 
-        print(f"\n{'='*60}")
-        print("[RUN] Tuning COMPLETE")
+        _print_separator("Tuning COMPLETE")
 
-        param_keys = [k for k in context.keys() if "_best_params" in k]
-        if param_keys:
-            for key in param_keys:
-                params = context[key]
+        for key in context:
+            if "_best_params" in key:
                 print(f"[RUN] Best parameters ({key}):")
-                for param, value in params.items():
+                for param, value in context[key].items():
                     print(f"  - {param}: {value}")
 
-        study_keys = [k for k in context.keys() if "_study" in k]
-        if study_keys:
-            study = context[study_keys[0]]
-            print(f"[RUN] Best metric value: {study.best_value:.4f}")
-
-        print(f"{'='*60}\n")
+        for key in context:
+            if "_study" in key:
+                study = context[key]
+                print(f"[RUN] Best metric value: {study.best_value:.4f}")
+                break
 
     finally:
         Path(temp_config).unlink(missing_ok=True)
 
 
+def run_generate_configs(
+    train_config: str,
+    output_dir: str = "mlproject/configs/generated",
+    alias: str = "latest",
+    config_type: str = "all",
+) -> None:
+    """Generate eval/serve configs from training config.
+
+    Parameters
+    ----------
+    train_config : str
+        Path to training experiment YAML.
+    output_dir : str
+        Output directory for generated configs.
+    alias : str
+        MLflow model alias.
+    config_type : str
+        Type of config to generate (eval/serve/all).
+    """
+    _print_separator("GENERATING CONFIGS")
+    print(f"[RUN] Source: {train_config}")
+    print(f"[RUN] Output: {output_dir}")
+
+    generator = ConfigGenerator(train_config)
+    base_name = Path(train_config).stem
+
+    if config_type == "all":
+        paths = generator.generate_all(output_dir, alias)
+        print("\nGenerated configs:")
+        print(f"  - Eval:  {paths['eval']}")
+        print(f"  - Serve: {paths['serve']}")
+    elif config_type == "eval":
+        out_path = str(Path(output_dir) / f"{base_name}_eval.yaml")
+        generator.generate_eval_config(alias=alias, output_path=out_path)
+        print(f"Generated: {out_path}")
+    else:
+        out_path = str(Path(output_dir) / f"{base_name}_serve.yaml")
+        generator.generate_serve_config(alias=alias, output_path=out_path)
+        print(f"Generated: {out_path}")
+
+
+def _setup_train_parser(subparsers: Any) -> None:
+    """Setup train subcommand parser."""
+    parser = subparsers.add_parser("train", help="Run training pipeline")
+    parser.add_argument(
+        "--experiment", "-e", required=True, help="Experiment config YAML"
+    )
+    parser.add_argument("--pipeline", "-p", help="Pipeline config YAML")
+
+
+def _setup_eval_parser(subparsers: Any) -> None:
+    """Setup eval subcommand parser."""
+    parser = subparsers.add_parser("eval", help="Run evaluation pipeline")
+    parser.add_argument(
+        "--experiment", "-e", required=True, help="Experiment config YAML"
+    )
+    parser.add_argument("--pipeline", "-p", help="Pipeline config YAML")
+    parser.add_argument("--alias", "-a", default="latest", help="Model alias")
+
+
+def _setup_serve_parser(subparsers: Any) -> None:
+    """Setup serve subcommand parser."""
+    parser = subparsers.add_parser("serve", help="Run serve pipeline")
+    parser.add_argument(
+        "--experiment", "-e", required=True, help="Experiment config YAML"
+    )
+    parser.add_argument("--pipeline", "-p", help="Pipeline config YAML")
+    parser.add_argument("--input", "-i", help="Input CSV file")
+    parser.add_argument("--alias", "-a", default="latest", help="Model alias")
+    parser.add_argument("--time_point", "-t", default="now", help="Timestamp for Feast")
+
+
+def _setup_tune_parser(subparsers: Any) -> None:
+    """Setup tune subcommand parser."""
+    parser = subparsers.add_parser("tune", help="Run hyperparameter tuning")
+    parser.add_argument(
+        "--experiment", "-e", required=True, help="Experiment config YAML"
+    )
+    parser.add_argument("--pipeline", "-p", help="Pipeline config YAML")
+    parser.add_argument("--trials", "-n", type=int, help="Number of tuning trials")
+
+
+def _setup_generate_parser(subparsers: Any) -> None:
+    """Setup generate subcommand parser."""
+    parser = subparsers.add_parser("generate", help="Generate eval/serve configs")
+    parser.add_argument(
+        "--train-config", "-t", required=True, help="Training config YAML"
+    )
+    parser.add_argument(
+        "--output-dir",
+        "-o",
+        default="mlproject/configs/generated",
+        help="Output directory",
+    )
+    parser.add_argument("--alias", "-a", default="latest", help="MLflow model alias")
+    parser.add_argument(
+        "--type",
+        choices=["eval", "serve", "all"],
+        default="all",
+        help="Type of config to generate",
+    )
+
+
 def main() -> None:
     """Main CLI entry point with subcommands."""
     parser = argparse.ArgumentParser(
-        description="Run ML pipelines (train/eval/serve/tune)",
+        description="Run ML pipelines (train/eval/serve/tune/generate)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Training
-  %(prog)s train --experiment configs/experiments/xgboost.yaml
-
-  # Evaluation
-  %(prog)s eval --experiment configs/experiments/xgboost.yaml --alias production
-
-  # Serving with CSV input (runtime data injection)
-  %(prog)s serve --experiment configs/experiments/xgboost.yaml \
-      --input data/test.csv --alias production
-
-  # Tuning
-  %(prog)s tune --experiment configs/experiments/xgboost.yaml --trials 100
-        """,
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Pipeline type")
 
-    # Train command
-    train_parser = subparsers.add_parser("train", help="Run training pipeline")
-    train_parser.add_argument(
-        "--experiment", "-e", required=True, help="Experiment config YAML"
-    )
-    train_parser.add_argument(
-        "--pipeline", "-p", help="Pipeline config YAML (default: standard_train.yaml)"
-    )
-
-    # Eval command
-    eval_parser = subparsers.add_parser("eval", help="Run evaluation pipeline")
-    eval_parser.add_argument(
-        "--experiment", "-e", required=True, help="Experiment config YAML"
-    )
-    eval_parser.add_argument(
-        "--pipeline", "-p", help="Pipeline config YAML (default: standard_eval.yaml)"
-    )
-    eval_parser.add_argument(
-        "--alias",
-        "-a",
-        default="latest",
-        help="Model alias (latest/production/staging)",
-    )
-
-    # Serve command
-    serve_parser = subparsers.add_parser("serve", help="Run serve pipeline")
-    serve_parser.add_argument(
-        "--experiment", "-e", required=True, help="Experiment config YAML"
-    )
-    serve_parser.add_argument(
-        "--pipeline", "-p", help="Pipeline config YAML (default: standard_serve.yaml)"
-    )
-    serve_parser.add_argument(
-        "--input", "-i", help="Input CSV file (if omitted, uses Feast)"
-    )
-    serve_parser.add_argument("--alias", "-a", default="latest", help="Model alias")
-    serve_parser.add_argument(
-        "--time_point",
-        "-t",
-        default="now",
-        help="Timestamp for Feast (ISO format or 'now')",
-    )
-
-    # Tune command
-    tune_parser = subparsers.add_parser("tune", help="Run hyperparameter tuning")
-    tune_parser.add_argument(
-        "--experiment", "-e", required=True, help="Experiment config YAML"
-    )
-    tune_parser.add_argument(
-        "--pipeline", "-p", help="Pipeline config YAML (default: standard_tune.yaml)"
-    )
-    tune_parser.add_argument("--trials", "-t", type=int, help="Number of tuning trials")
+    _setup_train_parser(subparsers)
+    _setup_eval_parser(subparsers)
+    _setup_serve_parser(subparsers)
+    _setup_tune_parser(subparsers)
+    _setup_generate_parser(subparsers)
 
     args = parser.parse_args()
 
-    # Execute command
     try:
         if args.command == "train":
             run_training(args.experiment, args.pipeline)
@@ -649,15 +619,26 @@ Examples:
             run_eval(args.experiment, args.pipeline, args.alias)
         elif args.command == "serve":
             run_serve(
-                args.experiment, args.pipeline, args.input, args.alias, args.time_point
+                args.experiment,
+                args.pipeline,
+                args.input,
+                args.alias,
+                args.time_point,
             )
         elif args.command == "tune":
             run_tune(args.experiment, args.pipeline, args.trials)
+        elif args.command == "generate":
+            run_generate_configs(
+                args.train_config,
+                args.output_dir,
+                args.alias,
+                args.type,
+            )
         else:
             parser.print_help()
             sys.exit(1)
-    except Exception as e:
-        print(f"\n[ERROR] Pipeline failed: {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"\n[ERROR] Pipeline failed: {exc}", file=sys.stderr)
         raise
 
 

@@ -115,9 +115,10 @@ class PreprocessorStep(BasePipelineStep):
         target_cols = data_cfg.get("target_columns", [])
         if not target_cols:
             return fea_df
-
-        tar_df = df_raw[target_cols]
-        return pd.concat([fea_df, tar_df], axis=1)
+        df = fea_df.copy()
+        for col in target_cols:
+            df[col] = df_raw[col]
+        return df
 
     def _load_preprocessor_from_mlflow(self) -> Any:
         """Load preprocessor (transform_manager) from MLflow Registry.
@@ -205,9 +206,8 @@ class PreprocessorStep(BasePipelineStep):
         is_splited = context.get("is_splited_input", False)
 
         if self.is_train:
-            # ========================================
             # TRAINING MODE: Fit preprocessor locally
-            # ========================================
+
             print(f"[{self.step_id}] Training mode - fitting preprocessor")
 
             preprocessor = OfflinePreprocessor(is_train=True, cfg=self.cfg)
@@ -217,7 +217,6 @@ class PreprocessorStep(BasePipelineStep):
                 train_subset = train_df
             else:
                 train_subset = preprocessor.select_train_subset(df)
-
             # Fit and transform
             preprocessor.fit_manager(train_subset)
             df_transformed = preprocessor.transform(df)
@@ -226,9 +225,8 @@ class PreprocessorStep(BasePipelineStep):
             context["preprocessor"] = preprocessor
 
         else:
-            # ========================================
             # EVAL/SERVE MODE: Load from MLflow
-            # ========================================
+
             print(f"[{self.step_id}] Eval mode - loading preprocessor from MLflow")
 
             # Load transform_manager from MLflow
@@ -244,6 +242,7 @@ class PreprocessorStep(BasePipelineStep):
 
             # Transform
             df_transformed = preprocessor.transform(test_df)
+
             df_transformed = self._attach_targets_if_needed(test_df, df_transformed)
 
             # Log split status

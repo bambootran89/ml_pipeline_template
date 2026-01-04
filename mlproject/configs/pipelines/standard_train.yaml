@@ -1,19 +1,19 @@
 pipeline:
   name: "standard_train"
-  description: "Standard training pipeline: load -> preprocess -> train -> evaluate -> log"
+  description: "Training pipeline with profiling: load -> preprocess -> train -> evaluate -> profile -> log"
 
   steps:
-    # Step 1: Load data từ source được định nghĩa trong experiment config
+    # Step 1: Load data from source
     - id: "load_data"
       type: "data_loader"
       enabled: true
 
-    # Step 2: Preprocessing - fit và transform data
+    # Step 2: Preprocessing - fit and transform data
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
       depends_on: ["load_data"]
-      is_train: true  # Fit preprocessor trên training data
+      is_train: true
 
     # Step 3: Train model
     - id: "train_model"
@@ -28,10 +28,17 @@ pipeline:
       depends_on: ["train_model"]
       model_step_id: "train_model"
 
-    # Step 5: Log to MLflow
+    # Step 5: Profile outputs (NEW)
+    - id: "profiling"
+      type: "profiling"
+      enabled: true
+      depends_on: ["evaluate"]
+      exclude_keys: ["cfg", "preprocessor", "df", "train_df", "val_df"]
+
+    # Step 6: Log to MLflow (includes config artifacts)
     - id: "log_results"
       type: "logger"
       enabled: true
-      depends_on: ["train_model", "evaluate"]
+      depends_on: ["train_model", "evaluate", "profiling"]
       model_step_id: "train_model"
       eval_step_id: "evaluate"

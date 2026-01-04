@@ -1,0 +1,155 @@
+model_registry:
+  nlinear:
+    module: mlproject.src.models.nlinear_wrapper
+    class: NLinearWrapper
+    datamodule_type: dl
+  tft:
+    module: mlproject.src.models.tft_wrapper
+    class: TFTWrapper
+    datamodule_type: dl
+  xgboost:
+    module: mlproject.src.models.xgboost_wrapper
+    class: XGBWrapper
+    datamodule_type: ml
+  catboost:
+    module: mlproject.src.models.catboost_wrapper
+    class: CatBoostWrapper
+    datamodule_type: ml
+  kmean:
+    module: mlproject.src.models.kmean_wrapper
+    class: KMeansWrapper
+    datamodule_type: ml
+training:
+  batch_size: 16
+  num_workers: 0
+  n_epochs: 2
+  lr: 0.001
+  device: cpu
+  artifacts_dir: mlproject/artifacts/models
+defaults:
+- override /base/data: null
+- ../base/model.yaml
+- ../base/training.yaml
+- ../base/tuning.yaml
+mlflow:
+  tracking_uri: mlruns
+  experiment_name: Tabular_Titanic_Experiment
+  run_name_prefix: xgboost_cls
+  enabled: true
+  registry:
+    enabled: true
+    model_name: titanic_xgboost_model
+  artifacts:
+    log_model: true
+    log_scaler: true
+    log_config: true
+    log_metrics: true
+    log_plots: true
+  autolog:
+    enabled: true
+    log_models: false
+preprocessing:
+  steps:
+  - name: fill_missing
+    method: mean
+    columns:
+    - Age
+    - Fare
+  - name: label_encoding
+    columns:
+    - Sex
+    - Embarked
+    - Pclass
+  - name: normalize
+    method: zscore
+    columns:
+    - Age
+    - Fare
+    save_artifact: true
+  split:
+    train: 0.7
+    val: 0.1
+    test: 0.2
+  artifacts_dir: mlproject/artifacts/preprocessing
+data:
+  type: tabular
+  path: mlproject/data/titanic.csv
+  target_columns:
+  - Survived
+  features:
+  - Pclass
+  - Age
+  - SibSp
+  - Parch
+  - Fare
+  - Sex
+  - Embarked
+  n_folds: 5
+model:
+  name: xgboost
+  params:
+    objective: binary:logistic
+    eval_metric: auc
+    n_estimators: 100
+    max_depth: 6
+    learning_rate: 0.05
+    n_jobs: 1
+evaluation:
+  type: classification
+  metrics:
+  - accuracy
+  - f1
+  - roc_auc
+  - precision
+  - recall
+experiment:
+  name: Tabular_Titanic_Experiment
+  type: classification
+  model: xgboost
+  model_type: ml
+  hyperparams:
+    input_chunk_length: 24
+    output_chunk_length: 6
+    type: clasification
+    args:
+      n_estimators: 100
+      max_depth: 6
+      learning_rate: 0.05
+      objective: binary:logistic
+      eval_metric: auc
+      early_stopping_round: 15
+pipeline:
+  name: Tabular_Titanic_Experiment_eval
+  steps:
+  - id: load_data
+    type: data_loader
+    enabled: true
+  - id: preprocess
+    type: preprocessor
+    enabled: true
+    depends_on:
+    - load_data
+    is_train: false
+    alias: latest
+  - id: load_model
+    type: model_loader
+    enabled: true
+    depends_on:
+    - preprocess
+    alias: latest
+  - id: evaluate
+    type: evaluator
+    enabled: true
+    depends_on:
+    - load_model
+    - preprocess
+    model_step_id: load_model
+  - id: profiling
+    type: profiling
+    enabled: true
+    depends_on:
+    - evaluate
+_generated:
+  source: mlproject/configs/experiments/tabular.yaml
+  type: eval
+  alias: latest

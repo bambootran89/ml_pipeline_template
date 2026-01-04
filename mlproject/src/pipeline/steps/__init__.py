@@ -33,6 +33,7 @@ from mlproject.src.pipeline.steps.inference_step import InferenceStep
 from mlproject.src.pipeline.steps.logger_step import LoggerStep
 from mlproject.src.pipeline.steps.model_loader_step import ModelLoaderStep
 from mlproject.src.pipeline.steps.preprocessor_step import PreprocessorStep
+from mlproject.src.pipeline.steps.profiling_step import ProfilingStep
 from mlproject.src.pipeline.steps.trainer_step import TrainerStep
 from mlproject.src.pipeline.steps.tuner_step import TunerStep
 
@@ -50,6 +51,7 @@ __all__ = [
     "ModelLoaderStep",
     "LoggerStep",
     "TunerStep",
+    "ProfilingStep",
     # Generic model steps
     "GenericModelStep",
     "ClusteringModelStep",

@@ -109,13 +109,13 @@ class TrainingPipeline(BasePipeline):
         if self.mlflow_manager:
             run_name: str = f"{self.experiment_name}_run"
 
-            with self.mlflow_manager.start_run(run_name=run_name) as logger:
+            with self.mlflow_manager.start_run(run_name=run_name):
                 transform_manager: Optional[
                     TransformManager
                 ] = self.preprocessor.transform_manager
 
                 # Log Preprocessor (với interface thống nhất)
-                logger.log_component(
+                self.mlflow_manager.log_component(
                     obj=transform_manager,
                     name=f"{self.experiment_name}_preprocessor",
                     artifact_type="preprocess",
@@ -125,13 +125,13 @@ class TrainingPipeline(BasePipeline):
                     trainer, dm, hyperparams
                 )
                 # Log Model
-                logger.log_component(
+                self.mlflow_manager.log_component(
                     obj=wrapper,
                     name=f"{self.experiment_name}_model",
                     artifact_type="model",
                 )
 
-                logger.log_metadata(params=hyperparams, metrics=metrics)
+                self.mlflow_manager.log_metadata(params=hyperparams, metrics=metrics)
 
                 return metrics
 

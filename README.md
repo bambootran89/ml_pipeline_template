@@ -188,7 +188,7 @@ python -m mlproject.src.pipeline.dag_run train \
 
 # Short form
 python -m mlproject.src.pipeline.dag_run train \
-    -e mlproject/configs/experiments/etth3.yaml \
+    -e mlproject/configs/experiments/etth3_feast.yaml \
     -p mlproject/configs/pipelines/standard_train.yaml
 ```
 
@@ -223,7 +223,7 @@ python -m mlproject.src.pipeline.dag_run serve \
 python -m mlproject.src.pipeline.dag_run tune \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/standard_tune.yaml \
-    -t 50  # number of trials
+    -n 50  # number of trials
 ```
 
 ## Advanced Pipeline Examples
