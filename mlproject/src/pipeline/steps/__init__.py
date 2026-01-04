@@ -29,6 +29,7 @@ from mlproject.src.pipeline.steps.generic_model_step import (
     ClusteringModelStep,
     GenericModelStep,
 )
+from mlproject.src.pipeline.steps.generic_step import GenericStep
 from mlproject.src.pipeline.steps.inference_step import InferenceStep
 from mlproject.src.pipeline.steps.logger_step import LoggerStep
 from mlproject.src.pipeline.steps.model_loader_step import ModelLoaderStep
@@ -59,4 +60,5 @@ __all__ = [
     "ParallelStep",
     "BranchStep",
     "SubPipelineStep",
+    "GenericStep",
 ]

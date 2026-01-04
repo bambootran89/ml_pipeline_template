@@ -173,7 +173,7 @@ The traditional monolithic pipeline approach has limitations when building compl
 ### Advanced Pipelines
 | Pipeline | Description | Use Case |
 |----------|-------------|----------|
-| `kmeans_then_xgboost.yaml` | Two-stage: Clustering → Classification | Feature engineering with clustering |
+| `kmeans_then_xgboost.yaml` | Two-stage: Clustering → Classification | Analysis |
 | `parallel_ensemble.yaml` | Train multiple models in parallel | Ensemble methods |
 | `conditional_branch.yaml` | Select model based on data size | Adaptive model selection |
 | `nested_feature_pipeline.yaml` | Sub-pipeline for feature engineering | Modular feature pipelines |
