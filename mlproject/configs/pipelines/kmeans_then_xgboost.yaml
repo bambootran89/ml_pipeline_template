@@ -31,7 +31,7 @@ pipeline:
         inputs:
           data: "preprocessed_data"
         outputs:
-          features: "cluster_labels"
+          features: "cluster_prediction"
           model: "kmeans_model"
 
     # Stage 4: Classification with Cluster Features
@@ -39,13 +39,14 @@ pipeline:
       type: "trainer"
       enabled: true
       depends_on: ["kmeans_features"]
+      output_as_feature: true
       wiring:
         inputs:
           data: "preprocessed_data"
         outputs:
           model: "xgb_model"
           datamodule: "xgb_datamodule"
-      # Note: cluster_labels sẽ được inject tự động qua depends_on
+          features: "xgboost_prediction"
 
     # Stage 5: Evaluation
     - id: "evaluate"

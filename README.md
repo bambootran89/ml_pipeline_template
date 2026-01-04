@@ -241,7 +241,7 @@ python -m mlproject.src.pipeline.dag_run train \
 ```
 load_data → preprocess → kmeans_features → xgboost_model → evaluate → log
                               ↓
-                    [cluster_labels injected as features]
+                    [cluster_labels]
 ```
 
 ### 2. Parallel Ensemble
@@ -328,7 +328,6 @@ The DAG pipeline supports flexible data routing between steps via `wiring` confi
 This enables:
 - **Custom key mapping**: Override default input/output keys
 - **Multi-input steps**: Combine outputs from multiple upstream steps
-- **Feature injection**: Automatically inject features from dependency steps
 
 ## Step Types Reference
 

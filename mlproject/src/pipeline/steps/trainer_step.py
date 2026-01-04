@@ -5,7 +5,6 @@ Enhanced to support using best params from TuningStep.
 
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 from omegaconf import OmegaConf
 
@@ -21,7 +20,6 @@ class TrainerStep(BasePipelineStep):
 
     This step supports:
     - Data wiring for flexible input/output keys
-    - Feature injection from upstream models
     - Multiple model types (ML/DL)
     - Using tuned hyperparameters from TuningStep
     - Saving trained artifacts
@@ -108,43 +106,6 @@ class TrainerStep(BasePipelineStep):
         self.use_tuned_params = use_tuned_params
         self.tune_step_id = tune_step_id
 
-    def _inject_features(
-        self, df: pd.DataFrame, context: Dict[str, Any]
-    ) -> pd.DataFrame:
-        """Inject features from dependency steps into dataframe.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Base preprocessed data.
-        context : Dict[str, Any]
-            Pipeline context containing potential feature arrays.
-
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with injected features added as new columns.
-        """
-        df_out = df.copy()
-
-        for dep_id in self.depends_on:
-            feature_key = f"{dep_id}_features"
-            if feature_key in context:
-                features = context[feature_key]
-                if isinstance(features, np.ndarray):
-                    if features.ndim == 1:
-                        df_out[f"{dep_id}_feat_0"] = features
-                        print(f"[{self.step_id}] Injected 1 feature from '{dep_id}'")
-                    else:
-                        for i in range(features.shape[1]):
-                            df_out[f"{dep_id}_feat_{i}"] = features[:, i]
-                        print(
-                            f"[{self.step_id}] Injected {features.shape[1]} "
-                            f"features from '{dep_id}'"
-                        )
-
-        return df_out
-
     def _get_hyperparams(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Get hyperparameters (from config or tuning).
 
@@ -213,9 +174,6 @@ class TrainerStep(BasePipelineStep):
 
         # Get input using wiring
         df: pd.DataFrame = self.get_input(context, "data")
-
-        # Inject features from dependencies
-        df = self._inject_features(df, context)
 
         # Get hyperparams
         hyperparams = self._get_hyperparams(context)

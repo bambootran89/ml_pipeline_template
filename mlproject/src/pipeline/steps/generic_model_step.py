@@ -10,7 +10,7 @@ This module provides a unified model step that supports:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -185,6 +185,7 @@ class GenericModelStep(BasePipelineStep):
         FileNotFoundError
             If experiment_config file not found.
         """
+        assert isinstance(self.experiment_config_path, str)
         config_path = Path(self.experiment_config_path)
 
         if not config_path.exists():
@@ -209,9 +210,7 @@ class GenericModelStep(BasePipelineStep):
         print(external_cfg)
 
         # Merge: base < external (external has priority)
-        merged = OmegaConf.merge(base_cfg, external_cfg)
-
-        return merged
+        return cast(DictConfig, OmegaConf.merge(base_cfg, external_cfg))
 
     def _merge_model_config(
         self, base_cfg: DictConfig, model_config: Dict[str, Any]
@@ -251,13 +250,16 @@ class GenericModelStep(BasePipelineStep):
 
         # Also support nested 'experiment' key in model_config
         if "experiment" in model_config:
-            base_cfg = OmegaConf.merge(
-                base_cfg, {"experiment": model_config["experiment"]}
+            base_cfg = cast(
+                DictConfig,
+                OmegaConf.merge(base_cfg, {"experiment": model_config["experiment"]}),
             )
 
         # Support data config override
         if "data" in model_config:
-            base_cfg = OmegaConf.merge(base_cfg, {"data": model_config["data"]})
+            base_cfg = cast(
+                DictConfig, OmegaConf.merge(base_cfg, {"data": model_config["data"]})
+            )
 
         return base_cfg
 
@@ -314,37 +316,6 @@ class GenericModelStep(BasePipelineStep):
             f"Available keys: {list(context.keys())}"
         )
 
-    def _inject_upstream_features(
-        self, df: pd.DataFrame, context: Dict[str, Any]
-    ) -> pd.DataFrame:
-        """Inject feature arrays from upstream steps into dataframe."""
-        df_out = df.copy()
-
-        # Check for explicitly wired feature inputs
-        features_input = self.get_input(context, "features", required=False)
-
-        if features_input is not None and isinstance(features_input, np.ndarray):
-            if features_input.ndim == 1:
-                df_out[f"{self.step_id}_input_feat"] = features_input
-            else:
-                for i in range(features_input.shape[1]):
-                    df_out[f"{self.step_id}_input_feat_{i}"] = features_input[:, i]
-            print(f"[{self.step_id}] Injected {features_input.shape} features")
-
-        # Also check depends_on for feature outputs
-        for dep_id in self.depends_on:
-            feature_key = f"{dep_id}_features"
-            if feature_key in context:
-                features = context[feature_key]
-                if isinstance(features, np.ndarray):
-                    if features.ndim == 1:
-                        df_out[f"{dep_id}_feat"] = features
-                    else:
-                        for i in range(features.shape[1]):
-                            df_out[f"{dep_id}_feat_{i}"] = features[:, i]
-
-        return df_out
-
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute model training/prediction.
@@ -367,7 +338,6 @@ class GenericModelStep(BasePipelineStep):
 
         # Get and prepare data
         df = self._get_input_data(context)
-        df = self._inject_upstream_features(df, context)
 
         # Get hyperparams from effective config
         hyperparams = dict(self.effective_cfg.experiment.get("hyperparams", {}))
