@@ -208,6 +208,10 @@ class TrainerStep(BasePipelineStep):
         self.set_output(context, "model", trained_wrapper)
         self.set_output(context, "datamodule", datamodule)
 
+        # Discovery Mechanism: Register for automated logging
+        if self.log_artifact:
+            self.register_for_discovery(context, trained_wrapper)
+
         # Optionally generate features for downstream steps
         if self.output_as_feature:
             if hasattr(datamodule, "get_data"):

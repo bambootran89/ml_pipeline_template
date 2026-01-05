@@ -223,6 +223,9 @@ class PreprocessorStep(BasePipelineStep):
 
             # Store preprocessor for later logging
             context["preprocessor"] = preprocessor
+            # Discovery Mechanism: Register for automated logging
+            if self.log_artifact:
+                self.register_for_discovery(context, preprocessor)
 
         else:
             # EVAL/SERVE MODE: Load from MLflow

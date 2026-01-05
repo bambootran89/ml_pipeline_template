@@ -100,6 +100,9 @@ class BasePipelineStep(ABC):
         self.input_keys, self.output_keys = self._parse_wiring(
             wiring, input_key, output_key
         )
+        # Expert feature: metadata for automated logging discovery
+        self.log_artifact: bool = kwargs.get("log_artifact", False)
+        self.artifact_type: str = kwargs.get("artifact_type", "component")
 
     def _parse_wiring(
         self,
@@ -147,6 +150,17 @@ class BasePipelineStep(ABC):
             output_keys["data"] = str(output_key)
 
         return input_keys, output_keys
+
+    def register_for_discovery(self, context: Dict[str, Any], obj: Any) -> None:
+        """Register the component into a central registry in the context."""
+        if "_artifact_registry" not in context:
+            context["_artifact_registry"] = {}
+
+        # Save the instance and its intended artifact type
+        context["_artifact_registry"][self.step_id] = {
+            "obj": obj,
+            "type": self.artifact_type,
+        }
 
     def get_input(
         self,

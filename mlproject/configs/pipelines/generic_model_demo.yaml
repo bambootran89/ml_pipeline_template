@@ -8,6 +8,8 @@ pipeline:
     # Stage 2: Preprocessing
     - id: "preprocess"
       type: "preprocessor"
+      log_artifact: true      # Bật cơ chế Discovery
+      artifact_type: "preprocess" # Gắn nhãn cho MLflowManager
       enabled: true
       depends_on: ["load_data"]
       is_train: true
@@ -15,6 +17,8 @@ pipeline:
     - id: "impute_nan"
       type: "generic"
       enabled: true
+      log_artifact: true      # Bật cơ chế Discovery
+      artifact_type: "preprocess" # Gắn nhãn cho MLflowManager
       depends_on: ["preprocess"]
       class_path: "sklearn.impute.SimpleImputer"
       hyperparams:
@@ -29,8 +33,10 @@ pipeline:
     - id: "kmeans_features"
       type: "generic"
       enabled: true
+      log_artifact: true
+      artifact_type: "model"  # Gắn nhãn model chính
       depends_on: ["impute_nan"]
-      class_path: "sklearn.cluster.KMeans"  # Dòng này PHẢI có và ngang hàng với type
+      class_path: "sklearn.cluster.KMeans"
       run_method: "fit_predict"
       hyperparams:
         n_clusters: 5
@@ -50,6 +56,8 @@ pipeline:
 
     - id: "xgboost_model"
       type: "trainer"
+      log_artifact: true
+      artifact_type: "model"  # Gắn nhãn model chính
       enabled: true
       depends_on: ["kmeans_features"]
       output_as_feature: true
