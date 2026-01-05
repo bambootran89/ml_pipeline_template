@@ -9,25 +9,27 @@ pipeline:
       type: "preprocessor"
       enabled: true
       depends_on: ["load_data"]
-      is_train: false  # CRITICAL: Load from MLflow, don't fit!
-      alias: "latest"  # Same alias as model (can override via CLI)
+      is_train: false  # Critical: load existing state from MLflow, do not refit
+      alias: "latest"   # Uses the same alias as the model (can be overridden via CLI)
 
     - id: "load_model"
       type: "model_loader"
       enabled: true
       depends_on: ["preprocess"]
-      alias: "latest"  # Override với --alias
+      alias: "latest"   # Can be overridden using CLI flag: --alias
 
     - id: "evaluate"
       type: "evaluator"
       enabled: true
       depends_on: ["load_model", "preprocess"]
       model_step_id: "load_model"
+      wiring:
+        inputs: { features: "preprocessed_data", targets: "target_data" }
 
-    # Optional: Log evaluation results
+    # Optional step: logs evaluation metrics to storage or tracking systems
     - id: "log_results"
       type: "logger"
-      enabled: false  # Disabled by default for eval
+      enabled: false  # Disabled by default for evaluation pipelines
       depends_on: ["evaluate"]
       model_step_id: "load_model"
       eval_step_id: "evaluate"

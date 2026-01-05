@@ -141,9 +141,8 @@ class TunerStep(BasePipelineStep):
         print(f"  - Metric: {metric_name} ({direction})")
         print(f"  - CV folds: {n_splits}")
 
-        # ========================================
         # START PARENT RUN (best practice pattern)
-        # ========================================
+
         with mlflow_manager.start_run(run_name="Hparam_Tuning_Experiment"):
             print("\n[MLflow] Started parent run: Hparam_Tuning_Experiment")
 
@@ -165,9 +164,8 @@ class TunerStep(BasePipelineStep):
 
             print("\n[MLflow] Logged best params to parent run")
 
-        # ========================================
         # Store results in context
-        # ========================================
+
         context[f"{self.step_id}_best_params"] = result["best_params"]
         context[f"{self.step_id}_best_value"] = result["best_value"]
         context[f"{self.step_id}_study"] = result["study"]

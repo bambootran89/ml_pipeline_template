@@ -54,7 +54,7 @@ class PreprocessorStep(BasePipelineStep):
     """
 
     DEFAULT_INPUTS = {"df": "df", "train_df": "train_df", "test_df": "test_df"}
-    DEFAULT_OUTPUTS = {"data": "preprocessed_data"}
+    DEFAULT_OUTPUTS = {"features": "preprocessed_data", "targets": "target_data"}
 
     def __init__(
         self,
@@ -171,28 +171,100 @@ class PreprocessorStep(BasePipelineStep):
         print(f"[{self.step_id}] Successfully loaded preprocessor from MLflow")
         return transform_manager
 
+    def execute_train(
+        self,
+        context: Dict[str, Any],
+        df_full: pd.DataFrame,
+        train_df: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """
+        TRAIN flow for offline preprocessor.
+
+        - Fit the offline preprocessor on the training subset.
+        - Transform the full training dataset.
+        - Register the fitted preprocessor artifact if enabled.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with preprocessed training data.
+        """
+        print(f"[{self.step_id}] Train flow - fitting offline preprocessor.")
+
+        preprocessor = OfflinePreprocessor(is_train=True, cfg=self.cfg)
+
+        if "dataset" in df_full.columns:
+            fit_subset = train_df
+        else:
+            fit_subset = preprocessor.select_train_subset(df_full)
+
+        preprocessor.fit_manager(fit_subset)
+        df_transformed: pd.DataFrame = preprocessor.transform(df_full)
+
+        context["preprocessor"] = preprocessor
+
+        if self.log_artifact:
+            self.register_for_discovery(context, preprocessor)
+
+        return df_transformed
+
+    def execute_eval(
+        self,
+        context: Dict[str, Any],
+        df_full: pd.DataFrame,
+        df_test: pd.DataFrame,
+        is_split_input: bool,
+    ) -> pd.DataFrame:
+        """
+        EVAL flow for offline preprocessor.
+
+        - Restore a fitted transform manager from MLflow.
+        - Wrap it into offline preprocessor without refitting.
+        - Transform test data (upstream split or full input if not split).
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with transformed test data.
+        """
+        print(f"[{self.step_id}] Eval flow - restoring from MLflow.")
+
+        transform_manager = self._load_preprocessor_from_mlflow()
+
+        preprocessor = OfflinePreprocessor(is_train=False, cfg=self.cfg)
+        preprocessor.transform_manager = transform_manager
+
+        if not is_split_input:
+            df_test = df_full.copy()
+
+        df_transformed: pd.DataFrame = preprocessor.transform(df_test)
+
+        if is_split_input:
+            df_transformed["dataset"] = "test"
+            print(f"[{self.step_id}] Upstream split used -> labeled as test.")
+        else:
+            print(f"[{self.step_id}] No split detected -> full input used as test.")
+
+        context["preprocessor"] = preprocessor
+
+        return df_transformed
+
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Fit preprocessor and transform data.
+        """
+        Orchestrate TRAIN or EVAL flow and merge results into pipeline context.
 
-        In TRAIN mode: Fit on training data, transform full dataset.
-        In EVAL mode: Load from MLflow, transform test data.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
+        This method delegates execution to the corresponding flow-specific
+        functions: execute_train() or execute_eval().
 
         Returns
         -------
         Dict[str, Any]
-            Context with preprocessed data and preprocessor added.
+            Updated pipeline context with wired outputs.
         """
         self.validate_dependencies(context)
 
-        # Get inputs using wiring
-        df: pd.DataFrame = self.get_input(context, "df")
+        df_full: pd.DataFrame = self.get_input(context, "df")
 
-        # Handle optional DataFrames - can't use `or` with DataFrame
         train_df_result = self.get_input(context, "train_df", required=False)
         train_df: pd.DataFrame = (
             train_df_result if train_df_result is not None else pd.DataFrame()
@@ -203,71 +275,33 @@ class PreprocessorStep(BasePipelineStep):
             test_df_result if test_df_result is not None else pd.DataFrame()
         )
 
-        is_splited = context.get("is_splited_input", False)
+        is_split_input: bool = bool(context.get("is_splited_input", False))
+
+        data_cfg: Dict[str, Any] = self.cfg.get("data", {})
+        target_columns: List[str] = data_cfg.get("target_columns", [])
+        feature_columns: List[str] = data_cfg.get("features", [])
 
         if self.is_train:
-            # TRAINING MODE: Fit preprocessor locally
-
-            print(f"[{self.step_id}] Training mode - fitting preprocessor")
-
-            preprocessor = OfflinePreprocessor(is_train=True, cfg=self.cfg)
-
-            # Determine training subset
-            if "dataset" in df.columns:
-                train_subset = train_df
-            else:
-                train_subset = preprocessor.select_train_subset(df)
-            # Fit and transform
-            preprocessor.fit_manager(train_subset)
-            df_transformed = preprocessor.transform(df)
-
-            # Store preprocessor for later logging
-            context["preprocessor"] = preprocessor
-            # Discovery Mechanism: Register for automated logging
-            if self.log_artifact:
-                self.register_for_discovery(context, preprocessor)
-
+            df_transformed = self.execute_train(context, df_full, train_df)
         else:
-            # EVAL/SERVE MODE: Load from MLflow
+            df_transformed = self.execute_eval(
+                context, df_full, test_df, is_split_input
+            )
 
-            print(f"[{self.step_id}] Eval mode - loading preprocessor from MLflow")
+        self.set_output(
+            context,
+            "features",
+            df_transformed[feature_columns],
+            "preprocessed_data",
+        )
 
-            # Load transform_manager from MLflow
-            transform_manager = self._load_preprocessor_from_mlflow()
+        self.set_output(
+            context,
+            "targets",
+            df_transformed[target_columns],
+            "target_data",
+        )
 
-            # Create preprocessor wrapper with loaded transform_manager
-            preprocessor = OfflinePreprocessor(is_train=False, cfg=self.cfg)
-            preprocessor.transform_manager = transform_manager
-
-            # Determine data to transform
-            if not is_splited:
-                test_df = df.copy()
-
-            # Transform
-            df_transformed = preprocessor.transform(test_df)
-
-            df_transformed = self._attach_targets_if_needed(test_df, df_transformed)
-
-            # Log split status
-            if is_splited:
-                df_transformed["dataset"] = "test"
-                print(
-                    f"[{self.step_id}] Test split already performed upstream "
-                    "-> assigning dataset='test' label."
-                )
-            else:
-                print(
-                    f"[{self.step_id}] Using full input as test data "
-                    "(no pre-split detected)."
-                )
-
-            # Store for reference (already fitted, won't be logged again)
-            context["preprocessor"] = preprocessor
-
-        # Store outputs using wiring
-        self.set_output(context, "data", df_transformed, "preprocessed_data")
-
-        print(f"[{self.step_id}] Preprocessed data: {df_transformed.shape}")
         return context
 
 

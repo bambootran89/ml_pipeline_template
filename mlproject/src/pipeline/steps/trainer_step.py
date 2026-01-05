@@ -150,80 +150,104 @@ class TrainerStep(BasePipelineStep):
         else:
             return dict(self.cfg.experiment.hyperparams)
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Train model on preprocessed data.
+    def _prepare_data(
+        self,
+        context: Dict[str, Any],
+    ) -> pd.DataFrame:
+        """
+        Prepare the dataset for training based on experiment configuration.
 
-        Uses wiring configuration for input/output key mapping.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
+        - In timeseries mode, use features only.
+        - Otherwise, concatenate features and targets.
 
         Returns
         -------
-        Dict[str, Any]
-            Context with trained model added.
-
-        Raises
-        ------
-        RuntimeError
-            If required data is missing.
+        pd.DataFrame
+            DataFrame ready for DataModule setup.
         """
-        self.validate_dependencies(context)
+        df_features: pd.DataFrame = self.get_input(context, "features")
+        df_targets: pd.DataFrame = self.get_input(context, "targets")
 
-        # Get input using wiring
-        df: pd.DataFrame = self.get_input(context, "data")
+        data_cfg: Dict[str, Any] = self.cfg.get("data", {})
+        data_type: str = str(data_cfg.get("type", "tabular")).lower()
 
-        # Get hyperparams
-        hyperparams = self._get_hyperparams(context)
+        if data_type == "timeseries":
+            return df_features.copy()
 
-        # Build components
-        model_name = self.cfg.experiment.model.lower()
-        model_type = self.cfg.experiment.model_type.lower()
+        return pd.concat([df_features, df_targets], axis=1)
 
-        if self.use_tuned_params and self.tune_step_id:
-            if "args" not in self.cfg.experiment.hyperparams:
-                self.cfg.experiment.hyperparams.args = {}
-            best_params = context[f"{self.tune_step_id}_best_params"]
-            for param, value in best_params.items():
-                self.cfg.experiment.hyperparams.args[param] = value
+    def _train_model(
+        self,
+        context: Dict[str, Any],
+        train_df: pd.DataFrame,
+    ) -> tuple[Any, Any]:
+        """
+        Create pipeline components and train the model.
 
-        wrapper = ModelFactory.create(model_name, self.cfg)
-        datamodule = DataModuleFactory.build(self.cfg, df)
-        datamodule.setup()
+        This function builds the model wrapper, datamodule, and trainer,
+        then executes the training process.
+
+        Returns
+        -------
+        tuple[Any, Any]
+            Trained model wrapper and initialized datamodule.
+        """
+        model_name: str = self.cfg.experiment.model.lower()
+        model_type: str = self.cfg.experiment.model_type.lower()
+        model_class = ModelFactory.create(model_name, self.cfg)
+        data_module = DataModuleFactory.build(self.cfg, train_df)
+        data_module.setup()
 
         trainer = TrainerFactory.create(
             model_type=model_type,
             model_name=model_name,
-            wrapper=wrapper,
+            wrapper=model_class,
             save_dir=self.cfg.training.artifacts_dir,
         )
 
-        # Train
-        print(f"\n[{self.step_id}] Training model...")
-        trained_wrapper = trainer.train(datamodule, hyperparams)
+        print(f"[{self.step_id}] Starting model training.")
+        trained_wrapper = trainer.train(data_module, self._get_hyperparams(context))
 
-        # Store outputs using wiring
+        return trained_wrapper, data_module
+
+    def execute(
+        self,
+        context: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Coordinate model training and register outputs into pipeline context.
+
+        This method delegates:
+        - Data preparation to _prepare_data().
+        - Model training to _train_model().
+
+        Returns
+        -------
+        Dict[str, Any]
+            Updated pipeline context containing trained model and wired outputs.
+        """
+        self.validate_dependencies(context)
+
+        train_df = self._prepare_data(context)
+        trained_wrapper, data_module = self._train_model(context, train_df)
+
         self.set_output(context, "model", trained_wrapper)
-        self.set_output(context, "datamodule", datamodule)
+        self.set_output(context, "datamodule", data_module)
 
-        # Discovery Mechanism: Register for automated logging
         if self.log_artifact:
             self.register_for_discovery(context, trained_wrapper)
 
-        # Optionally generate features for downstream steps
         if self.output_as_feature:
-            if hasattr(datamodule, "get_data"):
-                x_train, _, _, _, _, _ = datamodule.get_data()
-            else:
-                x_train, _ = datamodule.get_test_windows()
-
+            x_train = (
+                data_module.get_data()[0]
+                if hasattr(data_module, "get_data")
+                else data_module.get_test_windows()[0]
+            )
             preds = trained_wrapper.predict(x_train)
             self.set_output(context, "features", preds)
-            print(f"[{self.step_id}] Generated features: {preds.shape}")
+            print(f"[{self.step_id}] Generated downstream features: {preds.shape}")
 
-        print(f"[{self.step_id}] Model trained successfully")
+        print(f"[{self.step_id}] Model trained and registered successfully.")
         return context
 
 

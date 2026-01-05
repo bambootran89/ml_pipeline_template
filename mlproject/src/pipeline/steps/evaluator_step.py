@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
+
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
 from mlproject.src.eval.classification import ClassificationEvaluator
@@ -134,9 +136,16 @@ class EvaluatorStep(BasePipelineStep):
         # Build datamodule if None (from ModelLoaderStep)
         if dm is None:
             print(f"[{self.step_id}] Building datamodule from preprocessed_data")
-            df = self.get_input(
-                context, "data", default_key="preprocessed_data", required=True
-            )
+            df_features: pd.DataFrame = self.get_input(context, "features")
+
+            data_cfg = self.cfg.get("data", {})
+            data_type = str(data_cfg.get("type", "timeseries")).lower()
+            if data_type == "timeseries":
+                df = df_features.copy()
+            else:
+                df_targets: pd.DataFrame = self.get_input(context, "targets")
+                df = pd.concat([df_features, df_targets], axis=1)
+
             dm = DataModuleFactory.build(self.cfg, df)
         # Get test data
         if hasattr(dm, "get_test_windows"):

@@ -1,0 +1,47 @@
+pipeline:
+  name: "generic_kmeans_then_xgboost_eval"
+  steps:
+    - id: "load_data"
+      type: "data_loader"
+      enabled: true
+
+    - id: "init_artifacts"
+      type: "mlflow_loader"
+      enabled: true
+      alias: "latest"
+      load_map:
+        - { step_id: "impute_nan", context_key: "fitted_imputer" }
+        - { step_id: "kmeans_features", context_key: "fitted_kmeans" }
+        - { step_id: "xgboost_model", context_key: "fitted_xgb" }
+
+    # Added step: transforms raw data into a format compatible with the imputer
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      is_train: false  # Important: loads fitted state from context instead of refitting
+      wiring:
+        outputs: { data: "preprocessed_data" }
+
+    - id: "impute_nan"
+      type: "generic"
+      instance_key: "fitted_imputer"
+      run_method: "transform"
+      wiring:
+        inputs: { X: "preprocessed_data" }  # Uses output from the preprocess step
+        outputs: { output: "imputed_data" }
+
+    - id: "kmeans_features"
+      type: "generic"
+      instance_key: "fitted_kmeans"
+      run_method: "predict"
+      wiring:
+        inputs: { X: "imputed_data" }
+        outputs: { labels: "cluster_labels" }
+
+    - id: "xgboost_predict"
+      type: "generic"
+      instance_key: "fitted_xgb"
+      run_method: "predict"
+      wiring:
+        inputs: { x: "preprocessed_data" }
+        outputs: { result: "final_prediction" }
