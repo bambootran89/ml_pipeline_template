@@ -1,5 +1,5 @@
 pipeline:
-  name: "generic_kmeans_then_xgboost"
+  name: "dynamic_adapter_kmeans_then_xgboost"
   steps:
     - id: "load_data"
       type: "data_loader"
@@ -15,7 +15,7 @@ pipeline:
       is_train: true
 
     - id: "impute_nan"
-      type: "generic"
+      type: "dynamic_adapter"
       enabled: true
       log_artifact: true
       artifact_type: "preprocess"
@@ -31,7 +31,7 @@ pipeline:
           output: "imputed_data"
 
     - id: "kmeans_features"
-      type: "generic"
+      type: "dynamic_adapter"
       enabled: true
       log_artifact: true
       artifact_type: "model"

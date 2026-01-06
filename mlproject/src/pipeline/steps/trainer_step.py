@@ -105,9 +105,6 @@ class TrainerStep(BasePipelineStep):
         self.output_as_feature = output_as_feature
         self.use_tuned_params = use_tuned_params
         self.tune_step_id = tune_step_id
-        # Expert feature: metadata for automated logging discovery
-        self.log_artifact: bool = kwargs.get("log_artifact", False)
-        self.artifact_type: str = kwargs.get("artifact_type", "component")
 
     def _get_hyperparams(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Get hyperparameters (from config or tuning).

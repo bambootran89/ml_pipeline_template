@@ -14,7 +14,7 @@ from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
-class GenericStep(BasePipelineStep):
+class DynamicAdapterStep(BasePipelineStep):
     """Dynamic pipeline step with intelligent parameter mapping and state reuse."""
 
     def __init__(self, step_id: str, cfg: DictConfig, **kwargs: Any) -> None:
@@ -146,4 +146,4 @@ class GenericStep(BasePipelineStep):
                 context[context_key] = result
 
 
-StepFactory.register("generic", GenericStep)
+StepFactory.register("dynamic_adapter", DynamicAdapterStep)

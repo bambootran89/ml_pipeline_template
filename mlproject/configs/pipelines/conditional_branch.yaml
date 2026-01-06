@@ -35,7 +35,7 @@ pipeline:
       # Execute if data_size > 100 → Load TFT config from external file
       if_true:
         id: "train_tft"
-        type: "generic_model"
+        type: "framework_model"
         experiment_config: "mlproject/configs/model/tft_ts.yaml"
         wiring:
           inputs:
@@ -47,7 +47,7 @@ pipeline:
       # Execute if data_size <= 100 → Load XGBoost config from external file
       if_false:
         id: "train_xgb"
-        type: "generic_model"
+        type: "framework_model"
         experiment_config: "mlproject/configs/model/xgboost_ts.yaml"
         wiring:
           inputs:

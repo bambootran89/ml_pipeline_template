@@ -40,7 +40,6 @@ class StepFactory:
     - parallel: Execute branches concurrently
     - branch: Conditional execution
     - sub_pipeline: Nested pipeline
-    - generic_model: Unified model step với wiring
     - clustering: Clustering với auto output_as_feature
     """
 

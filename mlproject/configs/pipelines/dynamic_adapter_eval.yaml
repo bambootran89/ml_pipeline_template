@@ -1,5 +1,5 @@
 pipeline:
-  name: "generic_kmeans_then_xgboost_eval"
+  name: "dynamic_adapter_kmeans_then_xgboost_eval"
   steps:
     - id: "load_data"
       type: "data_loader"
@@ -23,7 +23,7 @@ pipeline:
         outputs: { "features": "preprocessed_data" }
 
     - id: "impute_nan"
-      type: "generic"
+      type: "dynamic_adapter"
       instance_key: "fitted_imputer"
       run_method: "transform"
       wiring:
@@ -31,7 +31,7 @@ pipeline:
         outputs: { output: "imputed_data" }
 
     - id: "kmeans_features"
-      type: "generic"
+      type: "dynamic_adapter"
       instance_key: "fitted_kmeans"
       run_method: "predict"
       wiring:
@@ -39,7 +39,7 @@ pipeline:
         outputs: { labels: "cluster_labels" }
 
     - id: "xgboost_predict"
-      type: "generic"
+      type: "dynamic_adapter"
       instance_key: "fitted_xgb"
       run_method: "predict"
       wiring:

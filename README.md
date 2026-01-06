@@ -192,10 +192,10 @@ python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3_feast.yaml \
     -p mlproject/configs/pipelines/standard_train.yaml
 
-# Generic model, Long form, not using feast
+# dynamic_adapter, Long form, not using feast
 python -m mlproject.src.pipeline.dag_run train \
     --experiment mlproject/configs/experiments/tabular.yaml \
-    --pipeline mlproject/configs/pipelines/generic_model_train.yaml
+    --pipeline mlproject/configs/pipelines/dynamic_adapter_train.yaml
 ```
 
 ### Evaluation
@@ -208,7 +208,7 @@ python -m mlproject.src.pipeline.dag_run eval \
 # Generic model
 python -m mlproject.src.pipeline.dag_run eval \
     -e mlproject/configs/experiments/tabular.yaml \
-    -p mlproject/configs/pipelines/generic_model_eval.yaml \
+    -p mlproject/configs/pipelines/dynamic_adapter_eval.yaml \
     -a latest
 ```
 
@@ -517,7 +517,6 @@ This enables:
 | `branch` | Conditional execution | `condition`, `if_true`, `if_false` |
 | `sub_pipeline` | Nested pipeline | `pipeline`, `output_prefix` |
 | `clustering` | Clustering with auto-feature output | `model_name`, `output_as_feature` |
-| `generic_model` | Unified model step | `model_name`, `model_type`, `hyperparams` |
 
 ---
 
