@@ -138,6 +138,7 @@ class EvaluatorStep(BasePipelineStep):
         dk = f"{self.model_step_id}_datamodule"
         wrapper = context.get(mk)
         dm = context.get(dk)
+
         if wrapper is None:
             raise ValueError(
                 f"Step '{self.step_id}': Model not found in context['{mk}']."

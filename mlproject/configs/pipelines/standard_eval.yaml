@@ -12,18 +12,18 @@ pipeline:
       is_train: false  # Critical: load existing state from MLflow, do not refit
       alias: "latest"   # Uses the same alias as the model (can be overridden via CLI)
 
-    - id: "load_model"
-      type: "model_loader"
+    - id: "init_artifacts"
+      type: "mlflow_loader"
       enabled: true
-      train_step_id: "train_model"
-      depends_on: ["preprocess"]
-      alias: "latest"   # Can be overridden using CLI flag: --alias
+      alias: "latest"
+      load_map:
+        - { step_id: "train_model", context_key: "train_model_model" }
 
     - id: "evaluate"
       type: "evaluator"
       enabled: true
-      depends_on: ["load_model", "preprocess"]
-      model_step_id: "load_model"
+      depends_on: ["init_artifacts", "preprocess"]
+      model_step_id: "train_model"
       wiring:
         inputs: { features: "preprocessed_data", targets: "target_data" }
 

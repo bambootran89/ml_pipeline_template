@@ -271,9 +271,9 @@ def run_eval(
 
     for step in merged_cfg.pipeline.steps:
         step_type = step.get("type", "")
-        if step_type == "model_loader":
+        if step_type == "mlflow_loader":
             step.alias = alias
-            print(f"[CONFIG] Override: model_loader alias='{alias}'")
+            print(f"[CONFIG] Override: mlflow_loader alias='{alias}'")
         elif step_type == "preprocessor" and not step.get("is_train", True):
             step.alias = alias
             print(f"[CONFIG] Override: preprocessor alias='{alias}'")
@@ -395,7 +395,7 @@ def run_serve(
 
     if alias != "latest":
         for step in merged_cfg.pipeline.steps:
-            if step.get("type") == "model_loader":
+            if step.get("type") == "mlflow_loader":
                 step.alias = alias
 
     temp_config = ".temp_merged_serve.yaml"

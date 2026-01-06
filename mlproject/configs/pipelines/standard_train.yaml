@@ -48,5 +48,3 @@ pipeline:
       type: "logger"
       enabled: true
       depends_on: ["train_model", "evaluate", "profiling"]
-      model_step_id: "train_model"
-      eval_step_id: "evaluate"

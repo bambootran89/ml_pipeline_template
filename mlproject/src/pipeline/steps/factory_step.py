@@ -31,7 +31,6 @@ class StepFactory:
     - trainer: Train model (legacy)
     - evaluator: Evaluate model
     - inference: Generate predictions
-    - model_loader: Load from MLflow
     - logger: Log to MLflow
     - tuner: Hyperparameter optimization
 

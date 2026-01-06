@@ -509,7 +509,7 @@ This enables:
 | `trainer` | Train model | `output_as_feature`, `use_tuned_params` |
 | `evaluator` | Compute metrics | `model_step_id` |
 | `logger` | Log to MLflow | `model_step_id`, `eval_step_id` |
-| `model_loader` | Load from MLflow Registry | `alias` |
+| `mlflow_loader` | Load from MLflow Registry | `alias` |
 | `inference` | Generate predictions | `model_step_id`, `save_path` |
 | `tuner` | Optuna hyperparameter search | `n_trials` |
 | `profiling` | Analyze pipeline outputs | `include_keys`, `exclude_keys` |
