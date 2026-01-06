@@ -20,7 +20,7 @@ pipeline:
       enabled: true
       is_train: false  # Important: loads fitted state from context instead of refitting
       wiring:
-        outputs: { data: "preprocessed_data" }
+        outputs: { "features": "preprocessed_data" }
 
     - id: "impute_nan"
       type: "generic"
@@ -45,3 +45,19 @@ pipeline:
       wiring:
         inputs: { x: "preprocessed_data" }
         outputs: { result: "final_prediction" }
+
+    - id: "evaluate"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["init_artifacts", "preprocess"]
+      model_step_id: "xgboost_predict"
+      wiring:
+        inputs: { predictions: "final_prediction", targets: "target_data" }
+
+    # Optional step: logs evaluation metrics to storage or tracking systems
+    - id: "log_results"
+      type: "logger"
+      enabled: false  # Disabled by default for evaluation pipelines
+      depends_on: ["evaluate"]
+      model_step_id: "xgboost_predict"
+      eval_step_id: "evaluate"

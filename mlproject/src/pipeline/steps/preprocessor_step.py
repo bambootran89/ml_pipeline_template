@@ -149,7 +149,7 @@ class PreprocessorStep(BasePipelineStep):
                 f"in config to load preprocessor from MLflow."
             )
 
-        registry_name = f"{experiment_name}_preprocessor"
+        registry_name = f"{experiment_name}_{self.step_id}"
 
         print(
             f"[{self.step_id}] Loading preprocessor from MLflow: "

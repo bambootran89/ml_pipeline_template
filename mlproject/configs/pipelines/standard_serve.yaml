@@ -12,6 +12,7 @@ pipeline:
     - id: "load_model"
       type: "model_loader"
       enabled: true
+      train_step_id: "train_model"
       depends_on: ["preprocess"]
       alias: "latest"  # Override với --alias (latest/production/staging)
 

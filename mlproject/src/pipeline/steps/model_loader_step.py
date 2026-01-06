@@ -72,6 +72,7 @@ class ModelLoaderStep(BasePipelineStep):
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.alias = alias
         self.mlflow_manager = MLflowManager(self.cfg)
+        self.train_step_id = kwargs.get("train_step_id", "model")
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Load model from MLflow Model Registry.
@@ -103,7 +104,7 @@ class ModelLoaderStep(BasePipelineStep):
         if not experiment_name:
             raise ValueError("experiment.name must be specified in config")
 
-        registry_name = f"{experiment_name}_model"
+        registry_name = f"{experiment_name}_{self.train_step_id}"
 
         print(
             f"[{self.step_id}] Loading model from MLflow: "

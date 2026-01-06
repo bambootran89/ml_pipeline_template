@@ -12,6 +12,8 @@ pipeline:
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
+      log_artifact: true
+      artifact_type: "preprocess"
       depends_on: ["load_data"]
       is_train: true
 
@@ -19,7 +21,13 @@ pipeline:
     - id: "train_model"
       type: "trainer"
       enabled: true
+      log_artifact: true
+      artifact_type: "model"
       depends_on: ["preprocess"]
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
 
     # Step 4: Evaluate model
     - id: "evaluate"

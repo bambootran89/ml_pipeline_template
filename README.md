@@ -182,14 +182,20 @@ The traditional monolithic pipeline approach has limitations when building compl
 
 ### Training
 ```bash
+# Long form, not using feast
 python -m mlproject.src.pipeline.dag_run train \
     --experiment mlproject/configs/experiments/etth3.yaml \
     --pipeline mlproject/configs/pipelines/standard_train.yaml
 
-# Short form
+# Short form, using feast
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3_feast.yaml \
     -p mlproject/configs/pipelines/standard_train.yaml
+
+# Generic model, Long form, not using feast
+python -m mlproject.src.pipeline.dag_run train \
+    --experiment mlproject/configs/experiments/tabular.yaml \
+    --pipeline mlproject/configs/pipelines/generic_model_train.yaml
 ```
 
 ### Evaluation
@@ -198,6 +204,12 @@ python -m mlproject.src.pipeline.dag_run eval \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/standard_eval.yaml \
     -a latest  # or production, staging
+
+# Generic model
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/tabular.yaml \
+    -p mlproject/configs/pipelines/generic_model_eval.yaml \
+    -a latest
 ```
 
 ### Serving (CSV input)

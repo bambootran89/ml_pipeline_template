@@ -24,9 +24,15 @@ pipeline:
     - id: "train_best"
       type: "trainer"
       enabled: true
+      log_artifact: true
+      artifact_type: "model"
       depends_on: ["tune_model", "preprocess"]
       use_tuned_params: true
       tune_step_id: "tune_model"
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
 
     # Stage 4: Evaluate final model
     - id: "evaluate"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import pandas as pd
 
 from mlproject.src.datamodule.factory import DataModuleFactory
@@ -14,6 +15,13 @@ from mlproject.src.eval.regression import RegressionEvaluator
 from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+
+
+def _ensure_numpy(x: Any) -> np.ndarray:
+    """Convert pandas DataFrame to numpy array if needed."""
+    if isinstance(x, pd.DataFrame):
+        return x.to_numpy()
+    return np.asarray(x, dtype=float)
 
 
 class EvaluatorStep(BasePipelineStep):
@@ -109,62 +117,75 @@ class EvaluatorStep(BasePipelineStep):
             raise ValueError(f"Unsupported eval type: {eval_type}")
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Evaluate model and store metrics.
-
-        Uses wiring configuration for input/output key mapping.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Must contain trained model and datamodule.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Context with evaluation metrics added.
-        """
+        """Evaluate model on provided predictions
+        and targets or fallback to datamodule."""
         self.validate_dependencies(context)
+        # MODE 1: Evaluate using provided predictions
+        p = self.get_input(context, "predictions", required=False)
+        t = self.get_input(context, "targets", required=False)
+        if t is not None and p is not None:
+            y_true = _ensure_numpy(t)
+            y_pred = _ensure_numpy(p)
 
-        # Get model using wiring or default pattern
-        model_key = f"{self.model_step_id}_model"
-        dm_key = f"{self.model_step_id}_datamodule"
+            metrics = self.evaluator.evaluate(y_true, y_pred)
+            self.set_output(context, "metrics", metrics)
 
-        wrapper = self.get_input(context, "model", default_key=model_key, required=True)
-        dm = self.get_input(context, "datamodule", default_key=dm_key, required=False)
+            print(f"[{self.step_id}] Evaluation complete")
+            print(f"  Metrics: {metrics}")
+            return context
+        # MODE 2: Run prediction via model wrapper
+        mk = f"{self.model_step_id}_model"
+        dk = f"{self.model_step_id}_datamodule"
+        wrapper = context.get(mk)
+        dm = context.get(dk)
+        if wrapper is None:
+            raise ValueError(
+                f"Step '{self.step_id}': Model not found in context['{mk}']."
+            )
 
-        # Build datamodule if None (from ModelLoaderStep)
         if dm is None:
-            print(f"[{self.step_id}] Building datamodule from preprocessed_data")
-            df_features: pd.DataFrame = self.get_input(context, "features")
-
-            data_cfg = self.cfg.get("data", {})
-            data_type = str(data_cfg.get("type", "timeseries")).lower()
-            if data_type == "timeseries":
-                df = df_features.copy()
-            else:
-                df_targets: pd.DataFrame = self.get_input(context, "targets")
-                df = pd.concat([df_features, df_targets], axis=1)
-
+            df = self._build_eval_frame(context)
             dm = DataModuleFactory.build(self.cfg, df)
-        # Get test data
-        if hasattr(dm, "get_test_windows"):
-            x_test, y_test = dm.get_test_windows()
-        else:
-            _, _, _, _, x_test, y_test = dm.get_data()
-        # Predict and evaluate
-        preds = wrapper.predict(x_test)
-        metrics = self.evaluator.evaluate(
-            y_test, preds, x=x_test, model=wrapper.get_model()
-        )
 
-        # Store output using wiring
+        y_true, y_pred = self._eval_from_datamodule(wrapper, dm)
+        metrics = self.evaluator.evaluate(y_true, y_pred, x=y_pred)
+
         self.set_output(context, "metrics", metrics)
 
         print(f"[{self.step_id}] Evaluation complete")
         print(f"  Metrics: {metrics}")
-
         return context
+
+    def _build_eval_frame(self, context: Dict[str, Any]) -> pd.DataFrame:
+        """Assemble evaluation DataFrame from features and targets."""
+        f = self.get_input(context, "features")
+        tg = self.get_input(context, "targets", required=False)
+        if f is None:
+            raise ValueError(f"Step '{self.step_id}': features is None.")
+
+        data_cfg: Dict[str, Any] = self.cfg.get("data", {})
+        data_type: str = str(data_cfg.get("type", "tabular")).lower()
+
+        if data_type == "timeseries":
+            return f.copy()
+
+        if tg is not None:
+            tg = _ensure_numpy(tg)
+            return pd.concat([f, pd.DataFrame(tg)], axis=1)
+
+        return f.copy()
+
+    def _eval_from_datamodule(
+        self, wrapper: Any, dm: Any
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Run prediction and return true labels and predictions as numpy."""
+        if hasattr(dm, "get_test_windows"):
+            x, y = dm.get_test_windows()
+            return y, wrapper.predict(x)
+
+        data = dm.get_data()
+        x_test, y_test = data[-2], data[-1]
+        return y_test, wrapper.predict(x_test)
 
 
 # Register step type

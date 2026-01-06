@@ -66,8 +66,8 @@ pipeline:
           features: "preprocessed_data"
           targets: "target_data"
         outputs:
-          model: "xgb_model"
-          datamodule: "xgb_datamodule"
+          model: "xgboost_model_model"
+          datamodule: "xgboost_model_datamodule"
           features: "xgboost_prediction"
 
     - id: "evaluate"
@@ -77,8 +77,8 @@ pipeline:
       model_step_id: "xgboost_model"
       wiring:
         inputs:
-          model: "xgb_model"
-          datamodule: "xgb_datamodule"
+          model: "xgboost_model_model"
+          datamodule: "xgboost_model_datamodule"
         outputs:
           metrics: "evaluation_metrics"
 
