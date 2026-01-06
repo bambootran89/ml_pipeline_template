@@ -10,7 +10,6 @@ import pandas as pd
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.preprocess.offline import OfflinePreprocessor
-from mlproject.src.tracking.mlflow_manager import MLflowManager
 
 
 class PreprocessorStep(BasePipelineStep):
@@ -88,6 +87,7 @@ class PreprocessorStep(BasePipelineStep):
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.is_train = is_train
         self.alias = alias
+        self.model_step_id = kwargs.get("model_step_id", "fitted_preprocess")
 
     def _attach_targets_if_needed(
         self, df_raw: pd.DataFrame, fea_df: pd.DataFrame
@@ -119,57 +119,6 @@ class PreprocessorStep(BasePipelineStep):
         for col in target_cols:
             df[col] = df_raw[col]
         return df
-
-    def _load_preprocessor_from_mlflow(self) -> Any:
-        """Load preprocessor (transform_manager) from MLflow Registry.
-
-        Returns
-        -------
-        Any
-            Loaded transform_manager object.
-
-        Raises
-        ------
-        RuntimeError
-            If MLflow disabled or preprocessor not found.
-        """
-        mlflow_manager = MLflowManager(self.cfg)
-
-        if not mlflow_manager.enabled:
-            raise RuntimeError(
-                f"Step '{self.step_id}': MLflow must be enabled to load "
-                f"preprocessor in eval mode. Set mlflow.enabled=true or "
-                f"use is_train=true to fit locally."
-            )
-
-        experiment_name = self.cfg.experiment.get("name", "")
-        if not experiment_name:
-            raise ValueError(
-                f"Step '{self.step_id}': experiment.name must be specified "
-                f"in config to load preprocessor from MLflow."
-            )
-
-        registry_name = f"{experiment_name}_{self.step_id}"
-
-        print(
-            f"[{self.step_id}] Loading preprocessor from MLflow: "
-            f"name='{registry_name}', alias='{self.alias}'"
-        )
-
-        transform_manager = mlflow_manager.load_component(
-            name=registry_name,
-            alias=self.alias,
-        )
-
-        if transform_manager is None:
-            raise RuntimeError(
-                f"Failed to load preprocessor '{registry_name}' with alias "
-                f"'{self.alias}'. Make sure it was logged during training. "
-                f"Run training pipeline first to create preprocessor artifacts."
-            )
-
-        print(f"[{self.step_id}] Successfully loaded preprocessor from MLflow")
-        return transform_manager
 
     def execute_train(
         self,
@@ -229,7 +178,10 @@ class PreprocessorStep(BasePipelineStep):
         """
         print(f"[{self.step_id}] Eval flow - restoring from MLflow.")
 
-        transform_manager = self._load_preprocessor_from_mlflow()
+        transform_manager = context.get(self.model_step_id)
+
+        if transform_manager is None:
+            raise ValueError("transform_manager can't be loaded!")
 
         preprocessor = OfflinePreprocessor(is_train=False, cfg=self.cfg)
         preprocessor.transform_manager = transform_manager

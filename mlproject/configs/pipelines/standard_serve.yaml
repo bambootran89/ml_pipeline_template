@@ -1,21 +1,21 @@
 pipeline:
   name: "standard_serve"
   steps:
-    # Step 1: Preprocessing (load from MLflow)
-    - id: "preprocess"
-      type: "preprocessor"
-      enabled: true
-      is_train: false  # CRITICAL: Load from MLflow!
-      alias: "latest"  # Override via --alias in CLI
-
-    # Step 2: Load model from MLflow Registry
+    # Step 1: Load model, preprocess  from MLflow Registry
     - id: "init_artifacts"
       type: "mlflow_loader"
       enabled: true
       alias: "latest"
       load_map:
         - { step_id: "train_model", context_key: "train_model_model" }
-
+        - { step_id: "preprocess", context_key: "fitted_preprocess" }
+    # Step 2: Preprocessing (load from MLflow)
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      model_step_id: "fitted_preprocess"
+      is_train: false  # CRITICAL: Load from MLflow!
+      alias: "latest"  # Override via --alias in CLI
     # Step 3: Run inference
     - id: "inference"
       type: "inference"

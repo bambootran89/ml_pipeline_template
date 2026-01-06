@@ -50,6 +50,7 @@ class MLflowLoaderStep(BasePipelineStep):
         print(f"[{self.step_id}] Loading MLflow artifacts for experiment: {exp_name}")
 
         for entry in self.load_map:
+            print("*" * 100, entry)
             source_id: Optional[str] = entry.get("step_id")
             target_key: Optional[str] = entry.get("context_key")
 
