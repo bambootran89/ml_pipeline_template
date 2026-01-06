@@ -248,7 +248,6 @@ class TrainerStep(BasePipelineStep):
             print(f"[{self.step_id}] Generated downstream features: {preds.shape}")
 
         print(f"[{self.step_id}] Model trained and registered successfully.")
-        print(context)
         return context
 
 

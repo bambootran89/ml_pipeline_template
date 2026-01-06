@@ -58,7 +58,8 @@ pipeline:
       depends_on: ["feature_pipeline"]
       wiring:
         inputs:
-          data: "feat_normalized_data"
+          features: "feat_preprocessed_data"
+          targets: "feat_target_data"
         outputs:
           model: "final_model"
           datamodule: "final_dm"

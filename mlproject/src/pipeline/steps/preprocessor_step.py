@@ -87,7 +87,7 @@ class PreprocessorStep(BasePipelineStep):
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.is_train = is_train
         self.alias = alias
-        self.model_step_id = kwargs.get("model_step_id", "fitted_preprocess")
+        self.instance_key = kwargs.get("instance_key", "fitted_preprocess")
 
     def _attach_targets_if_needed(
         self, df_raw: pd.DataFrame, fea_df: pd.DataFrame
@@ -178,7 +178,7 @@ class PreprocessorStep(BasePipelineStep):
         """
         print(f"[{self.step_id}] Eval flow - restoring from MLflow.")
 
-        transform_manager = context.get(self.model_step_id)
+        transform_manager = context.get(self.instance_key)
 
         if transform_manager is None:
             raise ValueError("transform_manager can't be loaded!")

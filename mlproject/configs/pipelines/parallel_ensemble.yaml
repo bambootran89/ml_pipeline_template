@@ -31,10 +31,8 @@ pipeline:
           type: "trainer"
           wiring:
             inputs:
-              data: "preprocessed_data"
-            outputs:
-              model: "xgb_model"
-              datamodule: "xgb_dm"
+              features: "preprocessed_data"
+              targets: "target_data"
 
         # Branch 2: CatBoost (nếu có trong ModelFactory)
         # Nếu chưa có catboost, comment out hoặc thay bằng model khác
@@ -42,10 +40,8 @@ pipeline:
           type: "trainer"
           wiring:
             inputs:
-              data: "preprocessed_data"
-            outputs:
-              model: "cat_model"
-              datamodule: "cat_dm"
+              features: "preprocessed_data"
+              targets: "target_data"
 
         # Branch 3: KMeans clustering features
         - id: "kmeans_branch"
@@ -66,24 +62,14 @@ pipeline:
       type: "evaluator"
       enabled: true
       depends_on: ["ensemble_models"]
-      wiring:
-        inputs:
-          model: "xgb_model"
-          datamodule: "xgb_dm"
-        outputs:
-          metrics: "xgb_metrics"
+      model_step_id: "xgboost_branch"
 
     # Stage 5: Evaluate CatBoost
     - id: "eval_cat"
       type: "evaluator"
       enabled: true
       depends_on: ["ensemble_models"]
-      wiring:
-        inputs:
-          model: "cat_model"
-          datamodule: "cat_dm"
-        outputs:
-          metrics: "cat_metrics"
+      model_step_id: "catboost_branch"
 
     # Stage 6: Logging (log best model - xgboost as default)
     - id: "log_results"

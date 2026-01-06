@@ -10,6 +10,7 @@ pipeline:
       enabled: true
       alias: "latest"
       load_map:
+        - { step_id: "preprocess", context_key: "fitted_preprocess" }
         - { step_id: "impute_nan", context_key: "fitted_imputer" }
         - { step_id: "kmeans_features", context_key: "fitted_kmeans" }
         - { step_id: "xgboost_model", context_key: "fitted_xgb" }
@@ -17,6 +18,7 @@ pipeline:
     # Added step: transforms raw data into a format compatible with the imputer
     - id: "preprocess"
       type: "preprocessor"
+      instance_key: "fitted_preprocess"
       enabled: true
       is_train: false  # Important: loads fitted state from context instead of refitting
       wiring:

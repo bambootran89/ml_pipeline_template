@@ -47,11 +47,8 @@ pipeline:
       output_as_feature: true
       wiring:
         inputs:
-          data: "preprocessed_data"
-        outputs:
-          model: "xgb_model"
-          datamodule: "xgb_datamodule"
-          features: "xgboost_prediction"
+          features: "preprocessed_data"
+          targets: "target_data"
 
     # Stage 6: Evaluation
     - id: "evaluate"
@@ -60,9 +57,6 @@ pipeline:
       depends_on: ["xgboost_model"]
       model_step_id: "xgboost_model"
       wiring:
-        inputs:
-          model: "xgb_model"
-          datamodule: "xgb_datamodule"
         outputs:
           metrics: "evaluation_metrics"
 

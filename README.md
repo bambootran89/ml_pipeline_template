@@ -242,7 +242,7 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 ## Training with Profiling
 
-Pipeline `standard_trainyaml` includes a **profiling step** that automatically analyzes pipeline outputs after training:
+Pipeline `standard_train.yaml` includes a **profiling step** that automatically analyzes pipeline outputs after training:
 
 ```bash
 python -m mlproject.src.pipeline.dag_run train \

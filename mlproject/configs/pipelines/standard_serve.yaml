@@ -13,7 +13,7 @@ pipeline:
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
-      model_step_id: "fitted_preprocess"
+      instance_key: "fitted_preprocess"
       is_train: false  # CRITICAL: Load from MLflow!
       alias: "latest"  # Override via --alias in CLI
     # Step 3: Run inference

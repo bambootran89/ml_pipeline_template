@@ -16,7 +16,7 @@ pipeline:
       type: "preprocessor"
       enabled: true
       depends_on: ["load_data", init_artifacts]
-      model_step_id: "fitted_preprocess"
+      instance_key: "fitted_preprocess"
       is_train: false  # Critical: load existing state from MLflow, do not refit
       alias: "latest"   # Uses the same alias as the model (can be overridden via CLI)
 
