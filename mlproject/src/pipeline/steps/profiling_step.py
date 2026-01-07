@@ -8,13 +8,38 @@ This module provides comprehensive profiling of pipeline outputs including:
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+
+
+def pretty_print(key: str, data: Any) -> None:
+    """Print pipeline outputs in a human-friendly format."""
+    print(f"\n=== {key.upper()} OUTPUT ===")
+
+    if isinstance(data, (dict, list)):
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+
+    elif isinstance(data, pd.DataFrame):
+        print(data.to_markdown(index=True, tablefmt="grid"))
+
+    elif isinstance(data, np.ndarray):
+        arr = data.tolist()
+        print(json.dumps(arr, indent=2, ensure_ascii=False))
+
+    elif isinstance(data, (DictConfig, ListConfig)):
+        print(OmegaConf.to_yaml(data))
+
+    else:
+        print(data)
+
+    print("=" * 30)
 
 
 class ProfilingStep(BasePipelineStep):
@@ -130,6 +155,7 @@ class ProfilingStep(BasePipelineStep):
         profile : Dict[str, Any]
             Profile dict to update.
         """
+
         if key.endswith("_metrics"):
             profile["metrics"][key] = self._summarize_metrics(value)
         elif "prediction" in key.lower() or "pred" in key.lower():
@@ -138,11 +164,10 @@ class ProfilingStep(BasePipelineStep):
             profile["data_quality"][key] = self._analyze_dataframe(value)
         elif isinstance(value, np.ndarray):
             # Only analyze as clusters if 1D integer-like array
-            if value.ndim == 1 and np.issubdtype(value.dtype, np.integer):
-                if "cluster" in key.lower() or "label" in key.lower():
-                    profile["clusters"][key] = self._analyze_clusters(value)
-                else:
-                    profile["summary"][key] = self._analyze_array(value)
+            if np.issubdtype(value.dtype, np.integer) and (
+                "cluster" in key.lower() or "label" in key.lower()
+            ):
+                profile["clusters"][key] = self._analyze_clusters(value)
             else:
                 profile["summary"][key] = self._analyze_array(value)
 
@@ -323,6 +348,10 @@ class ProfilingStep(BasePipelineStep):
                 print(f"  {key}:")
                 print(f"    - mean: {data.get('mean')}, std: {data.get('std')}")
                 print(f"    - range: [{data.get('min')}, {data.get('max')}]")
+        if profile["data_quality"]:
+            print("\n[data_quality Statistics]")
+            for key, data in profile["data_quality"].items():
+                pretty_print(f"  {key}:", data)
 
         print(f"\n{'=' * 60}\n")
 

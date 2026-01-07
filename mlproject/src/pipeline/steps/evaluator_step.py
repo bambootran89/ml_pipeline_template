@@ -92,6 +92,7 @@ class EvaluatorStep(BasePipelineStep):
         """
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.model_step_id = model_step_id
+        self.step_eval_type = kwargs.get("step_eval_type", "")
         self.evaluator = self._build_evaluator()
 
     def _build_evaluator(self) -> BaseEvaluator:
@@ -103,7 +104,10 @@ class EvaluatorStep(BasePipelineStep):
         BaseEvaluator
             Appropriate evaluator instance.
         """
-        eval_type = self.cfg.get("evaluation", {}).get("type", "regression")
+        if len(self.step_eval_type) == 0:
+            eval_type = self.cfg.get("evaluation", {}).get("type", "regression")
+        else:
+            eval_type = self.step_eval_type
 
         if eval_type == "classification":
             return ClassificationEvaluator()
@@ -136,6 +140,7 @@ class EvaluatorStep(BasePipelineStep):
         # MODE 2: Run prediction via model wrapper
         wrapper = self.get_input(context, "model", required=False)
         dm = self.get_input(context, "datamodule", required=False)
+
         if wrapper is None:
             mk = f"{self.model_step_id}_model"
             wrapper = context.get(mk)
@@ -151,9 +156,8 @@ class EvaluatorStep(BasePipelineStep):
         if dm is None:
             df = self._build_eval_frame(context)
             dm = DataModuleFactory.build(self.cfg, df)
-
-        y_true, y_pred = self._eval_from_datamodule(wrapper, dm)
-        metrics = self.evaluator.evaluate(y_true, y_pred, x=y_pred)
+        y_true, y_pred, x_test = self._eval_from_datamodule(wrapper, dm)
+        metrics = self.evaluator.evaluate(y_true, y_pred, x=x_test, model=wrapper)
 
         self.set_output(context, "metrics", metrics)
 
@@ -182,15 +186,15 @@ class EvaluatorStep(BasePipelineStep):
 
     def _eval_from_datamodule(
         self, wrapper: Any, dm: Any
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Run prediction and return true labels and predictions as numpy."""
         if hasattr(dm, "get_test_windows"):
             x, y = dm.get_test_windows()
-            return y, wrapper.predict(x)
+            return y, wrapper.predict(x), x
 
         data = dm.get_data()
         x_test, y_test = data[-2], data[-1]
-        return y_test, wrapper.predict(x_test)
+        return y_test, wrapper.predict(x_test), x_test
 
 
 # Register step type

@@ -78,6 +78,7 @@ class ClusteringEvaluator(BaseEvaluator):
         model = kwargs.get("model")
         if model is not None and hasattr(model, "inertia_"):
             metrics["inertia"] = float(model.inertia_)
+            print("--->", print(float(model.inertia_)))
 
         n_clusters = np.unique(labels).size
 

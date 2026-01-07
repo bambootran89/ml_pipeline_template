@@ -12,6 +12,8 @@ pipeline:
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
+      log_artifact: true
+      artifact_type: "preprocess"
       depends_on: ["load_data"]
       is_train: true
 
@@ -19,6 +21,8 @@ pipeline:
     - id: "kmeans_features"
       type: "clustering"
       enabled: true
+      log_artifact: true
+      artifact_type: "model"
       depends_on: ["preprocess"]
       model_name: "kmean"
       output_as_feature: true
@@ -43,7 +47,9 @@ pipeline:
     - id: "xgboost_model"
       type: "trainer"
       enabled: true
-      depends_on: ["kmeans_features"]
+      log_artifact: true
+      artifact_type: "model"
+      depends_on: ["preprocess"]
       output_as_feature: true
       wiring:
         inputs:

@@ -128,7 +128,8 @@ class FrameworkModelStep(BasePipelineStep):
         self.simple_model_type = model_type
         self.simple_hyperparams = hyperparams or {}
         self.output_as_feature = output_as_feature
-
+        self.log_artifact: bool = kwargs.get("log_artifact", False)
+        self.artifact_type: str = kwargs.get("artifact_type", "component")
         # Build effective config
         self.effective_cfg = self._build_effective_config()
 
@@ -365,6 +366,8 @@ class FrameworkModelStep(BasePipelineStep):
         # Train
         print(f"[{self.step_id}] Training with hyperparams: {hyperparams}")
         trained_wrapper = trainer.train(datamodule, hyperparams)
+        if self.log_artifact:
+            self.register_for_discovery(context, trained_wrapper)
 
         # Store outputs
         self.set_output(context, "model", trained_wrapper)
