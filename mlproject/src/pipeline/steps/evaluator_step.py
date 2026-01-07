@@ -140,7 +140,6 @@ class EvaluatorStep(BasePipelineStep):
         # MODE 2: Run prediction via model wrapper
         wrapper = self.get_input(context, "model", required=False)
         dm = self.get_input(context, "datamodule", required=False)
-
         if wrapper is None:
             mk = f"{self.model_step_id}_model"
             wrapper = context.get(mk)

@@ -21,6 +21,7 @@ from mlproject.src.pipeline.steps.base import BasePipelineStep
 # Import all steps to trigger registration
 # Each step file imports StepFactory and calls register() at module load
 from mlproject.src.pipeline.steps.data_loader_step import DataLoaderStep
+from mlproject.src.pipeline.steps.datamodule_step import DataModuleStep
 from mlproject.src.pipeline.steps.dynamic_adapter_step import DynamicAdapterStep
 from mlproject.src.pipeline.steps.evaluator_step import EvaluatorStep
 
@@ -61,4 +62,5 @@ __all__ = [
     "SubPipelineStep",
     "DynamicAdapterStep",
     "MLflowLoaderStep",
+    "DataModuleStep",
 ]

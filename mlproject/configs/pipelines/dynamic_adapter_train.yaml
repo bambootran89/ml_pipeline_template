@@ -54,6 +54,15 @@ pipeline:
       params:
         include_keys: ["cluster_labels"]
 
+    - id: "prepare_data"
+      type: "datamodule"
+      depends_on: ["preprocess"]
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
+        outputs: { datamodule: "prepare_data_datamodule" }
+
     - id: "xgboost_model"
       type: "trainer"
       log_artifact: true
@@ -63,12 +72,11 @@ pipeline:
       output_as_feature: true
       wiring:
         inputs:
-          features: "preprocessed_data"
-          targets: "target_data"
+          datamodule: "prepare_data_datamodule"
         outputs:
           model: "xgboost_model_model"
-          datamodule: "xgboost_model_datamodule"
           features: "xgboost_prediction"
+
 
     - id: "evaluate"
       type: "evaluator"
@@ -78,7 +86,7 @@ pipeline:
       wiring:
         inputs:
           model: "xgboost_model_model"
-          datamodule: "xgboost_model_datamodule"
+          datamodule: "prepare_data_datamodule"
         outputs:
           metrics: "evaluation_metrics"
 
