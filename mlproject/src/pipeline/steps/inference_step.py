@@ -20,33 +20,6 @@ class InferenceStep(BasePipelineStep):
 
     This step runs inference using a loaded model and optionally
     saves predictions to disk. Supports data wiring.
-
-    Context Inputs (configurable via wiring)
-    -----------------------------------------
-    data : pd.DataFrame
-        Preprocessed features (default: preprocessed_data).
-    model : ModelWrapper
-        Loaded model instance.
-
-    Context Outputs (configurable via wiring)
-    ------------------------------------------
-    predictions : np.ndarray
-        Raw model predictions.
-
-    Wiring Example
-    --------------
-    ::
-
-        - id: "inference"
-          type: "inference"
-          depends_on: ["load_model", "preprocess"]
-          model_step_id: "load_model"
-          wiring:
-            inputs:
-              data: "custom_features"
-              model: "production_model"
-            outputs:
-              predictions: "final_predictions"
     """
 
     DEFAULT_INPUTS = {"data": "preprocessed_data"}
@@ -57,7 +30,6 @@ class InferenceStep(BasePipelineStep):
         cfg: Any,
         enabled: bool = True,
         depends_on: Optional[List[str]] = None,
-        model_step_id: Optional[str] = None,
         save_path: Optional[str] = None,
         include_inputs: bool = False,
         **kwargs: Any,
@@ -74,8 +46,6 @@ class InferenceStep(BasePipelineStep):
             Whether step is active.
         depends_on : Optional[List[str]], default=None
             Prerequisite steps.
-        model_step_id : str, optional
-            ID of step that loaded the model.
         save_path : str, optional
             Path to save predictions CSV.
         include_inputs : bool, default=False
@@ -84,7 +54,6 @@ class InferenceStep(BasePipelineStep):
             Additional parameters including wiring config.
         """
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
-        self.model_step_id = model_step_id
         self.save_path = save_path
         self.include_inputs = include_inputs
 
@@ -102,24 +71,13 @@ class InferenceStep(BasePipelineStep):
         -------
         Dict[str, Any]
             Context with predictions added.
-
-        Raises
-        ------
-        ValueError
-            If model_step_id not specified and model not in wiring.
         """
         self.validate_dependencies(context)
 
         # Get data using wiring
         df: pd.DataFrame = self.get_input(context, "data")
 
-        # Get model using wiring or default pattern
-        if self.model_step_id:
-            model_key = f"{self.model_step_id}_model"
-        else:
-            model_key = None
-
-        model = self.get_input(context, "model", default_key=model_key)
+        model = self.get_input(context, "model")
 
         # Handle timeseries vs tabular
         data_type: str = self.cfg.data.get("type", "timeseries")

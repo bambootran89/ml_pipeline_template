@@ -25,14 +25,16 @@ pipeline:
       type: "evaluator"
       enabled: true
       depends_on: ["init_artifacts", "preprocess"]
-      model_step_id: "train_model"
       wiring:
-        inputs: { features: "preprocessed_data", targets: "target_data" }
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
+          model: train_model_model
+        outputs:
+          metrics: "evaluation_metrics"
 
     # Optional step: logs evaluation metrics to storage or tracking systems
     - id: "log_results"
       type: "logger"
-      enabled: false  # Disabled by default for evaluation pipelines
+      enabled: true  # Disabled by default for evaluation pipelines
       depends_on: ["evaluate"]
-      model_step_id: "load_model"
-      eval_step_id: "evaluate"

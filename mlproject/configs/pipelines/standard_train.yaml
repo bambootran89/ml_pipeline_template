@@ -33,6 +33,7 @@ pipeline:
       artifact_type: "model"
       wiring:
         inputs: { datamodule: "prepare_data_datamodule" }
+        outputs: { model: "train_model_model" }
 
     # Step 4: Evaluate model
     - id: "evaluate"
@@ -45,6 +46,8 @@ pipeline:
           model: "train_model_model"
           # Load DataModule from the data preparation step instead of rebuilding it
           datamodule: "prepare_data_datamodule"
+        outputs:
+          metrics: "evaluation_metrics"
 
     # Step 5: Profile outputs (NEW)
     - id: "profiling"

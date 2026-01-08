@@ -52,14 +52,13 @@ pipeline:
       type: "evaluator"
       enabled: true
       depends_on: ["init_artifacts", "preprocess"]
-      model_step_id: "xgboost_predict"
       wiring:
         inputs: { predictions: "final_prediction", targets: "target_data" }
+        outputs:
+          metrics: "evaluation_metrics"
 
     # Optional step: logs evaluation metrics to storage or tracking systems
     - id: "log_results"
       type: "logger"
-      enabled: false  # Disabled by default for evaluation pipelines
+      enabled: true  # Disabled by default for evaluation pipelines
       depends_on: ["evaluate"]
-      model_step_id: "xgboost_predict"
-      eval_step_id: "evaluate"

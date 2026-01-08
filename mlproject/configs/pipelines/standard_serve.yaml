@@ -20,5 +20,7 @@ pipeline:
     - id: "inference"
       type: "inference"
       enabled: true
-      model_step_id: "train_model"
       depends_on: ["preprocess", "init_artifacts"]
+      wiring:
+        inputs:
+          model: train_model_model

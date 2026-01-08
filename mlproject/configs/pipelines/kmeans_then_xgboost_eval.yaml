@@ -27,17 +27,24 @@ pipeline:
       enabled: true
       step_eval_type: clustering
       depends_on: ["init_artifacts", "preprocess"]
-      model_step_id: "kmeans_features"
       wiring:
-        inputs: { features: "preprocessed_data", targets: "target_data" }
+        inputs:
+          features: "preprocessed_data"
+          model: kmeans_features_model
+        outputs:
+          metrics: "kmean_metrics"
 
     - id: "xgboost_evaluate"
       type: "evaluator"
       enabled: true
       depends_on: ["init_artifacts", "preprocess"]
-      model_step_id: "xgboost_model"
       wiring:
-        inputs: { features: "preprocessed_data", targets: "target_data" }
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
+          model: xgboost_model_model
+        outputs:
+          metrics: "xgboost_metrics"
 
     # Stage 7: Final profiling
     - id: "final_profiling"
@@ -49,5 +56,5 @@ pipeline:
     # Optional step: logs evaluation metrics to storage or tracking systems
     - id: "log_results"
       type: "logger"
-      enabled: false  # Disabled by default for evaluation pipelines
+      enabled: true  # Disabled by default for evaluation pipelines
       depends_on: ["kmean_evaluate", "xgboost_evaluate"]

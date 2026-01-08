@@ -29,7 +29,6 @@ class LoggerStep(BasePipelineStep):
         """Iterate through the registry and log every registered component."""
         exp_name = self.cfg.experiment.name
         run_name = f"{exp_name}_run"
-
         with self.mlflow_manager.start_run(run_name=run_name):
             # 1. Automated Discovery Logging
             registry = context.get("_artifact_registry", {})
@@ -44,10 +43,21 @@ class LoggerStep(BasePipelineStep):
                 )
 
             # 2. Log Metrics (Standardized discovery via context)
-            metrics = context.get("evaluation_metrics", {})
-            if metrics:
-                safe_metrics = flatten_metrics_for_mlflow(metrics)
-                self.mlflow_manager.log_metadata(metrics=safe_metrics)
+            for key, metrics in context.items():
+                if key.endswith("_metrics"):
+                    prefix = key.replace("_metrics", "").replace(
+                        "evaluation_metrics", ""
+                    )
+
+                    if metrics:
+                        safe_metrics = flatten_metrics_for_mlflow(metrics)
+
+                        self.mlflow_manager.log_metadata(
+                            metrics={
+                                f"{prefix}_{m}" if prefix else m: value
+                                for m, value in safe_metrics.items()
+                            }
+                        )
 
         print(f"[{self.step_id}] Finished systematic logging to MLflow.")
         return context

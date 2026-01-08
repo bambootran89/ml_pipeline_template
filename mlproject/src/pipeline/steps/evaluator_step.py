@@ -31,35 +31,6 @@ class EvaluatorStep(BasePipelineStep):
     Computes metrics based on evaluation type configured
     in the experiment. Supports data wiring for flexible
     model/data source configuration.
-
-    Context Inputs (configurable via wiring)
-    -----------------------------------------
-    <model_step_id>_model : ModelWrapper
-        Trained model to evaluate (default: train_model_model).
-    <model_step_id>_datamodule : DataModule
-        DataModule with test data (default: train_model_datamodule).
-    preprocessed_data : pd.DataFrame
-        Fallback if datamodule is None.
-
-    Context Outputs (configurable via wiring)
-    ------------------------------------------
-    <step_id>_metrics : Dict[str, float]
-        Evaluation metrics.
-
-    Wiring Example
-    --------------
-    ::
-
-        - id: "eval_ensemble"
-          type: "evaluator"
-          depends_on: ["train_xgb", "train_catboost"]
-          wiring:
-            inputs:
-              model: "ensemble_model"      # Custom model key
-              datamodule: "shared_dm"      # Custom datamodule key
-            outputs:
-              metrics: "ensemble_metrics"  # Custom output key
-          model_step_id: "train_xgb"       # Fallback if wiring not set
     """
 
     def __init__(
@@ -68,7 +39,6 @@ class EvaluatorStep(BasePipelineStep):
         cfg: Any,
         enabled: bool = True,
         depends_on: Optional[List[str]] = None,
-        model_step_id: str = "train_model",
         **kwargs: Any,
     ) -> None:
         """
@@ -84,15 +54,13 @@ class EvaluatorStep(BasePipelineStep):
             Whether step is active.
         depends_on : Optional[List[str]], default=None
             Prerequisite steps.
-        model_step_id : str, default="train_model"
-            ID of step that trained the model to evaluate.
-            Used for default key patterns.
         **kwargs
             Additional parameters including wiring config.
         """
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
-        self.model_step_id = model_step_id
         self.step_eval_type = kwargs.get("step_eval_type", "")
+        if "cluster" in self.step_id:
+            self.step_eval_type = "clustering"
         self.evaluator = self._build_evaluator()
 
     def _build_evaluator(self) -> BaseEvaluator:
@@ -140,17 +108,6 @@ class EvaluatorStep(BasePipelineStep):
         # MODE 2: Run prediction via model wrapper
         wrapper = self.get_input(context, "model", required=False)
         dm = self.get_input(context, "datamodule", required=False)
-        if wrapper is None:
-            mk = f"{self.model_step_id}_model"
-            wrapper = context.get(mk)
-        if dm is None:
-            dk = f"{self.model_step_id}_datamodule"
-            dm = context.get(dk)
-
-        if wrapper is None:
-            raise ValueError(
-                f"Step '{self.step_id}': Model not found in context['{mk}']."
-            )
 
         if dm is None:
             df = self._build_eval_frame(context)

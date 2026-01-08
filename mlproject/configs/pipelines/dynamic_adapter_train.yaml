@@ -82,7 +82,6 @@ pipeline:
       type: "evaluator"
       enabled: true
       depends_on: ["xgboost_model"]
-      model_step_id: "xgboost_model"
       wiring:
         inputs:
           model: "xgboost_model_model"

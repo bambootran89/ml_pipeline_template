@@ -162,6 +162,8 @@ class BasePipelineStep(ABC):
             "type": self.artifact_type,
         }
 
+        print("registering", self.step_id, context["_artifact_registry"][self.step_id])
+
     def get_input(
         self,
         context: Dict[str, Any],

@@ -195,7 +195,10 @@ class PreprocessorStep(BasePipelineStep):
             df_transformed["dataset"] = "test"
             print(f"[{self.step_id}] Upstream split used -> labeled as test.")
         else:
-            print(f"[{self.step_id}] No split detected -> full input used as test.")
+            print(
+                f"No split detected at [{self.step_id}]-> \
+                  datamodule will use default setting split data."
+            )
 
         context["preprocessor"] = preprocessor
 
