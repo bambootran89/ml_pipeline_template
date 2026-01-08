@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 
 
 class ConfigGenerator:

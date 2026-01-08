@@ -16,7 +16,7 @@ import pytest
 
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.compat.v1.cv import CrossValidationPipeline
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 
 
 @pytest.fixture

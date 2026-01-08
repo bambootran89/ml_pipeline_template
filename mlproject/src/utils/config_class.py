@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 from pathlib import Path
 from typing import Any, Dict, Union, cast
@@ -138,3 +140,43 @@ class ConfigLoader:
         final_cfg = cast(DictConfig, OmegaConf.merge(merged, cfg))
         # ConfigValidator.validate(final_cfg)
         return final_cfg
+
+
+class ConfigMerger:
+    """Utility class to merge and persist experiment + pipeline configs."""
+
+    @staticmethod
+    def merge(
+        experiment_path: str,
+        pipeline_path: str,
+        mode: str = "train",
+    ) -> DictConfig:
+        """Merge experiment config with pipeline config."""
+        exp_cfg = ConfigLoader.load(experiment_path)
+        _ = mode
+        pipe_file = Path(pipeline_path)
+        if not pipe_file.exists():
+            raise FileNotFoundError(f"Pipeline config not found: {pipeline_path}")
+
+        pipe_cfg = OmegaConf.load(pipe_file)
+        merged: Union[DictConfig, ListConfig] = OmegaConf.merge(exp_cfg, pipe_cfg)
+
+        if isinstance(merged, ListConfig):
+            merged = OmegaConf.create({"config": merged})
+
+        print("\n[CONFIG] Merged configuration:")
+        print(f"  - Experiment: {experiment_path}")
+        print(f"  - Pipeline:   {pipeline_path}")
+
+        return merged  # type: ignore
+
+    @staticmethod
+    def save(cfg: DictConfig, output_path: str) -> None:
+        """Save merged config to file."""
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            OmegaConf.save(cfg, f)
+
+        print(f"  - Merged saved: {output_path}\n")
