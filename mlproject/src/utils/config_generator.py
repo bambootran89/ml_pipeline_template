@@ -13,6 +13,12 @@ class ConfigGenerator:
     Loads a base training YAML configuration and generates transformed pipeline
     configs for evaluation or serving workloads. This generator does not modify
     training logic or saved MLflow artifacts, only re-wires dependencies.
+
+    Supports:
+    - Standard flat pipelines (standard_train.yaml)
+    - Nested sub-pipelines (nested_suppipeline.yaml)
+    - Two-stage pipelines (kmeans_then_xgboost.yaml)
+    - Parallel ensemble pipelines
     """
 
     def __init__(self, train_config_path: str) -> None:
@@ -30,6 +36,191 @@ class ConfigGenerator:
         ), f"Expected DictConfig but got {type(loaded).__name__}"
         self.train_cfg: DictConfig = loaded
         self.experiment_name: str = Path(train_config_path).stem
+
+    def _extract_model_producers_recursive(
+        self, steps: List[Any], prefix: str = ""
+    ) -> List[Any]:
+        """Recursively extract model producers from steps including nested sub-pipelines.
+
+        Args:
+            steps: List of pipeline steps.
+            prefix: Optional prefix for nested step IDs.
+
+        Returns:
+            List of model producer steps (trainer, clustering).
+        """
+        producers: List[Any] = []
+
+        for step in steps:
+            if step.type in ["trainer", "clustering"]:
+                producers.append(step)
+            elif step.type == "sub_pipeline":
+                # Recursively extract from nested sub-pipeline
+                if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
+                    nested_producers = self._extract_model_producers_recursive(
+                        step.pipeline.steps, prefix=f"{step.id}_"
+                    )
+                    producers.extend(nested_producers)
+
+        return producers
+
+    def _extract_preprocessors_recursive(
+        self, steps: List[Any], prefix: str = ""
+    ) -> List[Any]:
+        """Recursively extract preprocessor steps from steps including nested sub-pipelines.
+
+        Args:
+            steps: List of pipeline steps.
+            prefix: Optional prefix for nested step IDs.
+
+        Returns:
+            List of preprocessor steps.
+        """
+        preprocessors: List[Any] = []
+
+        for step in steps:
+            if step.type == "preprocessor":
+                preprocessors.append(step)
+            elif step.type == "sub_pipeline":
+                # Recursively extract from nested sub-pipeline
+                if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
+                    nested_preprocessors = self._extract_preprocessors_recursive(
+                        step.pipeline.steps, prefix=f"{step.id}_"
+                    )
+                    preprocessors.extend(nested_preprocessors)
+
+        return preprocessors
+
+    def _transform_sub_pipeline_for_eval(
+        self, sub_pipeline_step: Any, alias: str
+    ) -> Any:
+        """Transform a sub_pipeline step for eval mode.
+
+        Args:
+            sub_pipeline_step: The sub_pipeline step to transform.
+            alias: MLflow alias for artifact loading.
+
+        Returns:
+            Transformed sub_pipeline step for eval mode.
+        """
+        transformed = copy.deepcopy(sub_pipeline_step)
+
+        if not hasattr(transformed, "pipeline") or not hasattr(
+            transformed.pipeline, "steps"
+        ):
+            return transformed
+
+        # Transform steps inside sub-pipeline
+        for step in transformed.pipeline.steps:
+            if step.type == "preprocessor":
+                # Set preprocessor to load mode
+                step.is_train = False
+                step.alias = alias
+                step.instance_key = f"{step.id}_model"
+
+                # Remove training-only configs
+                if hasattr(step, "log_artifact"):
+                    delattr(step, "log_artifact")
+                if hasattr(step, "artifact_type"):
+                    delattr(step, "artifact_type")
+                if hasattr(step, "wiring"):
+                    # Keep outputs but simplify inputs to use defaults
+                    if "inputs" in step.wiring:
+                        delattr(step.wiring, "inputs")
+
+            elif step.type == "clustering":
+                # Set clustering to inference mode
+                if not hasattr(step, "wiring"):
+                    step.wiring = OmegaConf.create({})
+                if not hasattr(step.wiring, "inputs"):
+                    step.wiring.inputs = OmegaConf.create({})
+                if not hasattr(step.wiring, "outputs"):
+                    step.wiring.outputs = OmegaConf.create({})
+
+                # Wire to use loaded model
+                step.wiring.inputs.model = f"{step.id}_model"
+                step.wiring.inputs.features = "preprocessed_data"
+                step.wiring.outputs.features = (
+                    step.wiring.outputs.features
+                    if hasattr(step.wiring.outputs, "features")
+                    else "cluster_features"
+                )
+                step.wiring.outputs.model = f"{step.id}_model"
+
+                # Remove training-only configs
+                if hasattr(step, "log_artifact"):
+                    delattr(step, "log_artifact")
+                if hasattr(step, "artifact_type"):
+                    delattr(step, "artifact_type")
+                if hasattr(step, "hyperparams"):
+                    delattr(step, "hyperparams")
+
+        return transformed
+
+    def _transform_sub_pipeline_for_serve(
+        self, sub_pipeline_step: Any, alias: str
+    ) -> Any:
+        """Transform a sub_pipeline step for serve mode.
+
+        Args:
+            sub_pipeline_step: The sub_pipeline step to transform.
+            alias: MLflow alias for artifact loading.
+
+        Returns:
+            Transformed sub_pipeline step for serve mode.
+        """
+        transformed = copy.deepcopy(sub_pipeline_step)
+
+        if not hasattr(transformed, "pipeline") or not hasattr(
+            transformed.pipeline, "steps"
+        ):
+            return transformed
+
+        # Transform steps inside sub-pipeline
+        for step in transformed.pipeline.steps:
+            if step.type == "preprocessor":
+                # Set preprocessor to load mode
+                step.is_train = False
+                step.alias = alias
+                step.instance_key = f"{step.id}_model"
+
+                # Remove training-only configs
+                if hasattr(step, "log_artifact"):
+                    delattr(step, "log_artifact")
+                if hasattr(step, "artifact_type"):
+                    delattr(step, "artifact_type")
+                if hasattr(step, "wiring"):
+                    if "inputs" in step.wiring:
+                        delattr(step.wiring, "inputs")
+
+            elif step.type == "clustering":
+                # For serve mode, clustering should do inference
+                if not hasattr(step, "wiring"):
+                    step.wiring = OmegaConf.create({})
+                if not hasattr(step.wiring, "inputs"):
+                    step.wiring.inputs = OmegaConf.create({})
+                if not hasattr(step.wiring, "outputs"):
+                    step.wiring.outputs = OmegaConf.create({})
+
+                # Wire to use loaded model
+                step.wiring.inputs.model = f"{step.id}_model"
+                step.wiring.inputs.features = "preprocessed_data"
+                step.wiring.outputs.features = (
+                    step.wiring.outputs.features
+                    if hasattr(step.wiring.outputs, "features")
+                    else "cluster_features"
+                )
+                step.wiring.outputs.model = f"{step.id}_model"
+
+                # Remove training-only configs
+                if hasattr(step, "log_artifact"):
+                    delattr(step, "log_artifact")
+                if hasattr(step, "artifact_type"):
+                    delattr(step, "artifact_type")
+                if hasattr(step, "hyperparams"):
+                    delattr(step, "hyperparams")
+
+        return transformed
 
     def _make_evaluator_config(
         self,
@@ -85,12 +276,15 @@ class ConfigGenerator:
     ) -> List[Any]:
         """Build steps for eval pipeline, including evaluator and profiling.
 
+        Supports nested sub-pipelines by keeping them intact but transforming
+        their internal steps for evaluation mode.
+
         Args:
             train_steps: Original training pipeline steps.
             alias: MLflow alias for artifact loading.
             init_id: MLflow loader step ID.
-            model_producers: Model producers from training steps.
-            preprocessor_step: Optional preprocessor step.
+            model_producers: Model producers from training steps (including nested).
+            preprocessor_step: Optional top-level preprocessor step.
 
         Returns:
             New list of steps for eval mode.
@@ -98,15 +292,33 @@ class ConfigGenerator:
         new_steps: List[Any] = []
         evaluator_ids: List[str] = []
 
+        # Find data loader
         data_loader = next((s for s in train_steps if s.type == "data_loader"), None)
         if data_loader:
             new_steps.append(data_loader)
 
+        # Build load_map for all model producers and preprocessors (including nested)
+        all_preprocessors = self._extract_preprocessors_recursive(train_steps)
+        all_model_producers = self._extract_model_producers_recursive(train_steps)
+
         load_map = [
             {"step_id": mp.id, "context_key": f"{mp.id}_model"}
-            for mp in model_producers
+            for mp in all_model_producers
         ]
-        if preprocessor_step:
+
+        # Add all preprocessors to load_map
+        for prep in all_preprocessors:
+            load_map.append(
+                {
+                    "step_id": prep.id,
+                    "context_key": f"{prep.id}_model",
+                }
+            )
+
+        # Special handling for top-level preprocessor (legacy compatibility)
+        if preprocessor_step and not any(
+            p.id == preprocessor_step.id for p in all_preprocessors
+        ):
             load_map.append(
                 {
                     "step_id": preprocessor_step.id,
@@ -126,25 +338,44 @@ class ConfigGenerator:
             )
         )
 
-        if preprocessor_step:
+        # Handle top-level preprocessor (if exists and not in sub-pipeline)
+        if preprocessor_step and not any(
+            p.id == preprocessor_step.id for p in all_preprocessors
+        ):
             prep = copy.deepcopy(preprocessor_step)
             prep.is_train = False
             prep.alias = alias
-            # Wiring đúng key restore mà framework serving đang tìm
             prep.instance_key = "transform_manager"
             prep.depends_on = [init_id]
             prep.depends_on.append("load_data")
             new_steps.append(prep)
 
-        for mp in model_producers:
+        # Process all steps, handling sub-pipelines specially
+        sub_pipeline_steps = []
+        for step in train_steps:
+            if step.type == "sub_pipeline":
+                # Transform sub-pipeline for eval mode and keep it
+                transformed_sub = self._transform_sub_pipeline_for_eval(step, alias)
+                new_steps.append(transformed_sub)
+                sub_pipeline_steps.append(step.id)
+            elif step.type in ["datamodule", "trainer"]:
+                # Skip training steps in eval mode
+                pass
+
+        # Generate evaluators for all model producers
+        for mp in all_model_producers:
             ev = self._make_evaluator_config(
                 mp,
                 init_id,
-                preprocessor_step.id if preprocessor_step else None,
+                None,  # Dependencies handled via depends_on
             )
-            new_steps.append(ev)
+            # If model producer is in sub-pipeline, evaluator depends on sub-pipeline
+            if sub_pipeline_steps:
+                ev.depends_on = [init_id] + sub_pipeline_steps
             evaluator_ids.append(ev.id)
+            new_steps.append(ev)
 
+        # Add profiling and logger steps
         for step in train_steps:
             if step.type in ["logger", "profiling"]:
                 aux = copy.deepcopy(step)
@@ -171,13 +402,13 @@ class ConfigGenerator:
     ) -> List[Any]:
         """Build steps for serve pipeline with inference chaining and profiling.
 
-        Ensures preprocessor restore uses correct context key and appears before
-        inference chaining begins.
+        Supports nested sub-pipelines by keeping them intact but transforming
+        their internal steps for serving mode.
 
         Args:
             alias: MLflow alias for artifact loading.
             init_id: MLflow loader step ID.
-            model_producers: Model producers from training steps.
+            model_producers: Model producers from training steps (including nested).
             preprocessor_step: Optional preprocessor step.
 
         Returns:
@@ -186,7 +417,38 @@ class ConfigGenerator:
         new_steps: List[Any] = []
         last_id: str = init_id
 
-        # MLflow loader phải restore cả model và transform_manager
+        # Get all preprocessors and model producers (including nested)
+        train_steps = self.train_cfg.pipeline.steps
+        all_preprocessors = self._extract_preprocessors_recursive(train_steps)
+        all_model_producers = self._extract_model_producers_recursive(train_steps)
+
+        # Build load_map for all artifacts
+        load_map = [
+            {"step_id": mp.id, "context_key": f"{mp.id}_model"}
+            for mp in all_model_producers
+        ]
+
+        # Add all preprocessors to load_map
+        for prep in all_preprocessors:
+            load_map.append(
+                {
+                    "step_id": prep.id,
+                    "context_key": f"{prep.id}_model",
+                }
+            )
+
+        # Special handling for top-level preprocessor (legacy compatibility)
+        if preprocessor_step and not any(
+            p.id == preprocessor_step.id for p in all_preprocessors
+        ):
+            load_map.append(
+                {
+                    "step_id": preprocessor_step.id,
+                    "context_key": "transform_manager",
+                }
+            )
+
+        # MLflow loader step
         new_steps.append(
             OmegaConf.create(
                 {
@@ -194,26 +456,15 @@ class ConfigGenerator:
                     "type": "mlflow_loader",
                     "enabled": True,
                     "alias": alias,
-                    "load_map": [
-                        {"step_id": mp.id, "context_key": f"{mp.id}_model"}
-                        for mp in model_producers
-                    ]
-                    + (
-                        [
-                            {
-                                "step_id": preprocessor_step.id,
-                                "context_key": "transform_manager",
-                            }
-                        ]
-                        if preprocessor_step
-                        else []
-                    ),
+                    "load_map": load_map,
                 }
             )
         )
 
-        # Preprocessor wiring đúng context key để tránh crash khi serve
-        if preprocessor_step:
+        # Handle top-level preprocessor (if exists and not in sub-pipeline)
+        if preprocessor_step and not any(
+            p.id == preprocessor_step.id for p in all_preprocessors
+        ):
             prep = copy.deepcopy(preprocessor_step)
             prep.is_train = False
             prep.alias = alias
@@ -222,29 +473,67 @@ class ConfigGenerator:
             new_steps.append(prep)
             last_id = prep.id
 
-        # Inference chaining giữ nguyên logic thứ tự và wiring như ban đầu
-        for mp in model_producers:
-            inf_id = f"{mp.id}_inference"
-            inf_step = OmegaConf.create(
-                {
-                    "id": inf_id,
-                    "type": "inference",
-                    "enabled": True,
-                    "depends_on": [init_id, last_id],
-                    "output_as_feature": getattr(mp, "output_as_feature", False),
-                    "wiring": {
-                        "inputs": {
-                            "model": f"{mp.id}_model",
-                            "features": "preprocessed_data",
-                        },
-                        "outputs": {"predictions": f"{mp.id}_predictions"},
-                    },
-                }
-            )
-            new_steps.append(inf_step)
-            last_id = inf_id
+        # Check if there are sub-pipelines
+        has_sub_pipeline = any(s.type == "sub_pipeline" for s in train_steps)
 
-        # Final profiling không đổi logic
+        if has_sub_pipeline:
+            # Keep sub-pipeline for serving, transform its internal steps
+            for step in train_steps:
+                if step.type == "sub_pipeline":
+                    transformed_sub = self._transform_sub_pipeline_for_serve(step, alias)
+                    new_steps.append(transformed_sub)
+                    last_id = step.id
+
+            # Generate inference steps for model producers outside sub-pipeline
+            top_level_producers = [
+                mp for mp in all_model_producers
+                if mp.type == "trainer" and any(s.id == mp.id for s in train_steps)
+            ]
+
+            for mp in top_level_producers:
+                inf_id = f"{mp.id}_inference"
+                inf_step = OmegaConf.create(
+                    {
+                        "id": inf_id,
+                        "type": "inference",
+                        "enabled": True,
+                        "depends_on": [init_id, last_id],
+                        "output_as_feature": getattr(mp, "output_as_feature", False),
+                        "wiring": {
+                            "inputs": {
+                                "model": f"{mp.id}_model",
+                                "features": "preprocessed_data",
+                            },
+                            "outputs": {"predictions": f"{mp.id}_predictions"},
+                        },
+                    }
+                )
+                new_steps.append(inf_step)
+                last_id = inf_id
+        else:
+            # Standard flat pipeline - create inference steps for all model producers
+            for mp in model_producers:
+                inf_id = f"{mp.id}_inference"
+                inf_step = OmegaConf.create(
+                    {
+                        "id": inf_id,
+                        "type": "inference",
+                        "enabled": True,
+                        "depends_on": [init_id, last_id],
+                        "output_as_feature": getattr(mp, "output_as_feature", False),
+                        "wiring": {
+                            "inputs": {
+                                "model": f"{mp.id}_model",
+                                "features": "preprocessed_data",
+                            },
+                            "outputs": {"predictions": f"{mp.id}_predictions"},
+                        },
+                    }
+                )
+                new_steps.append(inf_step)
+                last_id = inf_id
+
+        # Final profiling
         new_steps.append(
             OmegaConf.create(
                 {

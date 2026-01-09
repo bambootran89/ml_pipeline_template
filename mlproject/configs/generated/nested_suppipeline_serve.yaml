@@ -1,0 +1,69 @@
+pipeline:
+  name: nested_suppipeline_serve
+  steps:
+  - id: init_artifacts
+    type: mlflow_loader
+    enabled: true
+    alias: latest
+    load_map:
+    - step_id: cluster
+      context_key: cluster_model
+    - step_id: train_model
+      context_key: train_model_model
+    - step_id: normalize
+      context_key: normalize_model
+  - id: feature_pipeline
+    type: sub_pipeline
+    enabled: true
+    depends_on:
+    - load_data
+    isolated: false
+    pipeline:
+      steps:
+      - id: normalize
+        type: preprocessor
+        is_train: false
+        wiring:
+          outputs:
+            data: normalized_data
+        alias: latest
+        instance_key: normalize_model
+      - id: cluster
+        type: clustering
+        depends_on:
+        - normalize
+        model_name: kmean
+        output_as_feature: true
+        wiring:
+          inputs:
+            data: normalized_data
+            model: cluster_model
+            features: preprocessed_data
+          outputs:
+            features: cluster_features
+            model: cluster_model
+  - id: train_model_inference
+    type: inference
+    enabled: true
+    depends_on:
+    - init_artifacts
+    - feature_pipeline
+    output_as_feature: false
+    wiring:
+      inputs:
+        model: train_model_model
+        features: preprocessed_data
+      outputs:
+        predictions: train_model_predictions
+  - id: final_profiling
+    type: profiling
+    enabled: true
+    depends_on:
+    - train_model_inference
+    exclude_keys:
+    - cfg
+    - preprocessor
+    - df
+    - train_df
+    - val_df
+    - test_df
