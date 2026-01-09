@@ -9,9 +9,9 @@ pipeline:
     alias: latest
     load_map:
     - step_id: train_model
-      context_key: train_model_model
+      context_key: fitted_train_model
     - step_id: preprocess
-      context_key: transform_manager
+      context_key: fitted_preprocess
   - id: preprocess
     type: preprocessor
     enabled: true
@@ -21,7 +21,7 @@ pipeline:
     - init_artifacts
     is_train: false
     alias: latest
-    instance_key: transform_manager
+    instance_key: fitted_preprocess
   - id: train_model_inference
     type: inference
     enabled: true
@@ -31,7 +31,7 @@ pipeline:
     output_as_feature: false
     wiring:
       inputs:
-        model: train_model_model
+        model: fitted_train_model
         features: preprocessed_data
       outputs:
         predictions: train_model_predictions

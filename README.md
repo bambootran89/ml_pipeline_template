@@ -159,11 +159,6 @@ The traditional monolithic pipeline approach has limitations when building compl
 │  = Different workflows without changing code!               │
 └─────────────────────────────────────────────────────────────┘
 ```
-
-## Available Pipeline Types
-
-## Available Pipeline Types
-
 ## Available Pipeline Types
 
 | Category   | Pipeline                     | Description               | Use Case                     |
@@ -270,6 +265,17 @@ python -m mlproject.src.pipeline.dag_run generate \
     --train-config mlproject/configs/pipelines/standard_train.yaml \
     --output-dir mlproject/configs/generated \
     --alias latest
+
+python -m mlproject.src.pipeline.dag_run generate \
+    --train-config mlproject/configs/pipelines/kmeans_then_xgboost.yaml \
+    --output-dir mlproject/configs/generated \
+    --alias latest
+
+python -m mlproject.src.pipeline.dag_run generate \
+    --train-config mlproject/configs/pipelines/nested_suppipeline.yaml \
+    --output-dir mlproject/configs/generated \
+    --alias latest
+
 ```
 
 **Output:**
@@ -316,6 +322,75 @@ python -m mlproject.src.pipeline.dag_run serve \
     -p mlproject/configs/generated/standard_train_serve.yaml \
     -i ./sample_input.csv \
     -a latest
+
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/nested_suppipeline.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/nested_suppipeline.yaml \
+    -o mlproject/configs/generated \
+    -a latest \
+    --type serve
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
+
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/conditional_branch.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/conditional_branch_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/conditional_branch.yaml \
+    -o mlproject/configs/generated \
+    -a latest \
+    --type serve
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/conditional_branch_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
+
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/parallel_ensemble.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/parallel_ensemble.yaml \
+    -o mlproject/configs/generated \
+    -a latest \
+    --type serve
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
 ```
 
 

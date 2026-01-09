@@ -1,0 +1,21 @@
+pipeline:
+  name: conditional_branch_eval
+  steps:
+  - id: load_data
+    type: data_loader
+    enabled: true
+  - id: init_artifacts
+    type: mlflow_loader
+    enabled: true
+    alias: latest
+    load_map:
+    - step_id: preprocess
+      context_key: preprocess_model
+  - id: log_results
+    type: logger
+    enabled: true
+    depends_on: []
+    wiring:
+      inputs:
+        model: selected_model
+        metrics: evaluation_metrics
