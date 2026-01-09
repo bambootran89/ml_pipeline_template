@@ -37,13 +37,18 @@ preprocessing:
       columns:  # Optional, mặc định là tất cả numeric columns
         - Age
         - Fare
+    - name: fill_missing
+      method: mode
+      columns:
+        - Sex
+        - Embarked
+        - Pclass
     # Step 2: Label encoding cho categorical
     - name: label_encoding
       columns:
         - Sex
         - Embarked
         - Pclass
-
     # Step 3: Scale numerical features
     - name: normalize
       method: zscore

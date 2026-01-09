@@ -31,7 +31,6 @@ class StepFactory:
     - trainer: Train model (legacy)
     - evaluator: Evaluate model
     - inference: Generate predictions
-    - model_loader: Load from MLflow
     - logger: Log to MLflow
     - tuner: Hyperparameter optimization
 
@@ -40,7 +39,6 @@ class StepFactory:
     - parallel: Execute branches concurrently
     - branch: Conditional execution
     - sub_pipeline: Nested pipeline
-    - generic_model: Unified model step với wiring
     - clustering: Clustering với auto output_as_feature
     """
 

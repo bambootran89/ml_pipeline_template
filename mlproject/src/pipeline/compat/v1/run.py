@@ -27,7 +27,7 @@ from mlproject.src.pipeline.compat.v1.eval import EvalPipeline
 from mlproject.src.pipeline.compat.v1.serve import ServingPipeline
 from mlproject.src.pipeline.compat.v1.training import TrainingPipeline
 from mlproject.src.pipeline.compat.v1.tuning import TuningPipeline
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 
 # import os
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "True"

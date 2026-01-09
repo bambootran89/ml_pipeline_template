@@ -182,14 +182,20 @@ The traditional monolithic pipeline approach has limitations when building compl
 
 ### Training
 ```bash
+# Long form, not using feast
 python -m mlproject.src.pipeline.dag_run train \
     --experiment mlproject/configs/experiments/etth3.yaml \
     --pipeline mlproject/configs/pipelines/standard_train.yaml
 
-# Short form
+# Short form, using feast
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3_feast.yaml \
     -p mlproject/configs/pipelines/standard_train.yaml
+
+# dynamic_adapter, Long form, not using feast
+python -m mlproject.src.pipeline.dag_run train \
+    --experiment mlproject/configs/experiments/tabular.yaml \
+    --pipeline mlproject/configs/pipelines/dynamic_adapter_train.yaml
 ```
 
 ### Evaluation
@@ -198,6 +204,12 @@ python -m mlproject.src.pipeline.dag_run eval \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/standard_eval.yaml \
     -a latest  # or production, staging
+
+# Generic model
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/tabular.yaml \
+    -p mlproject/configs/pipelines/dynamic_adapter_eval.yaml \
+    -a latest
 ```
 
 ### Serving (CSV input)
@@ -230,7 +242,7 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 ## Training with Profiling
 
-Pipeline `standard_trainyaml` includes a **profiling step** that automatically analyzes pipeline outputs after training:
+Pipeline `standard_train.yaml` includes a **profiling step** that automatically analyzes pipeline outputs after training:
 
 ```bash
 python -m mlproject.src.pipeline.dag_run train \
@@ -394,6 +406,10 @@ Use clustering labels as additional features for classification.
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/kmeans_then_xgboost.yaml
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/kmeans_then_xgboost_eval.yaml
 ```
 
 **Flow:**
@@ -410,6 +426,10 @@ Train multiple models simultaneously and evaluate each.
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/parallel_ensemble.yaml
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/parallel_ensemble_eval.yaml
 ```
 
 **Flow:**
@@ -427,6 +447,10 @@ Automatically select model based on dataset size.
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/conditional_branch.yaml
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/conditional_branch_eval.yaml
 ```
 
 **Flow:**
@@ -444,6 +468,10 @@ Encapsulate feature engineering as a reusable sub-pipeline.
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/nested_suppipeline.yaml
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/pipelines/nested_suppipeline_eval.yaml
 ```
 
 **Flow:**
@@ -456,15 +484,6 @@ load_data → feature_pipeline (sub) → train_model → evaluate → log
            │   cluster    │
            │ (features)   │
            └──────────────┘
-```
-
-### 5. Nested Sub-Pipeline (Variant)
-Alternative sub-pipeline configuration.
-
-```bash
-python -m mlproject.src.pipeline.dag_run train \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/pipelines/nested_suppipeline.yaml
 ```
 
 ## Data Wiring System
@@ -495,17 +514,12 @@ This enables:
 | `data_loader` | Load data from CSV/Feast | - |
 | `preprocessor` | Fit/transform features | `is_train`, `alias` |
 | `trainer` | Train model | `output_as_feature`, `use_tuned_params` |
-| `evaluator` | Compute metrics | `model_step_id` |
-| `logger` | Log to MLflow | `model_step_id`, `eval_step_id` |
-| `model_loader` | Load from MLflow Registry | `alias` |
-| `inference` | Generate predictions | `model_step_id`, `save_path` |
+| `mlflow_loader` | Load from MLflow Registry | `alias` |
 | `tuner` | Optuna hyperparameter search | `n_trials` |
 | `profiling` | Analyze pipeline outputs | `include_keys`, `exclude_keys` |
 | `parallel` | Execute branches concurrently | `branches`, `max_workers` |
 | `branch` | Conditional execution | `condition`, `if_true`, `if_false` |
-| `sub_pipeline` | Nested pipeline | `pipeline`, `output_prefix` |
 | `clustering` | Clustering with auto-feature output | `model_name`, `output_as_feature` |
-| `generic_model` | Unified model step | `model_name`, `model_type`, `hyperparams` |
 
 ---
 

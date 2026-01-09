@@ -1,8 +1,10 @@
-"""MLflow logging pipeline step with wiring support."""
+"""
+Discovery-based LoggerStep for systematic MLflow tracking.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
@@ -12,136 +14,50 @@ from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
 
 class LoggerStep(BasePipelineStep):
     """
-    Log artifacts and metrics to MLflow.
+    Systematic logger that discovers and persists all marked components.
 
-    Extracts outputs from previous steps and logs them
-    to MLflow Model Registry. Supports data wiring for
-    flexible input key mapping.
-
-    Context Inputs (configurable via wiring)
-    -----------------------------------------
-    <model_step_id>_model : ModelWrapper
-        Trained model to log.
-    preprocessor : OfflinePreprocessor
-        Fitted preprocessor.
-    <eval_step_id>_metrics : Dict
-        Evaluation metrics.
-
-    Wiring Example
-    --------------
-    ::
-
-        - id: "log_results"
-          type: "logger"
-          depends_on: ["evaluate"]
-          wiring:
-            inputs:
-              model: "ensemble_model"
-              metrics: "final_metrics"
-          model_step_id: "train_ensemble"
-          eval_step_id: "evaluate"
+    This step eliminates hardcoded keys by iterating through a central
+    registry populated by previous pipeline steps.
     """
 
-    def __init__(
-        self,
-        step_id: str,
-        cfg: Any,
-        enabled: bool = True,
-        depends_on: Optional[List[str]] = None,
-        model_step_id: str = "train_model",
-        eval_step_id: str = "evaluate",
-        **kwargs: Any,
-    ) -> None:
-        """
-        Initialize MLflow logging step.
-
-        Parameters
-        ----------
-        step_id : str
-            Unique step identifier.
-        cfg : DictConfig
-            Configuration object.
-        enabled : bool, default=True
-            Whether step is active.
-        depends_on : Optional[List[str]], default=None
-            Prerequisite steps.
-        model_step_id : str, default="train_model"
-            Step ID that trained the model.
-        eval_step_id : str, default="evaluate"
-            Step ID that computed metrics.
-        **kwargs
-            Additional parameters including wiring config.
-        """
-        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
-        self.model_step_id = model_step_id
-        self.eval_step_id = eval_step_id
-        self.mlflow_manager = MLflowManager(cfg)
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize with MLflowManager for centralized tracking."""
+        super().__init__(*args, **kwargs)
+        self.mlflow_manager = MLflowManager(self.cfg)
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Log components to MLflow.
-
-        Uses wiring configuration for input key mapping.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Unchanged context.
-        """
-        self.validate_dependencies(context)
-
-        if not self.mlflow_manager.enabled:
-            print(f"[{self.step_id}] MLflow disabled, skipping")
-            return context
-
-        experiment_name = self.cfg.experiment.get("name", "undefined")
-
-        # Get inputs using wiring or default patterns
-        model_key = f"{self.model_step_id}_model"
-        metrics_key = f"{self.eval_step_id}_metrics"
-
-        wrapper = self.get_input(
-            context, "model", default_key=model_key, required=False
-        )
-        preprocessor = self.get_input(
-            context, "preprocessor", default_key="preprocessor", required=False
-        )
-        metrics = (
-            self.get_input(context, "metrics", default_key=metrics_key, required=False)
-            or {}
-        )
-
-        run_name = f"{experiment_name}_run"
-
+        """Iterate through the registry and log every registered component."""
+        exp_name = self.cfg.experiment.name
+        run_name = f"{exp_name}_run"
         with self.mlflow_manager.start_run(run_name=run_name):
-            # Log preprocessor
-            if preprocessor is not None:
+            # 1. Automated Discovery Logging
+            registry = context.get("_artifact_registry", {})
+            for step_id, artifact in registry.items():
+                print(f"[LoggerStep] Auto-logging component from step: {step_id}")
+
+                # Each artifact is wrapped via ArtifactPyFuncWrapper automatically
                 self.mlflow_manager.log_component(
-                    obj=preprocessor.transform_manager,
-                    name=f"{experiment_name}_preprocessor",
-                    artifact_type="preprocess",
+                    obj=artifact["obj"],
+                    name=f"{exp_name}_{step_id}",
+                    artifact_type=artifact["type"],
                 )
 
-            # Log model
-            if wrapper is not None:
-                self.mlflow_manager.log_component(
-                    obj=wrapper,
-                    name=f"{experiment_name}_model",
-                    artifact_type="model",
-                )
+            # 2. Log Metrics (Standardized discovery via context)
+            for key, metrics in context.items():
+                if key.endswith("_metrics"):
+                    prefix = key.replace("_metrics", "").replace("evaluation", "")
 
-            # Log metrics
-            safe_metrics = flatten_metrics_for_mlflow(metrics)
-            hyperparams = dict(self.cfg.experiment.get("hyperparams", {}))
-            self.mlflow_manager.log_metadata(params=hyperparams, metrics=safe_metrics)
+                    if metrics:
+                        safe_metrics = flatten_metrics_for_mlflow(metrics)
 
-        print(f"[{self.step_id}] Logged to MLflow: {run_name}")
+                        self.mlflow_manager.log_metadata(
+                            metrics={
+                                f"{prefix}_{m}" if prefix else m: value
+                                for m, value in safe_metrics.items()
+                            }
+                        )
 
+        print(f"[{self.step_id}] Finished systematic logging to MLflow.")
         return context
 
 

@@ -14,160 +14,15 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
-from omegaconf import DictConfig, ListConfig, OmegaConf
+from omegaconf import DictConfig
 
-from mlproject.src.features.facade import FeatureStoreFacade
+from mlproject.src.dataio.loaddata import load_csv_data, load_from_feast
 from mlproject.src.pipeline.flexible_pipeline import FlexiblePipeline
+from mlproject.src.utils.config_class import ConfigMerger
 from mlproject.src.utils.config_generator import ConfigGenerator
-from mlproject.src.utils.config_loader import ConfigLoader
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"
-
-DEFAULT_PIPELINES: Dict[str, str] = {
-    "train": "mlproject/configs/pipelines/standard_train.yaml",
-    "eval": "mlproject/configs/pipelines/standard_eval.yaml",
-    "serve": "mlproject/configs/pipelines/standard_serve.yaml",
-    "tune": "mlproject/configs/pipelines/standard_tune.yaml",
-}
-
-
-def merge_configs(
-    experiment_path: str,
-    pipeline_path: Optional[str] = None,
-    mode: str = "train",
-) -> DictConfig:
-    """Merge experiment config with pipeline config.
-
-    Parameters
-    ----------
-    experiment_path : str
-        Path to experiment config.
-    pipeline_path : str, optional
-        Path to pipeline config.
-    mode : str
-        Pipeline mode (train/eval/serve/tune).
-
-    Returns
-    -------
-    DictConfig
-        Merged configuration.
-
-    Raises
-    ------
-    ValueError
-        If no default pipeline for mode.
-    FileNotFoundError
-        If pipeline config not found.
-    """
-    exp_cfg = ConfigLoader.load(experiment_path)
-
-    if pipeline_path is None:
-        pipeline_path = DEFAULT_PIPELINES.get(mode)
-        if pipeline_path is None:
-            raise ValueError(f"No default pipeline for mode: {mode}")
-
-    pipe_file = Path(pipeline_path)
-    if not pipe_file.exists():
-        raise FileNotFoundError(f"Pipeline config not found: {pipeline_path}")
-
-    pipe_cfg = OmegaConf.load(pipe_file)
-    merged = OmegaConf.merge(exp_cfg, pipe_cfg)
-
-    if isinstance(merged, ListConfig):
-        merged = OmegaConf.create({"config": merged})
-
-    print("\n[CONFIG] Merged configuration:")
-    print(f"  - Experiment: {experiment_path}")
-    print(f"  - Pipeline:   {pipeline_path}")
-
-    return merged
-
-
-def save_merged_config(cfg: DictConfig, output_path: str) -> None:
-    """Save merged config to temporary file.
-
-    Parameters
-    ----------
-    cfg : DictConfig
-        Merged configuration.
-    output_path : str
-        Path to save config.
-    """
-    output_file = Path(output_path)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_file, "w", encoding="utf-8") as f:
-        OmegaConf.save(cfg, f)
-
-    print(f"  - Merged saved: {output_path}\n")
-
-
-def _load_csv_data(input_path: str) -> pd.DataFrame:
-    """Load data from CSV file.
-
-    Parameters
-    ----------
-    input_path : str
-        Path to CSV file.
-
-    Returns
-    -------
-    pd.DataFrame
-        Loaded dataframe.
-
-    Raises
-    ------
-    FileNotFoundError
-        If file not found.
-    """
-    input_file = Path(input_path)
-    if not input_file.exists():
-        raise FileNotFoundError(f"Input file not found: {input_path}")
-
-    print(f"[SERVE] Loading data from CSV: {input_path}")
-    df = pd.read_csv(input_path)
-
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.set_index("date")
-
-    print(f"[SERVE] Loaded CSV data shape: {df.shape}")
-    return df
-
-
-def _load_feast_data(cfg: DictConfig, time_point: str) -> pd.DataFrame:
-    """Load data from Feast Feature Store.
-
-    Parameters
-    ----------
-    cfg : DictConfig
-        Configuration with Feast settings.
-    time_point : str
-        Timestamp for Feast.
-
-    Returns
-    -------
-    pd.DataFrame
-        Loaded dataframe.
-
-    Raises
-    ------
-    ValueError
-        If Feast URI not configured.
-    """
-    uri = cfg.data.get("path", "")
-    if not uri.startswith("feast://"):
-        raise ValueError("Serving without input requires Feast URI in config.")
-
-    print(f"[SERVE] Loading data from Feast: {uri}")
-    print(f"[SERVE] Time point: {time_point}")
-
-    facade = FeatureStoreFacade(cfg, mode="online")
-    df = facade.load_features(time_point=time_point)
-
-    print(f"[SERVE] Loaded Feast data shape: {df.shape}")
-    return df
 
 
 def prepare_serving_data(
@@ -191,7 +46,7 @@ def prepare_serving_data(
     Dict[str, Any]
         Context dict for pipeline.
     """
-    df = _load_csv_data(input_path) if input_path else _load_feast_data(cfg, time_point)
+    df = load_csv_data(input_path) if input_path else load_from_feast(cfg, time_point)
 
     return {
         "df": df.copy(),
@@ -221,7 +76,7 @@ def _print_metrics(context: Dict[str, Any], key: str = "evaluate_metrics") -> No
 
 def run_training(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
 ) -> None:
     """Run training pipeline.
 
@@ -234,9 +89,9 @@ def run_training(
     """
     _print_separator("Starting TRAINING pipeline")
 
-    merged_cfg = merge_configs(experiment_path, pipeline_path, mode="train")
+    merged_cfg = ConfigMerger.merge(experiment_path, pipeline_path, mode="train")
     temp_config = ".temp_merged_train.yaml"
-    save_merged_config(merged_cfg, temp_config)
+    ConfigMerger.save(merged_cfg, temp_config)
 
     try:
         pipeline = FlexiblePipeline(temp_config)
@@ -250,7 +105,7 @@ def run_training(
 
 def run_eval(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
     alias: str = "latest",
 ) -> None:
     """Run evaluation pipeline.
@@ -267,19 +122,19 @@ def run_eval(
     _print_separator("Starting EVALUATION pipeline")
     print(f"[RUN] Model alias: {alias}")
 
-    merged_cfg = merge_configs(experiment_path, pipeline_path, mode="eval")
+    merged_cfg = ConfigMerger.merge(experiment_path, pipeline_path, mode="eval")
 
     for step in merged_cfg.pipeline.steps:
         step_type = step.get("type", "")
-        if step_type == "model_loader":
+        if step_type == "mlflow_loader":
             step.alias = alias
-            print(f"[CONFIG] Override: model_loader alias='{alias}'")
+            print(f"[CONFIG] Override: mlflow_loader alias='{alias}'")
         elif step_type == "preprocessor" and not step.get("is_train", True):
             step.alias = alias
             print(f"[CONFIG] Override: preprocessor alias='{alias}'")
 
     temp_config = ".temp_merged_eval.yaml"
-    save_merged_config(merged_cfg, temp_config)
+    ConfigMerger.save(merged_cfg, temp_config)
 
     try:
         pipeline = FlexiblePipeline(temp_config)
@@ -352,7 +207,7 @@ def _run_pipeline_with_context(
 
 def run_serve(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
     input_path: Optional[str] = None,
     alias: str = "latest",
     time_point: str = "now",
@@ -391,15 +246,15 @@ def run_serve(
         print("[RUN] Data source: Feast Feature Store")
         print(f"[RUN] Time point: {time_point}")
 
-    merged_cfg = merge_configs(experiment_path, pipeline_path, mode="serve")
+    merged_cfg = ConfigMerger.merge(experiment_path, pipeline_path, mode="serve")
 
     if alias != "latest":
         for step in merged_cfg.pipeline.steps:
-            if step.get("type") == "model_loader":
+            if step.get("type") == "mlflow_loader":
                 step.alias = alias
 
     temp_config = ".temp_merged_serve.yaml"
-    save_merged_config(merged_cfg, temp_config)
+    ConfigMerger.save(merged_cfg, temp_config)
 
     try:
         pipeline = FlexiblePipeline(temp_config)
@@ -436,7 +291,7 @@ def run_serve(
 
 def run_tune(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
     n_trials: Optional[int] = None,
 ) -> None:
     """Run hyperparameter tuning pipeline.
@@ -454,7 +309,7 @@ def run_tune(
     if n_trials:
         print(f"[RUN] Trials override: {n_trials}")
 
-    merged_cfg = merge_configs(experiment_path, pipeline_path, mode="tune")
+    merged_cfg = ConfigMerger.merge(experiment_path, pipeline_path, mode="tune")
 
     if n_trials:
         if "tuning" not in merged_cfg:
@@ -468,7 +323,7 @@ def run_tune(
                 break
 
     temp_config = ".temp_merged_tune.yaml"
-    save_merged_config(merged_cfg, temp_config)
+    ConfigMerger.save(merged_cfg, temp_config)
 
     try:
         pipeline = FlexiblePipeline(temp_config)

@@ -19,7 +19,7 @@ pipeline:
 
     # Step 2: Additional feature extraction
     - id: "feature_extract"
-      type: "generic_model"
+      type: "framework_model"
       depends_on: ["segment_clusters"]
       model_name: "{{feature_model}}"
       model_type: "ml"

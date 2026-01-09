@@ -15,8 +15,19 @@ pipeline:
     - id: "preprocess"
       type: "preprocessor"
       enabled: true
+      log_artifact: true
+      artifact_type: "preprocess"
       depends_on: ["load_data"]
       is_train: true
+
+    - id: "prepare_data"
+      type: "datamodule"
+      depends_on: ["preprocess"]
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
+        outputs: { datamodule: "prepare_data_datamodule" }
 
     # Stage 3: Parallel Model Training
     - id: "ensemble_models"
@@ -24,33 +35,34 @@ pipeline:
       enabled: true
       depends_on: ["preprocess"]
       max_workers: 3
-      merge_strategy: "merge"
       branches:
         # Branch 1: XGBoost
         - id: "xgboost_branch"
           type: "trainer"
+          log_artifact: true
+          artifact_type: "model"
           wiring:
             inputs:
-              data: "preprocessed_data"
-            outputs:
-              model: "xgb_model"
-              datamodule: "xgb_dm"
+              datamodule: "prepare_data_datamodule"
+            outputs: { model: "xgboost_branch_model" }
 
         # Branch 2: CatBoost (nếu có trong ModelFactory)
         # Nếu chưa có catboost, comment out hoặc thay bằng model khác
         - id: "catboost_branch"
           type: "trainer"
+          log_artifact: true
+          artifact_type: "model"
           wiring:
             inputs:
-              data: "preprocessed_data"
-            outputs:
-              model: "cat_model"
-              datamodule: "cat_dm"
+              datamodule: "prepare_data_datamodule"
+            outputs: { model: "catboost_branch_model" }
 
         # Branch 3: KMeans clustering features
         - id: "kmeans_branch"
           type: "clustering"
           model_name: "kmean"
+          log_artifact: true
+          artifact_type: "model"
           output_as_feature: true
           hyperparams:
             n_clusters: 3
@@ -59,7 +71,7 @@ pipeline:
               data: "preprocessed_data"
             outputs:
               features: "cluster_features"
-              model: "kmeans_model"
+              model: "kmeans_branch_model"
 
     # Stage 4: Evaluate XGBoost
     - id: "eval_xgb"
@@ -68,8 +80,8 @@ pipeline:
       depends_on: ["ensemble_models"]
       wiring:
         inputs:
-          model: "xgb_model"
-          datamodule: "xgb_dm"
+          model: "xgboost_branch_model"
+          datamodule: "prepare_data_datamodule"
         outputs:
           metrics: "xgb_metrics"
 
@@ -80,17 +92,25 @@ pipeline:
       depends_on: ["ensemble_models"]
       wiring:
         inputs:
-          model: "cat_model"
-          datamodule: "cat_dm"
+          model: "catboost_branch_model"
+          datamodule: "prepare_data_datamodule"
         outputs:
           metrics: "cat_metrics"
+
+    - id: "eval_kmean"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["ensemble_models"]
+      step_eval_type: clustering
+      wiring:
+        inputs:
+          model: "kmeans_branch_model"
+          datamodule: "prepare_data_datamodule"
+        outputs:
+          metrics: "kmean_metrics"
 
     # Stage 6: Logging (log best model - xgboost as default)
     - id: "log_results"
       type: "logger"
       enabled: true
-      depends_on: ["eval_xgb", "eval_cat"]
-      wiring:
-        inputs:
-          model: "xgb_model"
-          metrics: "xgb_metrics"
+      depends_on: ["eval_xgb", "eval_cat", eval_kmean]

@@ -18,7 +18,7 @@ from mlproject.serve.schemas import (
 from mlproject.src.features.facade import FeatureStoreFacade
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 
 
 class ModelsService:

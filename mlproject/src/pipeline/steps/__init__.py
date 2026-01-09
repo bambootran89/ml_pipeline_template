@@ -21,18 +21,19 @@ from mlproject.src.pipeline.steps.base import BasePipelineStep
 # Import all steps to trigger registration
 # Each step file imports StepFactory and calls register() at module load
 from mlproject.src.pipeline.steps.data_loader_step import DataLoaderStep
+from mlproject.src.pipeline.steps.datamodule_step import DataModuleStep
+from mlproject.src.pipeline.steps.dynamic_adapter_step import DynamicAdapterStep
 from mlproject.src.pipeline.steps.evaluator_step import EvaluatorStep
 
 # Factory (defines empty registry)
 from mlproject.src.pipeline.steps.factory_step import StepFactory
-from mlproject.src.pipeline.steps.generic_model_step import (
+from mlproject.src.pipeline.steps.framework_model_step import (
     ClusteringModelStep,
-    GenericModelStep,
+    FrameworkModelStep,
 )
-from mlproject.src.pipeline.steps.generic_step import GenericStep
 from mlproject.src.pipeline.steps.inference_step import InferenceStep
 from mlproject.src.pipeline.steps.logger_step import LoggerStep
-from mlproject.src.pipeline.steps.model_loader_step import ModelLoaderStep
+from mlproject.src.pipeline.steps.mlflow_loader_step import MLflowLoaderStep
 from mlproject.src.pipeline.steps.preprocessor_step import PreprocessorStep
 from mlproject.src.pipeline.steps.profiling_step import ProfilingStep
 from mlproject.src.pipeline.steps.trainer_step import TrainerStep
@@ -49,16 +50,17 @@ __all__ = [
     "TrainerStep",
     "EvaluatorStep",
     "InferenceStep",
-    "ModelLoaderStep",
     "LoggerStep",
     "TunerStep",
     "ProfilingStep",
-    # Generic model steps
-    "GenericModelStep",
+    # Framework model steps
+    "FrameworkModelStep",
     "ClusteringModelStep",
     # Advanced steps
     "ParallelStep",
     "BranchStep",
     "SubPipelineStep",
-    "GenericStep",
+    "DynamicAdapterStep",
+    "MLflowLoaderStep",
+    "DataModuleStep",
 ]

@@ -16,10 +16,10 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from mlproject.src.features.facade import FeatureStoreFacade
+from mlproject.src.dataio.loaddata import load_from_feast
 from mlproject.src.pipeline.compat.v1.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 
 
 class ServingPipeline(BasePipeline):
@@ -95,25 +95,6 @@ class ServingPipeline(BasePipeline):
         window: np.ndarray = df.iloc[-seq_len:].values
         return window[np.newaxis, :].astype(np.float32)
 
-    def _load_from_feast(self) -> pd.DataFrame:
-        """
-        Load features from Feast using unified facade.
-
-        Returns
-        -------
-        pd.DataFrame
-            Features ready for preprocessing.
-            - Tabular: Single row from Online Store
-            - Timeseries: Indexed sequence window
-
-        Raises
-        ------
-        ValueError
-            If Feast URI is invalid or data loading fails.
-        """
-        facade = FeatureStoreFacade(self.cfg, mode="online")
-        return facade.load_features(time_point=self.time_point)
-
     def run_exp(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
         """
         Run model inference.
@@ -132,7 +113,7 @@ class ServingPipeline(BasePipeline):
         """
         if data is None:
             print("[INFERENCE] No input DataFrame, loading from Feast...")
-            data = self._load_from_feast()
+            data = load_from_feast(self.cfg, self.time_point)
             print(f"[INFERENCE] Loaded data shape: {data.shape}")
 
         print(f"[INFERENCE] Preprocessing data with shape {data.shape}")

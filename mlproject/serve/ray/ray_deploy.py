@@ -33,7 +33,7 @@ from mlproject.src.features.facade import FeatureStoreFacade
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.preprocess.transform_manager import TransformManager
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 from mlproject.src.utils.func_utils import get_env_path
 
 ARTIFACTS_DIR: str = get_env_path(

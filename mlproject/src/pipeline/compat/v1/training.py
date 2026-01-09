@@ -10,7 +10,7 @@ from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.compat.v1.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 from mlproject.src.preprocess.transform_manager import TransformManager
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 
 
 class TrainingPipeline(BasePipeline):

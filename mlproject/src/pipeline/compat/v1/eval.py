@@ -23,7 +23,7 @@ from mlproject.src.eval.regression import RegressionEvaluator
 from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.compat.v1.base import BasePipeline
 from mlproject.src.preprocess.offline import OfflinePreprocessor
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 from mlproject.src.utils.func_utils import flatten_metrics_for_mlflow
 
 

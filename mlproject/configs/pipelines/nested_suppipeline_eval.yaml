@@ -1,6 +1,7 @@
 # The feature_pipeline runs:
 #   1. Preprocessing (normalize)
 #   2. Clustering (generate features)
+# Then outputs are prefixed with "feat_" and merged to parent context
 
 pipeline:
   name: "nested_feature_engineering"
@@ -10,7 +11,14 @@ pipeline:
     - id: "load_data"
       type: "data_loader"
       enabled: true
-
+    - id: "init_artifacts"
+      type: "mlflow_loader"
+      enabled: true
+      alias: "latest"
+      load_map:
+        - { step_id: "normalize", context_key: "normalize_model" }
+        - { step_id: "cluster", context_key: "cluster_model" }
+        - { step_id: "train_model", context_key: "train_model_model" }
     # Stage 2: Feature Engineering Sub-Pipeline
     - id: "feature_pipeline"
       type: "sub_pipeline"
@@ -24,81 +32,55 @@ pipeline:
           # Sub-step 1: Preprocessing
           - id: "normalize"
             type: "preprocessor"
-            is_train: true
-            log_artifact: true
-            artifact_type: "preprocess"
-            wiring:
-              inputs:
-                df: "df"
-                train_df: "train_df"
-                test_df: "test_df"
-              outputs:
-                data: "normalized_data"
-
+            instance_key: "normalize_model"
+            is_train: false   # Critical: load existing state from MLflow, do not refit
+            alias: "latest"   # Uses the same alias as the model (can be overridden via CLI)
           # Sub-step 2: Clustering for feature generation
           - id: "cluster"
             type: "clustering"
             depends_on: ["normalize"]
             model_name: "kmean"
-            log_artifact: true
-            artifact_type: "model"
             output_as_feature: true
-            hyperparams:
-              n_clusters: 4
             wiring:
               inputs:
-                data: "normalized_data"
+                model: "cluster_model"
+                features: "preprocessed_data"
               outputs:
                 features: "cluster_features"
                 model: "cluster_model"
 
-    # Stage 3: Model Training
-    # Uses feat_normalized_data (prefixed output from sub-pipeline)
-    - id: "prepare_data"
-      type: "datamodule"
-      depends_on: ["feature_pipeline"]
-      wiring:
-        inputs:
-          features: "preprocessed_data"
-          targets: "target_data"
-        outputs:
-          datamodule: "prepare_data_datamodule"
-
-
-    - id: "train_model"
-      type: "trainer"
-      enabled: true
-      depends_on: ["feature_pipeline"]
-      log_artifact: true
-      artifact_type: "model"
-      wiring:
-        inputs:
-          datamodule: "prepare_data_datamodule"
-          features: "preprocessed_data"
-          targets: "target_data"
-        outputs:
-          model: "final_model"
-
     # Stage 4: Evaluation
-    - id: "evaluate"
+    - id: "eval_cluster"
       type: "evaluator"
       enabled: true
-      depends_on: ["train_model"]
+      step_eval_type: clustering
+      depends_on: ["feature_pipeline"]
       wiring:
         inputs:
-          model: "final_model"
-          datamodule: "prepare_data_datamodule"
+          model: "cluster_model"
+          features: "preprocessed_data"
         outputs:
-          metrics: "evaluation_metrics"
+          metrics: "cluster_metrics"
+    - id: "eval_train_model"
+      type: "evaluator"
+      enabled: true
+      depends_on: ["feature_pipeline"]
+      wiring:
+        inputs:
+          model: "train_model_model"
+          features: "preprocessed_data"
+          targets: "target_data"
+        outputs:
+          metrics: "final_metrics"
 
     - id: "final_profiling"
       type: "profiling"
       enabled: true
-      depends_on: ["train_model"]
+      depends_on: ["eval_train_model", "eval_cluster"]
       exclude_keys: ["cfg", "preprocessor", "df", "train_df", "val_df"]
 
     # Stage 5: Log Results
     - id: "log_results"
       type: "logger"
       enabled: true
-      depends_on: ["evaluate"]
+      depends_on: ["eval_cluster", "eval_train_model"]

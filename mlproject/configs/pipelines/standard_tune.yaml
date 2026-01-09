@@ -20,20 +20,46 @@ pipeline:
       enabled: true
       depends_on: ["preprocess"]
 
+    - id: "prepare_data"
+      type: "datamodule"
+      depends_on: ["preprocess"]
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
+        outputs: { datamodule: "prepare_data_datamodule" }
+
     # Stage 3: Retrain with best params
     - id: "train_best"
       type: "trainer"
       enabled: true
+      log_artifact: true
+      artifact_type: "model"
       depends_on: ["tune_model", "preprocess"]
       use_tuned_params: true
       tune_step_id: "tune_model"
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
+          datamodule: prepare_data_datamodule
+        outputs:
+          model: "train_model_model"
+
 
     # Stage 4: Evaluate final model
     - id: "evaluate"
       type: "evaluator"
       enabled: true
       depends_on: ["train_best"]
-      model_step_id: "train_best"
+      wiring:
+        inputs:
+          # Load model instance from the trainer step
+          model: "train_model_model"
+          # Load DataModule from the data preparation step instead of rebuilding it
+          datamodule: "prepare_data_datamodule"
+        outputs:
+          metrics: "evaluation_metrics"
 
     # Stage 5: Profile outputs (NEW)
     - id: "profiling"
@@ -47,5 +73,3 @@ pipeline:
       type: "logger"
       enabled: true
       depends_on: ["train_best", "evaluate", "profiling"]
-      model_step_id: "train_best"
-      eval_step_id: "evaluate"

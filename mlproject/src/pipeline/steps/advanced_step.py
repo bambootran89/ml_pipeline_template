@@ -30,13 +30,11 @@ class ParallelStep(BasePipelineStep):
         depends_on: Optional[List[str]] = None,
         branches: Optional[List[Dict[str, Any]]] = None,
         max_workers: int = 4,
-        merge_strategy: str = "merge",
         **kwargs: Any,
     ) -> None:
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.branches = branches or []
         self.max_workers = max_workers
-        self.merge_strategy = merge_strategy
 
     def _execute_branch(
         self,
@@ -77,8 +75,9 @@ class ParallelStep(BasePipelineStep):
                 except Exception as e:
                     print(f"[{self.step_id}] Branch '{branch_id}' failed: {e}")
                     raise
-
+        print("CUONG: 1-", context.get("_artifact_registry", {}))
         merged = self._merge_results(context, results)
+        print("CUONG: 2-", merged.get("_artifact_registry", {}))
         print(f"[{self.step_id}] All branches completed")
         return merged
 
@@ -86,17 +85,16 @@ class ParallelStep(BasePipelineStep):
         self, context: Dict[str, Any], results: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         merged = context.copy()
-        if self.merge_strategy == "collect":
-            for result in results:
-                branch_id = result["branch_id"]
-                for key, value in result["result"].items():
-                    if key not in context:
-                        merged[f"{branch_id}.{key}"] = value
-        else:
-            for result in results:
-                for key, value in result["result"].items():
-                    if key not in context:
+        for result in results:
+            for key, value in result["result"].items():
+                if key not in context:
+                    merged[key] = value
+                else:
+                    if isinstance(merged[key], dict) and isinstance(value, dict):
+                        merged[key].update(value)
+                    else:
                         merged[key] = value
+
         return merged
 
 
@@ -181,14 +179,13 @@ class SubPipelineStep(BasePipelineStep):
         depends_on: Optional[List[str]] = None,
         pipeline: Optional[Dict[str, Any]] = None,
         config_path: Optional[str] = None,
-        output_prefix: str = "",
         isolated: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.pipeline_config = pipeline
         self.config_path = config_path
-        self.output_prefix = output_prefix
+
         self.isolated = isolated
 
     def _build_sub_executor(self):
@@ -234,8 +231,7 @@ class SubPipelineStep(BasePipelineStep):
 
         for key, value in sub_result.items():
             if key not in context and key not in self.output_keys:
-                merged[f"{self.output_prefix}{key}"] = value
-
+                merged[key] = value
         print(f"[{self.step_id}] Sub-pipeline completed")
         return merged
 

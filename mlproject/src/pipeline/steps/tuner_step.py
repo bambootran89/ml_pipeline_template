@@ -30,50 +30,6 @@ class TunerStep(BasePipelineStep):
     - Does NOT train final model (separation of concerns)
     - Best params stored in context for downstream steps
     - Final model training handled by separate ModelTrainingStep
-
-    Context Inputs
-    --------------
-    preprocessed_data : pd.DataFrame
-        Preprocessed data (optional - tuner loads its own data).
-
-    Context Outputs
-    ---------------
-    <step_id>_best_params : Dict[str, Any]
-        Best hyperparameters found.
-    <step_id>_best_value : float
-        Best metric value achieved.
-    <step_id>_study : optuna.Study
-        Optuna study object with all trials.
-
-    Configuration Parameters
-    ------------------------
-    n_trials : int, optional
-        Number of trials to run (default: from tuning config).
-
-    Examples
-    --------
-    YAML configuration::
-
-        pipeline:
-          steps:
-            # Stage 1: Find best params
-            - id: "tune_model"
-              type: "tuning"
-              enabled: true
-              depends_on: ["preprocess"]
-
-            # Stage 2: Train with best params
-            - id: "train_best"
-              type: "model"
-              enabled: true
-              depends_on: ["tune_model"]
-              use_tuned_params: true  # Read from tune_model_best_params
-
-            # Stage 3: Evaluate
-            - id: "evaluate"
-              type: "evaluator"
-              enabled: true
-              model_step_id: "train_best"
     """
 
     def __init__(self, *args, n_trials: Optional[int] = None, **kwargs) -> None:
@@ -141,9 +97,8 @@ class TunerStep(BasePipelineStep):
         print(f"  - Metric: {metric_name} ({direction})")
         print(f"  - CV folds: {n_splits}")
 
-        # ========================================
         # START PARENT RUN (best practice pattern)
-        # ========================================
+
         with mlflow_manager.start_run(run_name="Hparam_Tuning_Experiment"):
             print("\n[MLflow] Started parent run: Hparam_Tuning_Experiment")
 
@@ -165,9 +120,8 @@ class TunerStep(BasePipelineStep):
 
             print("\n[MLflow] Logged best params to parent run")
 
-        # ========================================
         # Store results in context
-        # ========================================
+
         context[f"{self.step_id}_best_params"] = result["best_params"]
         context[f"{self.step_id}_best_value"] = result["best_value"]
         context[f"{self.step_id}_study"] = result["study"]

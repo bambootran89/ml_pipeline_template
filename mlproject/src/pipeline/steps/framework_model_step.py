@@ -23,9 +23,12 @@ from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.trainer.factory import TrainerFactory
 
 
-class GenericModelStep(BasePipelineStep):
+class FrameworkModelStep(BasePipelineStep):
     """
-    Generic model step supporting any registered model with data wiring.
+    Step to train models using internal ModelFactory and TrainerFactory.
+
+    This step is designed for models that strictly follow the project's
+    Trainer/Wrapper pattern and supports external configuration files.
 
     Supports 3 ways to configure model (priority order):
     1. experiment_config: Load full config from external YAML file
@@ -37,7 +40,7 @@ class GenericModelStep(BasePipelineStep):
     Method 1: External config file (RECOMMENDED for complex models)::
 
         - id: "train_tft"
-          type: "generic_model"
+          type: "framework_model"
           experiment_config: "configs/experiments/tft_timeseries.yaml"
           wiring:
             inputs:
@@ -48,7 +51,7 @@ class GenericModelStep(BasePipelineStep):
     Method 2: Inline model_config block::
 
         - id: "train_xgb"
-          type: "generic_model"
+          type: "framework_model"
           model_config:
             model_name: "xgboost"
             model_type: "ml"
@@ -60,7 +63,7 @@ class GenericModelStep(BasePipelineStep):
     Method 3: Simple override (backward compatible)::
 
         - id: "train_simple"
-          type: "generic_model"
+          type: "framework_model"
           model_name: "xgboost"
           model_type: "ml"
           hyperparams:
@@ -125,7 +128,8 @@ class GenericModelStep(BasePipelineStep):
         self.simple_model_type = model_type
         self.simple_hyperparams = hyperparams or {}
         self.output_as_feature = output_as_feature
-
+        self.log_artifact: bool = kwargs.get("log_artifact", False)
+        self.artifact_type: str = kwargs.get("artifact_type", "component")
         # Build effective config
         self.effective_cfg = self._build_effective_config()
 
@@ -362,6 +366,8 @@ class GenericModelStep(BasePipelineStep):
         # Train
         print(f"[{self.step_id}] Training with hyperparams: {hyperparams}")
         trained_wrapper = trainer.train(datamodule, hyperparams)
+        if self.log_artifact:
+            self.register_for_discovery(context, trained_wrapper)
 
         # Store outputs
         self.set_output(context, "model", trained_wrapper)
@@ -393,11 +399,11 @@ class GenericModelStep(BasePipelineStep):
         return predictions
 
 
-class ClusteringModelStep(GenericModelStep):
+class ClusteringModelStep(FrameworkModelStep):
     """
     Specialized step for clustering models.
 
-    Extends GenericModelStep with clustering-specific defaults.
+    Extends FrameworkModelStep with clustering-specific defaults.
     """
 
     def __init__(self, step_id: str, cfg: DictConfig, **kwargs: Any) -> None:
@@ -408,5 +414,5 @@ class ClusteringModelStep(GenericModelStep):
 
 
 # Register step types
-StepFactory.register("generic_model", GenericModelStep)
+StepFactory.register("framework_model", FrameworkModelStep)
 StepFactory.register("clustering", ClusteringModelStep)

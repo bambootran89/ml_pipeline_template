@@ -10,7 +10,8 @@ pipeline:
       enabled: true
       alias: "latest"
       load_map:
-        - { step_id: "train_model", context_key: "train_model_model" }
+        - { step_id: "kmeans_features", context_key: "kmeans_features_model" }
+        - { step_id: "xgboost_model", context_key: "xgboost_model_model" }
         - { step_id: "preprocess", context_key: "fitted_preprocess" }
     - id: "preprocess"
       type: "preprocessor"
@@ -21,7 +22,19 @@ pipeline:
       alias: "latest"   # Uses the same alias as the model (can be overridden via CLI)
 
 
-    - id: "evaluate"
+    - id: "kmean_evaluate"
+      type: "evaluator"
+      enabled: true
+      step_eval_type: clustering
+      depends_on: ["init_artifacts", "preprocess"]
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          model: kmeans_features_model
+        outputs:
+          metrics: "kmean_metrics"
+
+    - id: "xgboost_evaluate"
       type: "evaluator"
       enabled: true
       depends_on: ["init_artifacts", "preprocess"]
@@ -29,12 +42,19 @@ pipeline:
         inputs:
           features: "preprocessed_data"
           targets: "target_data"
-          model: train_model_model
+          model: xgboost_model_model
         outputs:
-          metrics: "evaluation_metrics"
+          metrics: "xgboost_metrics"
+
+    # Stage 7: Final profiling
+    - id: "final_profiling"
+      type: "profiling"
+      enabled: true
+      depends_on: ["kmean_evaluate", "xgboost_evaluate"]
+      exclude_keys: ["cfg", "preprocessor", "df", "train_df", "val_df", "test_df"]
 
     # Optional step: logs evaluation metrics to storage or tracking systems
     - id: "log_results"
       type: "logger"
       enabled: true  # Disabled by default for evaluation pipelines
-      depends_on: ["evaluate"]
+      depends_on: ["kmean_evaluate", "xgboost_evaluate"]
