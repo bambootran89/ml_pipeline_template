@@ -176,6 +176,14 @@ class ConfigGenerator:
         ):
             return transformed
 
+        # Remove depends_on load_data since data is pre-initialized in serve mode
+        if hasattr(transformed, "depends_on"):
+            transformed.depends_on = [
+                dep for dep in transformed.depends_on if dep != "load_data"
+            ]
+            if not transformed.depends_on:
+                delattr(transformed, "depends_on")
+
         # Transform steps inside sub-pipeline
         for step in transformed.pipeline.steps:
             if step.type == "preprocessor":

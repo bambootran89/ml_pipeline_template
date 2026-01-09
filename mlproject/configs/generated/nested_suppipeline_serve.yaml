@@ -15,8 +15,6 @@ pipeline:
   - id: feature_pipeline
     type: sub_pipeline
     enabled: true
-    depends_on:
-    - load_data
     isolated: false
     pipeline:
       steps:

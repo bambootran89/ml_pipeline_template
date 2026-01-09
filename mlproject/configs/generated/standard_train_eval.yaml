@@ -14,24 +14,12 @@ pipeline:
     - step_id: train_model
       context_key: train_model_model
     - step_id: preprocess
-      context_key: transform_manager
-  - id: preprocess
-    type: preprocessor
-    enabled: true
-    log_artifact: true
-    artifact_type: preprocess
-    depends_on:
-    - init_artifacts
-    - load_data
-    is_train: false
-    alias: latest
-    instance_key: transform_manager
+      context_key: preprocess_model
   - id: train_evaluate
     type: evaluator
     enabled: true
     depends_on:
     - init_artifacts
-    - preprocess
     wiring:
       inputs:
         features: preprocessed_data
