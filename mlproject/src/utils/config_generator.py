@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
+# pylint: disable=too-many-lines
+
 
 class ConfigGenerator:
     """Expert pipeline configuration automation for eval/serve workloads.
@@ -37,8 +39,9 @@ class ConfigGenerator:
         self.train_cfg: DictConfig = loaded
         self.experiment_name: str = Path(train_config_path).stem
 
-    def _extract_model_producers_recursive(
-        self, steps: List[Any], prefix: str = ""
+    # pylint: disable=too-many-branches
+    def _extract_model_producers_recursive(  # noqa: C901
+        self, steps: List[Any], _prefix: str = ""
     ) -> List[Any]:
         """Recursively extract model producers from steps including nested structures.
 
@@ -46,6 +49,7 @@ class ConfigGenerator:
         - Direct model producers (trainer, clustering, framework_model)
         - Sub-pipelines with nested model producers
         - Branch steps with if_true/if_false model producers
+        - Parallel steps with branches
 
         Args:
             steps: List of pipeline steps.
@@ -63,7 +67,7 @@ class ConfigGenerator:
                 # Recursively extract from nested sub-pipeline
                 if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
                     nested_producers = self._extract_model_producers_recursive(
-                        step.pipeline.steps, prefix=f"{step.id}_"
+                        step.pipeline.steps, _prefix=f"{step.id}_"
                     )
                     producers.extend(nested_producers)
             elif step.type == "branch":
@@ -86,13 +90,23 @@ class ConfigGenerator:
                         "framework_model",
                     ]:
                         producers.append(if_false_step)
+            elif step.type == "parallel":
+                # Extract from parallel branches
+                if hasattr(step, "branches"):
+                    for branch in step.branches:
+                        if hasattr(branch, "type") and branch.type in [
+                            "trainer",
+                            "clustering",
+                            "framework_model",
+                        ]:
+                            producers.append(branch)
 
         return producers
 
     def _extract_preprocessors_recursive(
-        self, steps: List[Any], prefix: str = ""
+        self, steps: List[Any], _prefix: str = ""
     ) -> List[Any]:
-        """Recursively extract preprocessor steps from steps including nested sub-pipelines.
+        """Recursively extract preprocessor steps from nested sub-pipelines.
 
         Args:
             steps: List of pipeline steps.
@@ -110,13 +124,14 @@ class ConfigGenerator:
                 # Recursively extract from nested sub-pipeline
                 if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
                     nested_preprocessors = self._extract_preprocessors_recursive(
-                        step.pipeline.steps, prefix=f"{step.id}_"
+                        step.pipeline.steps, _prefix=f"{step.id}_"
                     )
                     preprocessors.extend(nested_preprocessors)
 
         return preprocessors
 
-    def _transform_sub_pipeline_for_eval(
+    # pylint: disable=too-many-branches
+    def _transform_sub_pipeline_for_eval(  # noqa: C901
         self, sub_pipeline_step: Any, alias: str
     ) -> Any:
         """Transform a sub_pipeline step for eval mode.
@@ -182,7 +197,8 @@ class ConfigGenerator:
 
         return transformed
 
-    def _transform_sub_pipeline_for_serve(
+    # pylint: disable=too-many-branches
+    def _transform_sub_pipeline_for_serve(  # noqa: C901
         self, sub_pipeline_step: Any, alias: str
     ) -> Any:
         """Transform a sub_pipeline step for serve mode.
@@ -255,7 +271,7 @@ class ConfigGenerator:
 
         return transformed
 
-    def _transform_branch_step_for_eval(self, branch_step: Any, alias: str) -> Any:
+    def _transform_branch_step_for_eval(self, branch_step: Any, _alias: str) -> Any:
         """Transform a branch step for eval mode.
 
         Args:
@@ -285,12 +301,12 @@ class ConfigGenerator:
                         "features": "preprocessed_data",
                     },
                     "outputs": {
-                        "metrics": if_true.wiring.outputs.get(
-                            "metrics", "evaluation_metrics"
+                        "metrics": (
+                            if_true.wiring.outputs.get("metrics", "evaluation_metrics")
+                            if hasattr(if_true, "wiring")
+                            and hasattr(if_true.wiring, "outputs")
+                            else "evaluation_metrics"
                         )
-                        if hasattr(if_true, "wiring")
-                        and hasattr(if_true.wiring, "outputs")
-                        else "evaluation_metrics"
                     },
                 }
 
@@ -304,9 +320,9 @@ class ConfigGenerator:
                         "id": eval_id,
                         "type": "evaluator",
                         "enabled": True,
-                        "depends_on": ["preprocess"]
-                        if hasattr(transformed, "depends_on")
-                        else [],
+                        "depends_on": (
+                            ["preprocess"] if hasattr(transformed, "depends_on") else []
+                        ),
                         "wiring": eval_wiring,
                     }
                 )
@@ -333,12 +349,12 @@ class ConfigGenerator:
                         "features": "preprocessed_data",
                     },
                     "outputs": {
-                        "metrics": if_false.wiring.outputs.get(
-                            "metrics", "evaluation_metrics"
+                        "metrics": (
+                            if_false.wiring.outputs.get("metrics", "evaluation_metrics")
+                            if hasattr(if_false, "wiring")
+                            and hasattr(if_false.wiring, "outputs")
+                            else "evaluation_metrics"
                         )
-                        if hasattr(if_false, "wiring")
-                        and hasattr(if_false.wiring, "outputs")
-                        else "evaluation_metrics"
                     },
                 }
 
@@ -352,9 +368,9 @@ class ConfigGenerator:
                         "id": eval_id,
                         "type": "evaluator",
                         "enabled": True,
-                        "depends_on": ["preprocess"]
-                        if hasattr(transformed, "depends_on")
-                        else [],
+                        "depends_on": (
+                            ["preprocess"] if hasattr(transformed, "depends_on") else []
+                        ),
                         "wiring": eval_wiring,
                     }
                 )
@@ -365,7 +381,7 @@ class ConfigGenerator:
 
         return transformed
 
-    def _transform_branch_step_for_serve(self, branch_step: Any, alias: str) -> Any:
+    def _transform_branch_step_for_serve(self, branch_step: Any, _alias: str) -> Any:
         """Transform a branch step for serve mode.
 
         Args:
@@ -384,13 +400,6 @@ class ConfigGenerator:
                 # Create inference ID based on model producer ID
                 inf_id = f"{if_true.id}_inference"
 
-                # Get original output key from training wiring
-                orig_output_key = "selected_model"
-                if hasattr(if_true, "wiring") and hasattr(if_true.wiring, "outputs"):
-                    orig_output_key = if_true.wiring.outputs.get(
-                        "model", "selected_model"
-                    )
-
                 # Build inference config
                 inf_wiring = {
                     "inputs": {
@@ -408,7 +417,7 @@ class ConfigGenerator:
                         "id": inf_id,
                         "type": "inference",
                         "enabled": True,
-                        "depends_on": [] if hasattr(transformed, "depends_on") else [],
+                        "depends_on": ["preprocess"],
                         "output_as_feature": getattr(
                             if_true, "output_as_feature", False
                         ),
@@ -422,13 +431,6 @@ class ConfigGenerator:
             if if_false.type in ["trainer", "clustering", "framework_model"]:
                 # Create inference ID based on model producer ID
                 inf_id = f"{if_false.id}_inference"
-
-                # Get original output key from training wiring
-                orig_output_key = "selected_model"
-                if hasattr(if_false, "wiring") and hasattr(if_false.wiring, "outputs"):
-                    orig_output_key = if_false.wiring.outputs.get(
-                        "model", "selected_model"
-                    )
 
                 # Build inference config
                 inf_wiring = {
@@ -447,7 +449,7 @@ class ConfigGenerator:
                         "id": inf_id,
                         "type": "inference",
                         "enabled": True,
-                        "depends_on": [] if hasattr(transformed, "depends_on") else [],
+                        "depends_on": ["preprocess"],
                         "output_as_feature": getattr(
                             if_false, "output_as_feature", False
                         ),
@@ -501,12 +503,13 @@ class ConfigGenerator:
 
         return OmegaConf.create(step_cfg)
 
-    def _build_eval_steps(
+    # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def _build_eval_steps(  # noqa: C901
         self,
         train_steps: List[Any],
         alias: str,
         init_id: str,
-        model_producers: List[Any],
+        _model_producers: List[Any],
         preprocessor_step: Optional[Any],
     ) -> List[Any]:
         """Build steps for eval pipeline, including evaluator and profiling.
@@ -588,7 +591,10 @@ class ConfigGenerator:
         # Process all steps, handling special types
         sub_pipeline_steps = []
         branch_steps = []
-        branch_model_producer_ids = set()  # Track model producers inside branches
+        parallel_steps = []
+        branch_model_producer_ids = (
+            set()
+        )  # Track model producers inside branches/parallel
 
         # Handle top-level preprocessors (not in nested structures like sub_pipeline)
         for step in train_steps:
@@ -605,7 +611,7 @@ class ConfigGenerator:
                         prep.depends_on.append("load_data")
                     new_steps.append(prep)
 
-        # Handle sub-pipelines and branches
+        # Handle sub-pipelines, branches, and parallel steps
         for step in train_steps:
             if step.type == "sub_pipeline":
                 # Transform sub-pipeline for eval mode and keep it
@@ -624,23 +630,37 @@ class ConfigGenerator:
                     branch_model_producer_ids.add(step.if_true.id)
                 if hasattr(step, "if_false") and hasattr(step.if_false, "id"):
                     branch_model_producer_ids.add(step.if_false.id)
+            elif step.type == "parallel":
+                # For parallel steps, DON'T track branches
+                # They will get individual evaluators generated below
+                parallel_steps.append(step.id)
             elif step.type in ["datamodule", "trainer", "framework_model"]:
                 # Skip training steps in eval mode (they become evaluators or are in
-                # branches)
+                # branches/parallel)
                 pass
 
         # Generate evaluators for model producers NOT in branches
+        # Find preprocessor step ID for dependency
+        preprocess_step_id = None
+        for step in train_steps:
+            if step.type == "preprocessor":
+                preprocess_step_id = step.id
+                break
+
         for mp in all_model_producers:
             if mp.id not in branch_model_producer_ids:
                 ev = self._make_evaluator_config(
                     mp,
                     init_id,
-                    None,  # Dependencies handled via depends_on
+                    preprocess_step_id,  # Add preprocess dependency
                 )
                 # If model producer is in sub-pipeline, evaluator depends on
                 # sub-pipeline
                 if sub_pipeline_steps:
                     ev.depends_on = [init_id] + sub_pipeline_steps
+                elif preprocess_step_id:
+                    # For parallel ensemble, add preprocess dependency
+                    ev.depends_on = [init_id, preprocess_step_id]
                 evaluator_ids.append(ev.id)
                 new_steps.append(ev)
 
@@ -666,7 +686,8 @@ class ConfigGenerator:
 
         return new_steps
 
-    def _build_serve_steps(
+    # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def _build_serve_steps(  # noqa: C901
         self,
         alias: str,
         init_id: str,
@@ -763,6 +784,7 @@ class ConfigGenerator:
         # Check for special pipeline types
         has_sub_pipeline = any(s.type == "sub_pipeline" for s in train_steps)
         has_branch = any(s.type == "branch" for s in train_steps)
+        has_parallel = any(s.type == "parallel" for s in train_steps)
         branch_model_producer_ids = set()
 
         # Handle sub-pipelines
@@ -791,15 +813,33 @@ class ConfigGenerator:
                     if hasattr(step, "if_false") and hasattr(step.if_false, "id"):
                         branch_model_producer_ids.add(step.if_false.id)
 
-        # Generate inference steps for model producers NOT in branches or sub-pipelines
-        if has_sub_pipeline or has_branch:
-            # Only generate inference for top-level model producers
-            top_level_producers = [
-                mp
-                for mp in all_model_producers
-                if mp.id not in branch_model_producer_ids
-                and any(s.id == mp.id for s in train_steps)
-            ]
+        # Handle parallel steps - DON'T track branches
+        # They will get individual inference steps generated below
+
+        # Generate inference steps for model producers NOT in branches or
+        # sub-pipelines
+        if has_sub_pipeline or has_branch or has_parallel:
+            # For parallel ensemble, generate inference for ALL parallel
+            # branch producers. For other cases, only generate for
+            # top-level model producers
+            top_level_producers = []
+
+            if has_parallel:
+                # Include all model producers
+                # (parallel branches are in all_model_producers)
+                top_level_producers = [
+                    mp
+                    for mp in all_model_producers
+                    if mp.id not in branch_model_producer_ids
+                ]
+            else:
+                # Only top-level producers for sub-pipeline/branch cases
+                top_level_producers = [
+                    mp
+                    for mp in all_model_producers
+                    if mp.id not in branch_model_producer_ids
+                    and any(s.id == mp.id for s in train_steps)
+                ]
 
             for mp in top_level_producers:
                 inf_id = f"{mp.id}_inference"
