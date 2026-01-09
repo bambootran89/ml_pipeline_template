@@ -141,7 +141,7 @@ class ConfigGenerator:
                 # Set preprocessor to load mode
                 step.is_train = False
                 step.alias = alias
-                step.instance_key = f"{step.id}_model"
+                step.instance_key = f"fitted_{step.id}"
 
                 # Remove training-only configs
                 if hasattr(step, "log_artifact"):
@@ -163,14 +163,14 @@ class ConfigGenerator:
                     step.wiring.outputs = OmegaConf.create({})
 
                 # Wire to use loaded model
-                step.wiring.inputs.model = f"{step.id}_model"
+                step.wiring.inputs.model = f"fitted_{step.id}"
                 step.wiring.inputs.features = "preprocessed_data"
                 step.wiring.outputs.features = (
                     step.wiring.outputs.features
                     if hasattr(step.wiring.outputs, "features")
                     else "cluster_features"
                 )
-                step.wiring.outputs.model = f"{step.id}_model"
+                step.wiring.outputs.model = f"fitted_{step.id}"
 
                 # Remove training-only configs
                 if hasattr(step, "log_artifact"):
@@ -215,7 +215,7 @@ class ConfigGenerator:
                 # Set preprocessor to load mode
                 step.is_train = False
                 step.alias = alias
-                step.instance_key = f"{step.id}_model"
+                step.instance_key = f"fitted_{step.id}"
 
                 # Remove training-only configs
                 if hasattr(step, "log_artifact"):
@@ -236,14 +236,14 @@ class ConfigGenerator:
                     step.wiring.outputs = OmegaConf.create({})
 
                 # Wire to use loaded model
-                step.wiring.inputs.model = f"{step.id}_model"
+                step.wiring.inputs.model = f"fitted_{step.id}"
                 step.wiring.inputs.features = "preprocessed_data"
                 step.wiring.outputs.features = (
                     step.wiring.outputs.features
                     if hasattr(step.wiring.outputs, "features")
                     else "cluster_features"
                 )
-                step.wiring.outputs.model = f"{step.id}_model"
+                step.wiring.outputs.model = f"fitted_{step.id}"
 
                 # Remove training-only configs
                 if hasattr(step, "log_artifact"):
@@ -279,7 +279,7 @@ class ConfigGenerator:
                 # Build evaluator config
                 eval_wiring = {
                     "inputs": {
-                        "model": f"{if_true.id}_model",
+                        "model": f"fitted_{if_true.id}",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
@@ -316,7 +316,7 @@ class ConfigGenerator:
                 # Build evaluator config
                 eval_wiring = {
                     "inputs": {
-                        "model": f"{if_false.id}_model",
+                        "model": f"fitted_{if_false.id}",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
@@ -374,7 +374,7 @@ class ConfigGenerator:
                 # Build inference config
                 inf_wiring = {
                     "inputs": {
-                        "model": f"{if_true.id}_model",
+                        "model": f"fitted_{if_true.id}",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
@@ -407,7 +407,7 @@ class ConfigGenerator:
                 # Build inference config
                 inf_wiring = {
                     "inputs": {
-                        "model": f"{if_false.id}_model",
+                        "model": f"fitted_{if_false.id}",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
@@ -448,7 +448,7 @@ class ConfigGenerator:
 
         inputs: Dict[str, Any] = {
             "features": "preprocessed_data",
-            "model": f"{mp.id}_model",
+            "model": f"fitted_{mp.id}",
         }
         if mp.type != "clustering":
             inputs["targets"] = "target_data"
@@ -507,7 +507,7 @@ class ConfigGenerator:
         all_model_producers = self._extract_model_producers_recursive(train_steps)
 
         load_map = [
-            {"step_id": mp.id, "context_key": f"{mp.id}_model"}
+            {"step_id": mp.id, "context_key": f"fitted_{mp.id}"}
             for mp in all_model_producers
         ]
 
@@ -516,7 +516,7 @@ class ConfigGenerator:
             load_map.append(
                 {
                     "step_id": prep.id,
-                    "context_key": f"{prep.id}_model",
+                    "context_key": f"fitted_{prep.id}",
                 }
             )
 
@@ -569,7 +569,7 @@ class ConfigGenerator:
                     prep = copy.deepcopy(step)
                     prep.is_train = False
                     prep.alias = alias
-                    prep.instance_key = f"{step.id}_model"
+                    prep.instance_key = f"fitted_{step.id}"
                     prep.depends_on = [init_id]
                     if data_loader:
                         prep.depends_on.append("load_data")
@@ -664,7 +664,7 @@ class ConfigGenerator:
 
         # Build load_map for all artifacts
         load_map = [
-            {"step_id": mp.id, "context_key": f"{mp.id}_model"}
+            {"step_id": mp.id, "context_key": f"fitted_{mp.id}"}
             for mp in all_model_producers
         ]
 
@@ -673,7 +673,7 @@ class ConfigGenerator:
             load_map.append(
                 {
                     "step_id": prep.id,
-                    "context_key": f"{prep.id}_model",
+                    "context_key": f"fitted_{prep.id}",
                 }
             )
 
@@ -710,7 +710,7 @@ class ConfigGenerator:
                     prep = copy.deepcopy(step)
                     prep.is_train = False
                     prep.alias = alias
-                    prep.instance_key = f"{step.id}_model"
+                    prep.instance_key = f"fitted_{step.id}"
                     prep.depends_on = [init_id]
                     new_steps.append(prep)
                     last_id = prep.id
@@ -774,7 +774,7 @@ class ConfigGenerator:
                         "output_as_feature": getattr(mp, "output_as_feature", False),
                         "wiring": {
                             "inputs": {
-                                "model": f"{mp.id}_model",
+                                "model": f"fitted_{mp.id}",
                                 "features": "preprocessed_data",
                             },
                             "outputs": {"predictions": f"{mp.id}_predictions"},
@@ -796,7 +796,7 @@ class ConfigGenerator:
                         "output_as_feature": getattr(mp, "output_as_feature", False),
                         "wiring": {
                             "inputs": {
-                                "model": f"{mp.id}_model",
+                                "model": f"fitted_{mp.id}",
                                 "features": "preprocessed_data",
                             },
                             "outputs": {"predictions": f"{mp.id}_predictions"},
