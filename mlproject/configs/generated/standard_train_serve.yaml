@@ -12,12 +12,22 @@ pipeline:
       context_key: train_model_model
     - step_id: preprocess
       context_key: preprocess_model
+  - id: preprocess
+    type: preprocessor
+    enabled: true
+    log_artifact: true
+    artifact_type: preprocess
+    depends_on:
+    - init_artifacts
+    is_train: false
+    alias: latest
+    instance_key: preprocess_model
   - id: train_model_inference
     type: inference
     enabled: true
     depends_on:
     - init_artifacts
-    - init_artifacts
+    - preprocess
     output_as_feature: false
     wiring:
       inputs:

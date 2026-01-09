@@ -40,19 +40,24 @@ class ConfigGenerator:
     def _extract_model_producers_recursive(
         self, steps: List[Any], prefix: str = ""
     ) -> List[Any]:
-        """Recursively extract model producers from steps including nested sub-pipelines.
+        """Recursively extract model producers from steps including nested structures.
+
+        Supports:
+        - Direct model producers (trainer, clustering, framework_model)
+        - Sub-pipelines with nested model producers
+        - Branch steps with if_true/if_false model producers
 
         Args:
             steps: List of pipeline steps.
             prefix: Optional prefix for nested step IDs.
 
         Returns:
-            List of model producer steps (trainer, clustering).
+            List of model producer steps.
         """
         producers: List[Any] = []
 
         for step in steps:
-            if step.type in ["trainer", "clustering"]:
+            if step.type in ["trainer", "clustering", "framework_model"]:
                 producers.append(step)
             elif step.type == "sub_pipeline":
                 # Recursively extract from nested sub-pipeline
@@ -61,6 +66,26 @@ class ConfigGenerator:
                         step.pipeline.steps, prefix=f"{step.id}_"
                     )
                     producers.extend(nested_producers)
+            elif step.type == "branch":
+                # Extract from if_true branch
+                if hasattr(step, "if_true"):
+                    if_true_step = step.if_true
+                    if hasattr(if_true_step, "type") and if_true_step.type in [
+                        "trainer",
+                        "clustering",
+                        "framework_model",
+                    ]:
+                        producers.append(if_true_step)
+
+                # Extract from if_false branch
+                if hasattr(step, "if_false"):
+                    if_false_step = step.if_false
+                    if hasattr(if_false_step, "type") and if_false_step.type in [
+                        "trainer",
+                        "clustering",
+                        "framework_model",
+                    ]:
+                        producers.append(if_false_step)
 
         return producers
 
@@ -230,6 +255,178 @@ class ConfigGenerator:
 
         return transformed
 
+    def _transform_branch_step_for_eval(
+        self, branch_step: Any, alias: str
+    ) -> Any:
+        """Transform a branch step for eval mode.
+
+        Args:
+            branch_step: The branch step to transform.
+            alias: MLflow alias for artifact loading.
+
+        Returns:
+            Transformed branch step for eval mode.
+        """
+        transformed = copy.deepcopy(branch_step)
+
+        # Transform if_true branch: trainer/framework_model → evaluator
+        if hasattr(transformed, "if_true"):
+            if_true = transformed.if_true
+            if if_true.type in ["trainer", "clustering", "framework_model"]:
+                # Create evaluator ID based on model producer ID
+                eval_id = f"{if_true.id}_evaluate" if not if_true.id.endswith('_evaluate') else if_true.id
+
+                # Build evaluator config
+                eval_wiring = {
+                    "inputs": {
+                        "model": f"fitted_{if_true.id}",
+                        "features": "preprocessed_data",
+                    },
+                    "outputs": {
+                        "metrics": if_true.wiring.outputs.get("metrics", "evaluation_metrics")
+                        if hasattr(if_true, "wiring") and hasattr(if_true.wiring, "outputs")
+                        else "evaluation_metrics"
+                    },
+                }
+
+                # Add targets if not clustering
+                if if_true.type != "clustering":
+                    eval_wiring["inputs"]["targets"] = "target_data"
+
+                # Create new evaluator step
+                transformed.if_true = OmegaConf.create({
+                    "id": eval_id,
+                    "type": "evaluator",
+                    "enabled": True,
+                    "depends_on": ["preprocess"] if hasattr(transformed, "depends_on") else [],
+                    "wiring": eval_wiring,
+                })
+
+                # Add step_eval_type for clustering
+                if if_true.type == "clustering":
+                    transformed.if_true.step_eval_type = "clustering"
+
+        # Transform if_false branch: trainer/framework_model → evaluator
+        if hasattr(transformed, "if_false"):
+            if_false = transformed.if_false
+            if if_false.type in ["trainer", "clustering", "framework_model"]:
+                # Create evaluator ID based on model producer ID
+                eval_id = f"{if_false.id}_evaluate" if not if_false.id.endswith('_evaluate') else if_false.id
+
+                # Build evaluator config
+                eval_wiring = {
+                    "inputs": {
+                        "model": f"fitted_{if_false.id}",
+                        "features": "preprocessed_data",
+                    },
+                    "outputs": {
+                        "metrics": if_false.wiring.outputs.get("metrics", "evaluation_metrics")
+                        if hasattr(if_false, "wiring") and hasattr(if_false.wiring, "outputs")
+                        else "evaluation_metrics"
+                    },
+                }
+
+                # Add targets if not clustering
+                if if_false.type != "clustering":
+                    eval_wiring["inputs"]["targets"] = "target_data"
+
+                # Create new evaluator step
+                transformed.if_false = OmegaConf.create({
+                    "id": eval_id,
+                    "type": "evaluator",
+                    "enabled": True,
+                    "depends_on": ["preprocess"] if hasattr(transformed, "depends_on") else [],
+                    "wiring": eval_wiring,
+                })
+
+                # Add step_eval_type for clustering
+                if if_false.type == "clustering":
+                    transformed.if_false.step_eval_type = "clustering"
+
+        return transformed
+
+    def _transform_branch_step_for_serve(
+        self, branch_step: Any, alias: str
+    ) -> Any:
+        """Transform a branch step for serve mode.
+
+        Args:
+            branch_step: The branch step to transform.
+            alias: MLflow alias for artifact loading.
+
+        Returns:
+            Transformed branch step for serve mode.
+        """
+        transformed = copy.deepcopy(branch_step)
+
+        # Transform if_true branch: trainer/framework_model → inference
+        if hasattr(transformed, "if_true"):
+            if_true = transformed.if_true
+            if if_true.type in ["trainer", "clustering", "framework_model"]:
+                # Create inference ID based on model producer ID
+                inf_id = f"{if_true.id}_inference"
+
+                # Get original output key from training wiring
+                orig_output_key = "selected_model"
+                if hasattr(if_true, "wiring") and hasattr(if_true.wiring, "outputs"):
+                    orig_output_key = if_true.wiring.outputs.get("model", "selected_model")
+
+                # Build inference config
+                inf_wiring = {
+                    "inputs": {
+                        "model": f"fitted_{if_true.id}",
+                        "features": "preprocessed_data",
+                    },
+                    "outputs": {
+                        "predictions": f"{if_true.id}_predictions",
+                    },
+                }
+
+                # Create new inference step
+                transformed.if_true = OmegaConf.create({
+                    "id": inf_id,
+                    "type": "inference",
+                    "enabled": True,
+                    "depends_on": [] if hasattr(transformed, "depends_on") else [],
+                    "output_as_feature": getattr(if_true, "output_as_feature", False),
+                    "wiring": inf_wiring,
+                })
+
+        # Transform if_false branch: trainer/framework_model → inference
+        if hasattr(transformed, "if_false"):
+            if_false = transformed.if_false
+            if if_false.type in ["trainer", "clustering", "framework_model"]:
+                # Create inference ID based on model producer ID
+                inf_id = f"{if_false.id}_inference"
+
+                # Get original output key from training wiring
+                orig_output_key = "selected_model"
+                if hasattr(if_false, "wiring") and hasattr(if_false.wiring, "outputs"):
+                    orig_output_key = if_false.wiring.outputs.get("model", "selected_model")
+
+                # Build inference config
+                inf_wiring = {
+                    "inputs": {
+                        "model": f"fitted_{if_false.id}",
+                        "features": "preprocessed_data",
+                    },
+                    "outputs": {
+                        "predictions": f"{if_false.id}_predictions",
+                    },
+                }
+
+                # Create new inference step
+                transformed.if_false = OmegaConf.create({
+                    "id": inf_id,
+                    "type": "inference",
+                    "enabled": True,
+                    "depends_on": [] if hasattr(transformed, "depends_on") else [],
+                    "output_as_feature": getattr(if_false, "output_as_feature", False),
+                    "wiring": inf_wiring,
+                })
+
+        return transformed
+
     def _make_evaluator_config(
         self,
         mp: Any,
@@ -358,30 +555,65 @@ class ConfigGenerator:
             prep.depends_on.append("load_data")
             new_steps.append(prep)
 
-        # Process all steps, handling sub-pipelines specially
+        # Process all steps, handling special types
         sub_pipeline_steps = []
+        branch_steps = []
+        branch_model_producer_ids = set()  # Track model producers inside branches
+
+        # Handle top-level preprocessors (not in nested structures like sub_pipeline)
+        for step in train_steps:
+            if step.type == "preprocessor":
+                # Check if this preprocessor is at top level (not in sub-pipeline)
+                is_top_level = any(s.id == step.id for s in train_steps)
+                if is_top_level:
+                    prep = copy.deepcopy(step)
+                    prep.is_train = False
+                    prep.alias = alias
+                    prep.instance_key = f"{step.id}_model"
+                    prep.depends_on = [init_id]
+                    if data_loader:
+                        prep.depends_on.append("load_data")
+                    new_steps.append(prep)
+
+        # Handle sub-pipelines and branches
         for step in train_steps:
             if step.type == "sub_pipeline":
                 # Transform sub-pipeline for eval mode and keep it
                 transformed_sub = self._transform_sub_pipeline_for_eval(step, alias)
                 new_steps.append(transformed_sub)
                 sub_pipeline_steps.append(step.id)
-            elif step.type in ["datamodule", "trainer"]:
-                # Skip training steps in eval mode
+            elif step.type == "branch":
+                # Transform branch for eval mode
+                transformed_branch = self._transform_branch_step_for_eval(step, alias)
+                new_steps.append(transformed_branch)
+                branch_steps.append(step.id)
+
+                # Track model producers in this branch (to avoid generating separate evaluators)
+                if hasattr(step, "if_true") and hasattr(step.if_true, "id"):
+                    branch_model_producer_ids.add(step.if_true.id)
+                if hasattr(step, "if_false") and hasattr(step.if_false, "id"):
+                    branch_model_producer_ids.add(step.if_false.id)
+            elif step.type in ["datamodule", "trainer", "framework_model"]:
+                # Skip training steps in eval mode (they become evaluators or are in branches)
                 pass
 
-        # Generate evaluators for all model producers
+        # Generate evaluators for model producers NOT in branches
         for mp in all_model_producers:
-            ev = self._make_evaluator_config(
-                mp,
-                init_id,
-                None,  # Dependencies handled via depends_on
-            )
-            # If model producer is in sub-pipeline, evaluator depends on sub-pipeline
-            if sub_pipeline_steps:
-                ev.depends_on = [init_id] + sub_pipeline_steps
-            evaluator_ids.append(ev.id)
-            new_steps.append(ev)
+            if mp.id not in branch_model_producer_ids:
+                ev = self._make_evaluator_config(
+                    mp,
+                    init_id,
+                    None,  # Dependencies handled via depends_on
+                )
+                # If model producer is in sub-pipeline, evaluator depends on sub-pipeline
+                if sub_pipeline_steps:
+                    ev.depends_on = [init_id] + sub_pipeline_steps
+                evaluator_ids.append(ev.id)
+                new_steps.append(ev)
+
+        # Collect evaluator IDs from branch steps (they're already in the branches)
+        if branch_steps:
+            evaluator_ids.extend(branch_steps)
 
         # Add profiling and logger steps
         for step in train_steps:
@@ -469,7 +701,21 @@ class ConfigGenerator:
             )
         )
 
-        # Handle top-level preprocessor (if exists and not in sub-pipeline)
+        # Handle top-level preprocessors (not in nested structures like sub_pipeline)
+        for step in train_steps:
+            if step.type == "preprocessor":
+                # Check if this preprocessor is at top level (not in sub-pipeline)
+                is_top_level = any(s.id == step.id for s in train_steps)
+                if is_top_level:
+                    prep = copy.deepcopy(step)
+                    prep.is_train = False
+                    prep.alias = alias
+                    prep.instance_key = f"{step.id}_model"
+                    prep.depends_on = [init_id]
+                    new_steps.append(prep)
+                    last_id = prep.id
+
+        # Handle top-level preprocessor (legacy compatibility)
         if preprocessor_step and not any(
             p.id == preprocessor_step.id for p in all_preprocessors
         ):
@@ -481,21 +727,40 @@ class ConfigGenerator:
             new_steps.append(prep)
             last_id = prep.id
 
-        # Check if there are sub-pipelines
+        # Check for special pipeline types
         has_sub_pipeline = any(s.type == "sub_pipeline" for s in train_steps)
+        has_branch = any(s.type == "branch" for s in train_steps)
+        branch_model_producer_ids = set()
 
+        # Handle sub-pipelines
         if has_sub_pipeline:
-            # Keep sub-pipeline for serving, transform its internal steps
             for step in train_steps:
                 if step.type == "sub_pipeline":
                     transformed_sub = self._transform_sub_pipeline_for_serve(step, alias)
                     new_steps.append(transformed_sub)
                     last_id = step.id
 
-            # Generate inference steps for model producers outside sub-pipeline
+        # Handle branches
+        if has_branch:
+            for step in train_steps:
+                if step.type == "branch":
+                    transformed_branch = self._transform_branch_step_for_serve(step, alias)
+                    new_steps.append(transformed_branch)
+                    last_id = step.id
+
+                    # Track model producers in this branch
+                    if hasattr(step, "if_true") and hasattr(step.if_true, "id"):
+                        branch_model_producer_ids.add(step.if_true.id)
+                    if hasattr(step, "if_false") and hasattr(step.if_false, "id"):
+                        branch_model_producer_ids.add(step.if_false.id)
+
+        # Generate inference steps for model producers NOT in branches or sub-pipelines
+        if has_sub_pipeline or has_branch:
+            # Only generate inference for top-level model producers
             top_level_producers = [
                 mp for mp in all_model_producers
-                if mp.type == "trainer" and any(s.id == mp.id for s in train_steps)
+                if mp.id not in branch_model_producer_ids
+                and any(s.id == mp.id for s in train_steps)
             ]
 
             for mp in top_level_producers:

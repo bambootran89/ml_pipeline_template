@@ -15,6 +15,17 @@ pipeline:
       context_key: train_model_model
     - step_id: preprocess
       context_key: preprocess_model
+  - id: preprocess
+    type: preprocessor
+    enabled: true
+    log_artifact: true
+    artifact_type: preprocess
+    depends_on:
+    - init_artifacts
+    - load_data
+    is_train: false
+    alias: latest
+    instance_key: preprocess_model
   - id: train_evaluate
     type: evaluator
     enabled: true

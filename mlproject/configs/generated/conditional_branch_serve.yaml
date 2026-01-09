@@ -1,0 +1,69 @@
+pipeline:
+  name: conditional_branch_serve
+  steps:
+  - id: init_artifacts
+    type: mlflow_loader
+    enabled: true
+    alias: latest
+    load_map:
+    - step_id: train_tft
+      context_key: train_tft_model
+    - step_id: train_xgb
+      context_key: train_xgb_model
+    - step_id: preprocess
+      context_key: preprocess_model
+  - id: preprocess
+    type: preprocessor
+    log_artifact: true
+    artifact_type: preprocess
+    enabled: true
+    depends_on:
+    - init_artifacts
+    is_train: false
+    alias: latest
+    instance_key: preprocess_model
+  - id: model_selection
+    type: branch
+    enabled: true
+    depends_on:
+    - preprocess
+    condition:
+      key: data_size
+      operator: '>'
+      value: 100
+    if_true:
+      id: train_tft_inference
+      type: inference
+      enabled: true
+      depends_on: []
+      output_as_feature: false
+      wiring:
+        inputs:
+          model: fitted_train_tft
+          features: preprocessed_data
+        outputs:
+          predictions: train_tft_predictions
+    if_false:
+      id: train_xgb_inference
+      type: inference
+      enabled: true
+      depends_on: []
+      output_as_feature: false
+      wiring:
+        inputs:
+          model: fitted_train_xgb
+          features: preprocessed_data
+        outputs:
+          predictions: train_xgb_predictions
+  - id: final_profiling
+    type: profiling
+    enabled: true
+    depends_on:
+    - model_selection
+    exclude_keys:
+    - cfg
+    - preprocessor
+    - df
+    - train_df
+    - val_df
+    - test_df
