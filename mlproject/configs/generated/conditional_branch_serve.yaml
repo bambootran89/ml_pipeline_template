@@ -39,7 +39,7 @@ pipeline:
       output_as_feature: false
       wiring:
         inputs:
-          model: fitted_train_tft
+          model: train_tft_model
           features: preprocessed_data
         outputs:
           predictions: train_tft_predictions
@@ -51,7 +51,7 @@ pipeline:
       output_as_feature: false
       wiring:
         inputs:
-          model: fitted_train_xgb
+          model: train_xgb_model
           features: preprocessed_data
         outputs:
           predictions: train_xgb_predictions

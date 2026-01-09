@@ -279,7 +279,7 @@ class ConfigGenerator:
                 # Build evaluator config
                 eval_wiring = {
                     "inputs": {
-                        "model": f"fitted_{if_true.id}",
+                        "model": f"{if_true.id}_model",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
@@ -316,7 +316,7 @@ class ConfigGenerator:
                 # Build evaluator config
                 eval_wiring = {
                     "inputs": {
-                        "model": f"fitted_{if_false.id}",
+                        "model": f"{if_false.id}_model",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
@@ -374,7 +374,7 @@ class ConfigGenerator:
                 # Build inference config
                 inf_wiring = {
                     "inputs": {
-                        "model": f"fitted_{if_true.id}",
+                        "model": f"{if_true.id}_model",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
@@ -407,7 +407,7 @@ class ConfigGenerator:
                 # Build inference config
                 inf_wiring = {
                     "inputs": {
-                        "model": f"fitted_{if_false.id}",
+                        "model": f"{if_false.id}_model",
                         "features": "preprocessed_data",
                     },
                     "outputs": {
