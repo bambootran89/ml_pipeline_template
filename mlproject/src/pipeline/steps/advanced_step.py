@@ -151,21 +151,87 @@ class BranchStep(BasePipelineStep):
         )
         return result
 
+    def _check_model_availability(
+        self, branch_config: Dict[str, Any], context: Dict[str, Any]
+    ) -> tuple[bool, Optional[str]]:
+        """Check if required model exists in context for inference/evaluator steps.
+
+        Returns:
+            (available, model_key): True if model is available or not required,
+                                   False if model is required but missing.
+        """
+        if not branch_config:
+            return True, None
+
+        step_type = branch_config.get("type", "")
+        if step_type not in ["inference", "evaluator"]:
+            return True, None
+
+        # Check if step has wiring with model input
+        wiring = branch_config.get("wiring", {})
+        inputs = wiring.get("inputs", {})
+        model_key = inputs.get("model")
+
+        if model_key and model_key not in context:
+            return False, model_key
+
+        return True, model_key
+
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         self.validate_dependencies(context)
         condition_result = self._evaluate_condition(context)
 
-        if condition_result and self.if_true:
-            print(f"[{self.step_id}] Executing TRUE branch")
-            step = StepFactory.create(self.if_true, self.cfg)
-            return step.execute(context)
-        elif not condition_result and self.if_false:
-            print(f"[{self.step_id}] Executing FALSE branch")
-            step = StepFactory.create(self.if_false, self.cfg)
-            return step.execute(context)
+        # Determine primary and fallback branches based on condition
+        if condition_result:
+            primary_branch = self.if_true
+            primary_name = "TRUE"
+            fallback_branch = self.if_false
+            fallback_name = "FALSE"
         else:
-            print(f"[{self.step_id}] No branch to execute")
-            return context
+            primary_branch = self.if_false
+            primary_name = "FALSE"
+            fallback_branch = self.if_true
+            fallback_name = "TRUE"
+
+        # Try primary branch first
+        if primary_branch:
+            available, model_key = self._check_model_availability(primary_branch, context)
+            if available:
+                print(f"[{self.step_id}] Executing {primary_name} branch")
+                step = StepFactory.create(primary_branch, self.cfg)
+                return step.execute(context)
+            else:
+                print(
+                    f"[{self.step_id}] {primary_name} branch requires model "
+                    f"'{model_key}' which is not available in context"
+                )
+
+        # Try fallback branch if primary failed
+        if fallback_branch:
+            available, model_key = self._check_model_availability(fallback_branch, context)
+            if available:
+                print(
+                    f"[{self.step_id}] Falling back to {fallback_name} branch "
+                    f"(primary branch model not available)"
+                )
+                step = StepFactory.create(fallback_branch, self.cfg)
+                return step.execute(context)
+            else:
+                print(
+                    f"[{self.step_id}] {fallback_name} branch requires model "
+                    f"'{model_key}' which is not available in context"
+                )
+
+        # Neither branch can execute
+        available_keys = [k for k in context.keys() if "_model" in str(k)]
+        raise RuntimeError(
+            f"Step '{self.step_id}': Cannot execute conditional branch. "
+            f"Neither branch has its required model available in context. "
+            f"Available model keys: {available_keys}. "
+            f"This typically happens when the condition evaluates differently "
+            f"between training and serving. Consider training both models "
+            f"separately before using conditional branching for serving."
+        )
 
 
 class SubPipelineStep(BasePipelineStep):
