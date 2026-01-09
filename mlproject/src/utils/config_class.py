@@ -152,23 +152,21 @@ class ConfigMerger:
         mode: str = "train",
     ) -> DictConfig:
         """Merge experiment config with pipeline config."""
-        exp_cfg = ConfigLoader.load(experiment_path)
         _ = mode
-        pipe_file = Path(pipeline_path)
-        if not pipe_file.exists():
-            raise FileNotFoundError(f"Pipeline config not found: {pipeline_path}")
+        if not experiment_path:
+            raise ValueError("experiment_path cannot be None or empty")
+        if not pipeline_path:
+            raise ValueError("pipeline_path cannot be None or empty")
 
-        pipe_cfg = OmegaConf.load(pipe_file)
+        exp_cfg = ConfigLoader.load(experiment_path)
+        pipe_cfg = OmegaConf.load(pipeline_path)
+
         merged: Union[DictConfig, ListConfig] = OmegaConf.merge(exp_cfg, pipe_cfg)
 
         if isinstance(merged, ListConfig):
-            merged = OmegaConf.create({"config": merged})
+            return OmegaConf.create({"config": merged})
 
-        print("\n[CONFIG] Merged configuration:")
-        print(f"  - Experiment: {experiment_path}")
-        print(f"  - Pipeline:   {pipeline_path}")
-
-        return merged  # type: ignore
+        return merged
 
     @staticmethod
     def save(cfg: DictConfig, output_path: str) -> None:

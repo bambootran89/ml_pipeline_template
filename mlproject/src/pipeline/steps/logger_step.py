@@ -45,9 +45,7 @@ class LoggerStep(BasePipelineStep):
             # 2. Log Metrics (Standardized discovery via context)
             for key, metrics in context.items():
                 if key.endswith("_metrics"):
-                    prefix = key.replace("_metrics", "").replace(
-                        "evaluation_metrics", ""
-                    )
+                    prefix = key.replace("_metrics", "").replace("evaluation", "")
 
                     if metrics:
                         safe_metrics = flatten_metrics_for_mlflow(metrics)

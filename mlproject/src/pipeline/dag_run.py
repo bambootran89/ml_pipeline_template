@@ -76,7 +76,7 @@ def _print_metrics(context: Dict[str, Any], key: str = "evaluate_metrics") -> No
 
 def run_training(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
 ) -> None:
     """Run training pipeline.
 
@@ -105,7 +105,7 @@ def run_training(
 
 def run_eval(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
     alias: str = "latest",
 ) -> None:
     """Run evaluation pipeline.
@@ -207,7 +207,7 @@ def _run_pipeline_with_context(
 
 def run_serve(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
     input_path: Optional[str] = None,
     alias: str = "latest",
     time_point: str = "now",
@@ -291,7 +291,7 @@ def run_serve(
 
 def run_tune(
     experiment_path: str,
-    pipeline_path: Optional[str] = None,
+    pipeline_path: str,
     n_trials: Optional[int] = None,
 ) -> None:
     """Run hyperparameter tuning pipeline.

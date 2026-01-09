@@ -7,7 +7,7 @@
 # This allows complete customization of model, hyperparams, data settings.
 
 pipeline:
-  name: "conditional_model_selection"
+  name: "conditional_model_selection_eval"
 
   steps:
     # Stage 1: Data Loading
@@ -15,14 +15,21 @@ pipeline:
       type: "data_loader"
       enabled: true
 
+    - id: "init_artifacts"
+      type: "mlflow_loader"
+      enabled: true
+      alias: "latest"
+      load_map:
+        - { step_id: "preprocess", context_key: "fitted_preprocess" }
+        - { step_id: "train_tft", context_key: "fitted_train_tft" }
+        - { step_id: "train_xgb", context_key: "fitted_train_xgb" }
     # Stage 2: Preprocessing
     - id: "preprocess"
       type: "preprocessor"
-      log_artifact: true
-      artifact_type: "preprocess"
       enabled: true
       depends_on: ["load_data"]
-      is_train: true
+      instance_key: "fitted_preprocess"
+      is_train: false  # Important: loads fitted state from context instead of refitting
 
     # Stage 3: Conditional Model Selection
     - id: "model_selection"
@@ -36,50 +43,34 @@ pipeline:
 
       # Execute if data_size > 100 → Load TFT config from external file
       if_true:
-        id: "train_tft"
-        type: "framework_model"
-        log_artifact: true
-        artifact_type: "model"
-        experiment_config: "mlproject/configs/model/tft_ts.yaml"
+        id: "tft_evaluate"
+        type: "evaluator"
+        enabled: true
+        depends_on: ["preprocess"]
         wiring:
           inputs:
-            data: "preprocessed_data"
+            model: "fitted_train_tft"
+            features: "preprocessed_data"
+            targets: "target_data"
           outputs:
-            model: "selected_model"
-            datamodule: "selected_dm"
+            metrics: "evaluation_metrics"
 
       # Execute if data_size <= 100 → Load XGBoost config from external file
       if_false:
-        id: "train_xgb"
-        type: "framework_model"
-        log_artifact: true
-        artifact_type: "model"
-        experiment_config: "mlproject/configs/model/xgboost_ts.yaml"
+        id: "xgboost_evaluate"
+        type: "evaluator"
+        enabled: true
+        depends_on: ["preprocess"]
         wiring:
           inputs:
-            data: "preprocessed_data"
+            model: "fitted_train_xgb"
+            features: "preprocessed_data"
+            targets: "target_data"
           outputs:
-            model: "selected_model"
-            datamodule: "selected_dm"
-
-    # Stage 4: Evaluation
-    - id: "evaluate"
-      type: "evaluator"
-      enabled: true
-      depends_on: ["model_selection"]
-      wiring:
-        inputs:
-          model: "selected_model"
-          datamodule: "selected_dm"
-        outputs:
-          metrics: "evaluation_metrics"
+            metrics: "evaluation_metrics"
 
     # Stage 5: Log Results
     - id: "log_results"
       type: "logger"
       enabled: true
-      depends_on: ["evaluate"]
-      wiring:
-        inputs:
-          model: "selected_model"
-          metrics: "evaluation_metrics"
+      depends_on: ["model_selection"]
