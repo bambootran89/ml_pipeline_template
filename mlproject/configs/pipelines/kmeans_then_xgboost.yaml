@@ -64,8 +64,6 @@ pipeline:
       wiring:
         inputs:
           datamodule: "prepare_data_datamodule"
-          features: "preprocessed_data"
-          targets: "target_data"
 
     # Stage 6: Evaluation
     - id: "evaluate"

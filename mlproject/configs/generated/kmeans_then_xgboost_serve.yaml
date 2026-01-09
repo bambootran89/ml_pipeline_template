@@ -1,0 +1,63 @@
+pipeline:
+  name: kmeans_then_xgboost_serve
+  description: Two-stage pipeline with clustering profiling
+  steps:
+  - id: init_artifacts
+    type: mlflow_loader
+    enabled: true
+    alias: latest
+    load_map:
+    - step_id: kmeans_features
+      context_key: kmeans_features_model
+    - step_id: xgboost_model
+      context_key: xgboost_model_model
+    - step_id: preprocess
+      context_key: transform_manager
+  - id: preprocess
+    type: preprocessor
+    enabled: true
+    log_artifact: true
+    artifact_type: preprocess
+    depends_on:
+    - init_artifacts
+    is_train: false
+    alias: latest
+    instance_key: transform_manager
+  - id: kmeans_features_inference
+    type: inference
+    enabled: true
+    depends_on:
+    - init_artifacts
+    - preprocess
+    output_as_feature: true
+    wiring:
+      inputs:
+        model: kmeans_features_model
+        features: preprocessed_data
+      outputs:
+        predictions: kmeans_features_predictions
+  - id: xgboost_model_inference
+    type: inference
+    enabled: true
+    depends_on:
+    - init_artifacts
+    - kmeans_features_inference
+    output_as_feature: true
+    wiring:
+      inputs:
+        model: xgboost_model_model
+        features: preprocessed_data
+      outputs:
+        predictions: xgboost_model_predictions
+  - id: final_profiling
+    type: profiling
+    enabled: true
+    depends_on:
+    - xgboost_model_inference
+    exclude_keys:
+    - cfg
+    - preprocessor
+    - df
+    - train_df
+    - val_df
+    - test_df

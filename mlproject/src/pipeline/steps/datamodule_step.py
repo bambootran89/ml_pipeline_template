@@ -20,13 +20,6 @@ class DataModuleStep(BasePipelineStep):
     """
     Build a DataModule from the pipeline context and optionally generate
     features using a fitted model.
-
-    This step supports:
-    1. Restoring a previously fitted DataModule from MLflow via `instance_key`.
-    2. Constructing a new DataModule when no restored instance is available.
-    3. Generating model predictions and exposing them as engineered features
-       for downstream evaluation or inference steps.
-
     Expected Context Inputs
     ----------------------
     data : pd.DataFrame or array-like, optional

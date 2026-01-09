@@ -24,3 +24,9 @@ pipeline:
       wiring:
         inputs:
           model: train_model_model
+
+    - id: "final_profiling"
+      type: "profiling"
+      enabled: true
+      depends_on: ["inference"]
+      exclude_keys: ["cfg", "preprocessor", "df", "train_df", "val_df", "test_df"]

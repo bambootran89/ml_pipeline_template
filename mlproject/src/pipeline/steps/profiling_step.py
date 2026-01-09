@@ -246,34 +246,69 @@ class ProfilingStep(BasePipelineStep):
             "balance_ratio": round(float(counts.min() / counts.max()), 4),
         }
 
-    def _analyze_predictions(self, preds: Any) -> Dict[str, Any]:
-        """Analyze prediction statistics.
+    def _analyze_predictions(
+        self,
+        preds: np.ndarray,
+    ) -> Dict[str, Any]:
+        """
+        Compute summary statistics from model prediction arrays.
+
+        This method supports sliding window forecasting outputs with 1D, 2D,
+        or 3D numpy arrays. Statistics include mean, standard deviation,
+        min, max, median, and interquartile range (25th/75th percentiles).
 
         Parameters
         ----------
-        preds : Any
-            Prediction array.
+        preds : Optional[np.ndarray]
+            Model prediction array. Accepted shapes:
+            - 1D: [samples]
+            - 2D: [samples, targets]
+            - 3D: [samples, steps, targets]
 
         Returns
         -------
         Dict[str, Any]
-            Prediction statistics.
+            A dictionary containing statistics. For 2D/3D inputs, each target
+            is summarized under a unique key. If preds is None or empty-like,
+            an error dictionary is returned.
+
+        Raises
+        ------
+        ValueError
+            If the array has more than 3 dimensions.
         """
-        if preds is None:
-            return {"error": "No predictions provided"}
 
-        arr = np.asarray(preds).flatten()
+        def _stats(arr: np.ndarray) -> Dict[str, Any]:
+            return {
+                "n_samples": arr.size,
+                "mean": round(float(arr.mean()), 6),
+                "std": round(float(arr.std()), 6),
+                "min": round(float(arr.min()), 6),
+                "max": round(float(arr.max()), 6),
+                "median": round(float(np.median(arr)), 6),
+                "q25": round(float(np.percentile(arr, 25)), 6),
+                "q75": round(float(np.percentile(arr, 75)), 6),
+            }
 
-        return {
-            "n_samples": len(arr),
-            "mean": round(float(np.mean(arr)), 6),
-            "std": round(float(np.std(arr)), 6),
-            "min": round(float(np.min(arr)), 6),
-            "max": round(float(np.max(arr)), 6),
-            "median": round(float(np.median(arr)), 6),
-            "q25": round(float(np.percentile(arr, 25)), 6),
-            "q75": round(float(np.percentile(arr, 75)), 6),
-        }
+        if preds.ndim == 1:
+            return _stats(preds)
+
+        if preds.ndim == 2:
+            out: Dict[str, Any] = {}
+            for i, col in enumerate(preds.T):
+                out[f"target_{i}"] = _stats(col)
+            return out
+
+        if preds.ndim == 3:
+            result: Dict[str, Any] = {}
+            n_steps, n_targets = preds.shape[1], preds.shape[2]
+            for t in range(n_targets):
+                for s in range(n_steps):
+                    key = f"target({t})_step({s})"
+                    result[key] = _stats(preds[:, s, t])
+            return result
+
+        raise ValueError(f"Only 1D, 2D, 3D arrays supported, got {preds.ndim}D")
 
     def _analyze_dataframe(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Analyze DataFrame quality.
@@ -337,17 +372,12 @@ class ProfilingStep(BasePipelineStep):
         if profile["clusters"]:
             print("\n[Cluster Analysis]")
             for key, data in profile["clusters"].items():
-                print(f"  {key}:")
-                print(f"    - n_clusters: {data.get('n_clusters')}")
-                print(f"    - balance_ratio: {data.get('balance_ratio')}")
-                print(f"    - distribution: {data.get('distribution')}")
+                pretty_print(f"  {key}:", data)
 
         if profile["predictions"]:
             print("\n[Prediction Statistics]")
             for key, data in profile["predictions"].items():
-                print(f"  {key}:")
-                print(f"    - mean: {data.get('mean')}, std: {data.get('std')}")
-                print(f"    - range: [{data.get('min')}, {data.get('max')}]")
+                pretty_print(f"  {key}:", data)
         if profile["data_quality"]:
             print("\n[data_quality Statistics]")
             for key, data in profile["data_quality"].items():

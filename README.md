@@ -132,24 +132,24 @@ The traditional monolithic pipeline approach has limitations when building compl
 ┌─────────────────────────────────────────────────────────────┐
 │                    EXPERIMENT CONFIG                        │
 │              (WHAT to train/evaluate)                       │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  • Data source (path, type, columns)                │   │
-│  │  • Model selection (xgboost, tft, nlinear)          │   │
-│  │  • Hyperparameters (learning_rate, n_estimators)    │   │
-│  │  • MLflow settings (tracking, registry)             │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  • Data source (path, type, columns)                │    │
+│  │  • Model selection (xgboost, tft, nlinear)          │    │
+│  │  • Hyperparameters (learning_rate, n_estimators)    │    │
+│  │  • MLflow settings (tracking, registry)             │    │
+│  └─────────────────────────────────────────────────────┘    │
 │              configs/experiments/etth3.yaml                 │
 └─────────────────────────────────────────────────────────────┘
                             +
 ┌─────────────────────────────────────────────────────────────┐
 │                    PIPELINE CONFIG                          │
 │              (HOW to execute steps)                         │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  • Step definitions (id, type, depends_on)          │   │
-│  │  • Data wiring (input/output key mapping)           │   │
-│  │  • Execution flow (sequential, parallel, branch)    │   │
-│  │  • Advanced patterns (sub-pipelines, conditions)    │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  • Step definitions (id, type, depends_on)          │    │
+│  │  • Data wiring (input/output key mapping)           │    │
+│  │  • Execution flow (sequential, parallel, branch)    │    │
+│  │  • Advanced patterns (sub-pipelines, conditions)    │    │
+│  └─────────────────────────────────────────────────────┘    │
 │              configs/pipelines/standard_train.yaml          │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -162,21 +162,28 @@ The traditional monolithic pipeline approach has limitations when building compl
 
 ## Available Pipeline Types
 
-### Standard Pipelines
-| Pipeline | Description | Use Case |
-|----------|-------------|----------|
-| `standard_train.yaml` | Training with profiling | Basic model training + output analysis |
-| `standard_eval.yaml` | Model evaluation | Test model on new data |
-| `standard_serve.yaml` | Inference pipeline | Production predictions |
-| `standard_tune.yaml` | Hyperparameter tuning | Optuna optimization |
+## Available Pipeline Types
 
-### Advanced Pipelines
-| Pipeline | Description | Use Case |
-|----------|-------------|----------|
-| `kmeans_then_xgboost.yaml` | Two-stage: Clustering → Classification | Analysis |
-| `parallel_ensemble.yaml` | Train multiple models in parallel | Ensemble methods |
-| `conditional_branch.yaml` | Select model based on data size | Adaptive model selection |
-| `nested_feature_pipeline.yaml` | Sub-pipeline for feature engineering | Modular feature pipelines |
+## Available Pipeline Types
+
+| Category   | Pipeline                     | Description               | Use Case                     |
+| ---------- | ---------------------------- | ------------------------- | ----------------------------- |
+| Standard   | `standard_train.yaml`       | Training + profiling     | Train model and profile output |
+| Standard   | `standard_eval.yaml`        | Evaluation               | Evaluate model on test data    |
+| Standard   | `standard_serve.yaml`       | Inference                | Production prediction         |
+| Standard   | `standard_tune.yaml`        | Optuna tuning            | Hyperparameter optimization   |
+| Advanced   | `kmeans_then_xgboost.yaml`  | 2-stage train            | Clustering + supervised train |
+| Advanced   | `kmeans_then_xgboost_eval.yaml` | 2-stage eval        | Evaluate both stages          |
+| Advanced   | `parallel_ensemble.yaml`    | Parallel training        | Train models concurrently     |
+| Advanced   | `parallel_ensemble_eval.yaml` | Parallel eval         | Evaluate ensemble models      |
+| Advanced   | `conditional_branch.yaml`   | Conditional training     | Adaptive model selection      |
+| Advanced   | `conditional_branch_eval.yaml` | Conditional eval     | Evaluate selected branch      |
+| Advanced   | `feature_engineering.yaml`  | Feature pipeline         | Modular feature engineering   |
+| Advanced   | `nested_suppipeline.yaml`   | Nested pipeline          | Sub-pipeline orchestration    |
+| Advanced   | `nested_suppipeline_eval.yaml` | Nested eval          | Evaluate nested pipeline      |
+| Advanced   | `dynamic_adapter_train.yaml` | Dynamic wiring train   | Auto-wire inputs for training |
+| Advanced   | `dynamic_adapter_eval.yaml` | Dynamic wiring eval      | Auto-wire inputs for eval     |
+
 
 ## Basic Usage
 
@@ -239,44 +246,6 @@ python -m mlproject.src.pipeline.dag_run tune \
 ```
 
 ---
-
-## Training with Profiling
-
-Pipeline `standard_train.yaml` includes a **profiling step** that automatically analyzes pipeline outputs after training:
-
-```bash
-python -m mlproject.src.pipeline.dag_run train \
-    -e mlproject/configs/experiments/tabular.yaml \
-    -p mlproject/configs/pipelines/standard_train.yaml
-```
-
-### What Profiling Reports
-
-```
-============================================================
-[profiling] PIPELINE PROFILING REPORT
-============================================================
-
-[Metrics Summary]
-  evaluate_metrics:
-    - mae: 0.0234
-    - rmse: 0.0456
-    - mape: 2.34
-
-[Cluster Analysis]
-  kmeans_labels:
-    - n_clusters: 5
-    - balance_ratio: 0.72
-    - distribution: {0: 1200, 1: 980, 2: 1100, 3: 850, 4: 1050}
-
-[Prediction Statistics]
-  inference_predictions:
-    - mean: 0.523, std: 0.156
-    - range: [0.012, 0.987]
-
-============================================================
-```
-
 ### Pipeline Flow with Profiling
 
 ```
@@ -286,18 +255,6 @@ load_data → preprocess → train_model → evaluate → profiling → log_resu
                                             • Metrics summary
                                             • Cluster distributions
                                             • Prediction statistics
-```
-
-### Custom Profiling Configuration
-
-```yaml
-# In pipeline YAML
-- id: "profiling"
-  type: "profiling"
-  enabled: true
-  depends_on: ["evaluate"]
-  exclude_keys: ["cfg", "preprocessor", "df", "train_df"]  # Skip these keys
-  include_keys: []  # Empty = profile all (except excluded)
 ```
 
 ---
@@ -310,7 +267,7 @@ Automatically generate evaluation and serving configs from your training config:
 
 ```bash
 python -m mlproject.src.pipeline.dag_run generate \
-    --train-config mlproject/configs/experiments/tabular.yaml \
+    --train-config mlproject/configs/pipelines/standard_train.yaml \
     --output-dir mlproject/configs/generated \
     --alias latest
 ```
@@ -321,81 +278,46 @@ python -m mlproject.src.pipeline.dag_run generate \
 [RUN] GENERATING CONFIGS
 ============================================================
 
-[RUN] Source: mlproject/configs/experiments/tabular.yaml
+[RUN] Source: mlproject/configs/pipelines/standard_train.yaml
 [RUN] Output: mlproject/configs/generated
-[ConfigGenerator] Saved: mlproject/configs/generated/tabular_eval.yaml
-[ConfigGenerator] Saved: mlproject/configs/generated/tabular_serve.yaml
+[ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_eval.yaml
+[ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_serve.yaml
 
 Generated configs:
-  - Eval:  mlproject/configs/generated/tabular_eval.yaml
-  - Serve: mlproject/configs/generated/tabular_serve.yaml
+  - Eval:  mlproject/configs/generated/standard_train_eval.yaml
+  - Serve: mlproject/configs/generated/standard_train_serve.yaml
 ```
-
-### Generate Only Eval Config
-
-```bash
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/experiments/tabular.yaml \
-    -o mlproject/configs/generated \
-    -a latest \
-    --type eval
-```
-
-### Generate Only Serve Config
-
-```bash
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/experiments/tabular.yaml \
-    -o mlproject/configs/generated \
-    -a staging \
-    --type serve
-```
-
 
 ## Run Eval with Generated Config
 
-After generating configs, run evaluation:
+After generating configs, run evaluation, serve:
 
 ```bash
 # Step 1: Generate configs
 python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/experiments/tabular.yaml \
+    -t mlproject/configs/pipelines/standard_train.yaml \
     -o mlproject/configs/generated \
     -a latest
 
 # Step 2: Run evaluation with generated config
 python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/generated/tabular_eval.yaml \
-    -a latest
-```
-
-### Using Different Aliases
-
-```bash
-# Evaluate latest model
-python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/generated/tabular_eval.yaml \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/standard_train_eval.yaml \
     -a latest
 
-# Evaluate production model
-python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/generated/tabular_eval.yaml \
-    -a production
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/standard_train.yaml \
+    -o mlproject/configs/generated \
+    -a latest \
+    --type serve
 
-# Evaluate staging model
-python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/generated/tabular_eval.yaml \
-    -a staging
-```
-
-### Run Serve with Generated Config
-
-```bash
 python -m mlproject.src.pipeline.dag_run serve \
-    -e mlproject/configs/generated/tabular_serve.yaml \
-    -i ./test_data.csv \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/standard_train_serve.yaml \
+    -i ./sample_input.csv \
     -a latest
 ```
+
 
 ## Advanced Pipeline Examples
 
@@ -509,17 +431,18 @@ This enables:
 
 ## Step Types Reference
 
-| Type | Description | Key Parameters |
-|------|-------------|----------------|
-| `data_loader` | Load data from CSV/Feast | - |
-| `preprocessor` | Fit/transform features | `is_train`, `alias` |
-| `trainer` | Train model | `output_as_feature`, `use_tuned_params` |
-| `mlflow_loader` | Load from MLflow Registry | `alias` |
-| `tuner` | Optuna hyperparameter search | `n_trials` |
-| `profiling` | Analyze pipeline outputs | `include_keys`, `exclude_keys` |
-| `parallel` | Execute branches concurrently | `branches`, `max_workers` |
-| `branch` | Conditional execution | `condition`, `if_true`, `if_false` |
-| `clustering` | Clustering with auto-feature output | `model_name`, `output_as_feature` |
+| Type            | Description                         | Implementation                               |
+| --------------- | ----------------------------------- | -------------------------------------------- |
+| `data_loader`   | Load data (CSV/Feast)               | `data_loader_step.py`                        |
+| `preprocessor`  | Fit/transform features              | `preprocessor_step.py`                       |
+| `trainer`       | Train model                         | `trainer_step.py`, `framework_model_step.py` |
+| `mlflow_loader` | Load from MLflow Registry           | `mlflow_loader_step.py`                      |
+| `tuner`         | Optuna hyperparameter search        | `tuner_step.py`                              |
+| `profiling`     | Pipeline output statistics          | `profiling_step.py`, `advanced_step.py`      |
+| `clustering`    | Clustering with auto-feature output | `advanced_step.py`                           |
+| `parallel`      | Run branches concurrently           | `dynamic_adapter_step.py`                    |
+| `branch`        | Conditional execution               | `dynamic_adapter_step.py`                    |
+
 
 ---
 

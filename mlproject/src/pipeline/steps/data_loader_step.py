@@ -30,16 +30,6 @@ class DataLoaderStep(BasePipelineStep):
         Whether data was pre-split.
     data_size : int
         Number of samples (for conditional branching).
-
-    Wiring Example
-    --------------
-    ::
-
-        - id: "load_data"
-          type: "data_loader"
-          wiring:
-            outputs:
-              df: "raw_data"
     """
 
     DEFAULT_OUTPUTS = {

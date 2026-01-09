@@ -219,7 +219,6 @@ class BasePipelineStep(ABC):
                 f"Step '{self.step_id}': Required input '{local_name}' "
                 f"not found at key '{context_key}'. Available: {available}"
             )
-
         return value
 
     def set_output(
