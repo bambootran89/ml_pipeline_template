@@ -29,6 +29,7 @@ class DynamicAdapterStep(BasePipelineStep):
         self.artifact_type: str = kwargs.get("artifact_type", "component")
         self.instance_key: Optional[str] = kwargs.get("instance_key")
         self.method_params: dict[str, Any] = kwargs.get("method_params", {})
+        self.output_as_feature = kwargs.get("output_as_feature", False)
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Execute dynamic step logic with automatic argument alignment."""

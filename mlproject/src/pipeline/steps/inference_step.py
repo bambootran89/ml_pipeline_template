@@ -87,11 +87,14 @@ class InferenceStep(BasePipelineStep):
             win: int = int(
                 self.cfg.experiment.get("hyperparams", {}).get("input_chunk_length", 24)
             )
+            wout: int = int(
+                self.cfg.experiment.get("hyperparams", {}).get("out_chunk_length", 6)
+            )
 
             if entity_key in df.columns:
                 arr_list: List[np.ndarray] = [
                     self._prepare_input_window(
-                        g.drop(columns=[entity_key], errors="ignore"), win
+                        g.drop(columns=[entity_key], errors="ignore"), win, wout
                     )
                     for _, g in df.groupby(entity_key)
                 ]
@@ -99,7 +102,7 @@ class InferenceStep(BasePipelineStep):
                 x = np.vstack(arr_list).astype(np.float32)
                 print(f"[{self.step_id}] Input window shape: {x.shape}")
             else:
-                x = self._prepare_input_window(df, win).astype(np.float32)
+                x = self._prepare_input_window(df, win, wout).astype(np.float32)
         else:
             print(f"[{self.step_id}] Tabular input, using full DataFrame")
             x = df.values.astype(np.float32)
@@ -109,9 +112,6 @@ class InferenceStep(BasePipelineStep):
         y: np.ndarray = model.predict(x)
         print(f"[{self.step_id}] Output shape: {y.shape}")
 
-        if hasattr(y, "flatten") and len(y) > 0:
-            print(f"[{self.step_id}] First 10 values: {y[:10]}")
-
         # Store output using wiring
         self.set_output(context, "predictions", y)
 
@@ -119,7 +119,7 @@ class InferenceStep(BasePipelineStep):
         return context
 
     def _prepare_input_window(
-        self, df: pd.DataFrame, input_chunk_length: int
+        self, df: pd.DataFrame, input_chunk_length: int, out_chunk_length: int
     ) -> np.ndarray:
         """Build model input window for prediction.
 
@@ -129,7 +129,8 @@ class InferenceStep(BasePipelineStep):
             Preprocessed DataFrame.
         input_chunk_length : int
             Sequence length required by model.
-
+        out_chunk_length : int
+            Sequence output required by model.
         Returns
         -------
         np.ndarray
@@ -140,11 +141,16 @@ class InferenceStep(BasePipelineStep):
         ValueError
             If input has fewer rows than input_chunk_length.
         """
-        seq_len: int = input_chunk_length
-        if len(df) < seq_len:
-            raise ValueError(f"Input data has {len(df)} rows, need at least {seq_len}")
-        window: np.ndarray = df.iloc[-seq_len:].values
-        return window[np.newaxis, :].astype(np.float32)
+        seq_len = input_chunk_length
+        step = out_chunk_length
+        n_rows = len(df)
+        if n_rows < seq_len:
+            raise ValueError(f"Input data has {n_rows} rows, need at least {seq_len}")
+        windows = []
+        for start in range(0, n_rows - seq_len + 1, step):
+            window = df.iloc[start : start + seq_len].values
+            windows.append(window)
+        return np.array(windows, dtype=np.float32)
 
 
 # Register step type
