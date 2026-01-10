@@ -44,8 +44,6 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
 - [Preprocessing](docs/preprocessing.md)
 - [Adding New Model](docs/adding_new_model.md)
 
----
-
 # Getting Started
 ## 1. Prerequisites
 Python 3.10+
@@ -109,8 +107,6 @@ python -m mlproject.src.pipeline.compat.v1.run serve \
   --input ./sample_input.csv \
   --alias latest
 ```
-
----
 
 # DAG-Based Pipeline System (New!)
 
@@ -240,7 +236,6 @@ python -m mlproject.src.pipeline.dag_run tune \
     -n 50  # number of trials
 ```
 
----
 ### Pipeline Flow with Profiling
 
 ```
@@ -251,148 +246,6 @@ load_data → preprocess → train_model → evaluate → profiling → log_resu
                                             • Cluster distributions
                                             • Prediction statistics
 ```
-
----
-
-## Auto-Generate Eval/Serve Configs
-
-Automatically generate evaluation and serving configs from your training config:
-
-### Generate Both Configs
-
-```bash
-python -m mlproject.src.pipeline.dag_run generate \
-    --train-config mlproject/configs/pipelines/standard_train.yaml \
-    --output-dir mlproject/configs/generated \
-    --alias latest
-
-python -m mlproject.src.pipeline.dag_run generate \
-    --train-config mlproject/configs/pipelines/kmeans_then_xgboost.yaml \
-    --output-dir mlproject/configs/generated \
-    --alias latest
-
-python -m mlproject.src.pipeline.dag_run generate \
-    --train-config mlproject/configs/pipelines/nested_suppipeline.yaml \
-    --output-dir mlproject/configs/generated \
-    --alias latest
-
-```
-
-**Output:**
-```
-============================================================
-[RUN] GENERATING CONFIGS
-============================================================
-
-[RUN] Source: mlproject/configs/pipelines/standard_train.yaml
-[RUN] Output: mlproject/configs/generated
-[ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_eval.yaml
-[ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_serve.yaml
-
-Generated configs:
-  - Eval:  mlproject/configs/generated/standard_train_eval.yaml
-  - Serve: mlproject/configs/generated/standard_train_serve.yaml
-```
-
-## Run Eval with Generated Config
-
-After generating configs, run evaluation, serve:
-
-```bash
-# Step 1: Generate configs
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/standard_train.yaml \
-    -o mlproject/configs/generated \
-    -a latest
-
-# Step 2: Run evaluation with generated config
-python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/standard_train_eval.yaml \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/standard_train.yaml \
-    -o mlproject/configs/generated \
-    -a latest \
-    --type serve
-
-python -m mlproject.src.pipeline.dag_run serve \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/standard_train_serve.yaml \
-    -i ./sample_input.csv \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/nested_suppipeline.yaml \
-    -o mlproject/configs/generated \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/nested_suppipeline_eval.yaml \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/nested_suppipeline.yaml \
-    -o mlproject/configs/generated \
-    -a latest \
-    --type serve
-
-python -m mlproject.src.pipeline.dag_run serve \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/nested_suppipeline_serve.yaml \
-    -i ./sample_input.csv \
-    -a latest
-
-
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/conditional_branch.yaml \
-    -o mlproject/configs/generated \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/conditional_branch_eval.yaml \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/conditional_branch.yaml \
-    -o mlproject/configs/generated \
-    -a latest \
-    --type serve
-
-python -m mlproject.src.pipeline.dag_run serve \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/conditional_branch_serve.yaml \
-    -i ./sample_input.csv \
-    -a latest
-
-
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/parallel_ensemble.yaml \
-    -o mlproject/configs/generated \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run eval \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/parallel_ensemble_eval.yaml \
-    -a latest
-
-python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/parallel_ensemble.yaml \
-    -o mlproject/configs/generated \
-    -a latest \
-    --type serve
-
-python -m mlproject.src.pipeline.dag_run serve \
-    -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/parallel_ensemble_serve.yaml \
-    -i ./sample_input.csv \
-    -a latest
-
-```
-
 
 ## Advanced Pipeline Examples
 
@@ -519,7 +372,128 @@ This enables:
 | `branch`        | Conditional execution               | `dynamic_adapter_step.py`                    |
 
 
----
+
+## Auto-Generate Eval/Serve Configs
+
+Automatically generate evaluation and serving configs from your training config:
+
+### Generate Both Configs
+
+```bash
+python -m mlproject.src.pipeline.dag_run generate \
+    --train-config mlproject/configs/pipelines/standard_train.yaml \
+    --output-dir mlproject/configs/generated \
+    --alias latest
+
+```
+
+**Output:**
+```
+============================================================
+[RUN] GENERATING CONFIGS
+============================================================
+
+[RUN] Source: mlproject/configs/pipelines/standard_train.yaml
+[RUN] Output: mlproject/configs/generated
+[ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_eval.yaml
+[ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_serve.yaml
+
+Generated configs:
+  - Eval:  mlproject/configs/generated/standard_train_eval.yaml
+  - Serve: mlproject/configs/generated/standard_train_serve.yaml
+```
+
+## Run Eval with Generated Config
+
+After generating configs, run evaluation, serve:
+
+```bash
+# Generate configs of standard_train.yaml
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/standard_train.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/standard_train_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/standard_train_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
+# Generate configs of nested_suppipeline.yaml
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/nested_suppipeline.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
+# Generate configs of conditional_branch.yaml
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/conditional_branch.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/conditional_branch_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/conditional_branch_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
+# Generate configs of parallel_ensemble.yaml
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/parallel_ensemble.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
+# Generate configs of dynamic_adapter_train.yaml
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/dynamic_adapter_train.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/dynamic_adapter_eval_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/dynamic_adapter_eval_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
+```
 
 # Feature Store Integration
 
@@ -566,8 +540,6 @@ Run the serving stage with automatic feature loading from Feast
 python -m mlproject.src.pipeline.compat.v1.run serve \
     --config mlproject/configs/experiments/etth1_feast.yaml
 ```
-
----
 
 # Workflows & Capabilities
 
@@ -623,8 +595,6 @@ curl -X POST http://localhost:8000/predict/feast \
   -H "Content-Type: application/json" \
   -d '{"time_point":"now","entities":[1,2,3,4,5],"entity_key":"location_id"}'
 ```
-
----
 
 # Docker & Kubernetes
 
