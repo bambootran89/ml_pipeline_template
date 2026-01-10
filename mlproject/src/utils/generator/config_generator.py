@@ -6,17 +6,22 @@ from typing import Dict
 
 from omegaconf import DictConfig, OmegaConf
 
+from .api_generator_mixin import ApiGeneratorMixin
 from .eval_pipeline_mixin import EvalPipelineMixin
 from .serve_pipeline_mixin import ServePipelineMixin
 from .tune_mixin import TuneMixin
 
 
-class ConfigGenerator(EvalPipelineMixin, ServePipelineMixin, TuneMixin):
+class ConfigGenerator(
+    EvalPipelineMixin, ServePipelineMixin, TuneMixin, ApiGeneratorMixin
+):
     """Expert pipeline configuration automation for eval/serve workloads.
 
     Loads a base training YAML configuration and generates transformed pipeline
     configs for evaluation or serving workloads. This generator does not modify
     training logic or saved MLflow artifacts, only re-wires dependencies.
+
+    Also supports generating API code (FastAPI or Ray Serve) from serve configs.
     """
 
     def __init__(self, train_config_path: str) -> None:
