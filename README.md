@@ -428,7 +428,7 @@ python -m mlproject.src.pipeline.dag_run serve \
 python -m mlproject.src.pipeline.dag_run tune \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/generated/standard_train_tune.yaml \
-    -n 50  # number of trials
+    -n 5  # number of trials
 
 # Generate configs of kmeans_then_xgboost.yaml
 python -m mlproject.src.pipeline.dag_run generate \
@@ -447,6 +447,11 @@ python -m mlproject.src.pipeline.dag_run serve \
     -i ./sample_input.csv \
     -a latest
 
+python -m mlproject.src.pipeline.dag_run tune \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/kmeans_then_xgboost_tune.yaml \
+    -n 5
+
 # Generate configs of nested_suppipeline.yaml
 python -m mlproject.src.pipeline.dag_run generate \
     -t mlproject/configs/pipelines/nested_suppipeline.yaml \
@@ -464,6 +469,11 @@ python -m mlproject.src.pipeline.dag_run serve \
     -i ./sample_input.csv \
     -a latest
 
+python -m mlproject.src.pipeline.dag_run tune \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_tune.yaml \
+    -n 5
+
 # Generate configs of conditional_branch.yaml
 python -m mlproject.src.pipeline.dag_run generate \
     -t mlproject/configs/pipelines/conditional_branch.yaml \
@@ -475,11 +485,16 @@ python -m mlproject.src.pipeline.dag_run eval \
     -p mlproject/configs/generated/conditional_branch_eval.yaml \
     -a latest
 
-python -m mlproject.src.pipeline.dag_run serve \
+# python -m mlproject.src.pipeline.dag_run serve \
+#     -e mlproject/configs/experiments/etth3.yaml \
+#     -p mlproject/configs/generated/conditional_branch_serve.yaml \
+#     -i ./sample_input.csv \
+#     -a latest
+
+python -m mlproject.src.pipeline.dag_run tune \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/conditional_branch_serve.yaml \
-    -i ./sample_input.csv \
-    -a latest
+    -p mlproject/configs/generated/conditional_branch_tune.yaml \
+    -n 5
 
 # Generate configs of parallel_ensemble.yaml
 python -m mlproject.src.pipeline.dag_run generate \
@@ -498,6 +513,11 @@ python -m mlproject.src.pipeline.dag_run serve \
     -i ./sample_input.csv \
     -a latest
 
+python -m mlproject.src.pipeline.dag_run tune \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_tune.yaml \
+    -n 5
+
 # Generate configs of dynamic_adapter_train.yaml
 python -m mlproject.src.pipeline.dag_run generate \
     -t mlproject/configs/pipelines/dynamic_adapter_train.yaml \
@@ -514,6 +534,11 @@ python -m mlproject.src.pipeline.dag_run serve \
     -p mlproject/configs/generated/dynamic_adapter_train_serve.yaml \
     -i ./sample_input.csv \
     -a latest
+
+python -m mlproject.src.pipeline.dag_run tune \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/dynamic_adapter_train_tune.yaml \
+    -n 5
 
 ```
 
