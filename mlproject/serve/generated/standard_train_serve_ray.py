@@ -140,7 +140,14 @@ class ServeAPI:
         """Initialize API."""
         self.preprocess_handle = preprocess_handle
         self.model_handle = model_handle
-        self.input_chunk_length = 24  # TODO: Get from config
+        self.cfg = ConfigLoader.load(""mlproject/configs/pipelines/standard_train.yaml"")
+        self.input_chunk_length = self._get_input_chunk_length()
+
+    def _get_input_chunk_length(self) -> int:
+        """Get input chunk length from config."""
+        if hasattr(self.cfg, "experiment") and hasattr(self.cfg.experiment, "hyperparams"):
+            return int(self.cfg.experiment.hyperparams.get("input_chunk_length", 24))
+        return 24
 
     @app.post("/predict", response_model=PredictResponse)
     async def predict(self, request: PredictRequest) -> PredictResponse:

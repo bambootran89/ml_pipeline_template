@@ -59,12 +59,12 @@ class ModelService:
         experiment_name = self.cfg.experiment.get("name", "conditional_branch_serve")
 
         # Load models
-        self.models["fitted_train_tft"] = self.mlflow_manager.load_component(
-            name=f"{experiment_name}_train_tft",
-            alias="production",
-        )
         self.models["fitted_train_xgb"] = self.mlflow_manager.load_component(
             name=f"{experiment_name}_train_xgb",
+            alias="production",
+        )
+        self.models["fitted_train_tft"] = self.mlflow_manager.load_component(
+            name=f"{experiment_name}_train_tft",
             alias="production",
         )
 
@@ -144,7 +144,14 @@ class ServeAPI:
         """Initialize API."""
         self.preprocess_handle = preprocess_handle
         self.model_handle = model_handle
-        self.input_chunk_length = 24  # TODO: Get from config
+        self.cfg = ConfigLoader.load(""mlproject/configs/pipelines/conditional_branch.yaml"")
+        self.input_chunk_length = self._get_input_chunk_length()
+
+    def _get_input_chunk_length(self) -> int:
+        """Get input chunk length from config."""
+        if hasattr(self.cfg, "experiment") and hasattr(self.cfg.experiment, "hyperparams"):
+            return int(self.cfg.experiment.hyperparams.get("input_chunk_length", 24))
+        return 24
 
     @app.post("/predict", response_model=PredictResponse)
     async def predict(self, request: PredictRequest) -> PredictResponse:
