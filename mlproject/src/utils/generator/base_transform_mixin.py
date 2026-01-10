@@ -177,6 +177,29 @@ class BaseTransformMixin:
                 return step
         return None
 
+    def _search_in_sub_pipeline(self, step: Any, step_id: str) -> Optional[Any]:
+        """Search for step ID in a sub-pipeline step."""
+        if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
+            return self._get_step_by_id_recursive(step.pipeline.steps, step_id)
+        return None
+
+    def _search_in_branch(self, step: Any, step_id: str) -> Optional[Any]:
+        """Search for step ID in a branch step."""
+        for branch_name in ["if_true", "if_false"]:
+            if hasattr(step, branch_name):
+                branch = getattr(step, branch_name)
+                if hasattr(branch, "id") and branch.id == step_id:
+                    return branch
+        return None
+
+    def _search_in_parallel(self, step: Any, step_id: str) -> Optional[Any]:
+        """Search for step ID in a parallel step."""
+        if hasattr(step, "branches"):
+            for branch in step.branches:
+                if hasattr(branch, "id") and branch.id == step_id:
+                    return branch
+        return None
+
     def _get_step_by_id_recursive(
         self, steps: List[Any], step_id: str
     ) -> Optional[Any]:
@@ -184,24 +207,19 @@ class BaseTransformMixin:
         for step in steps:
             if hasattr(step, "id") and step.id == step_id:
                 return step
+
             if step.type == "sub_pipeline":
-                if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
-                    found = self._get_step_by_id_recursive(
-                        step.pipeline.steps, step_id
-                    )
-                    if found:
-                        return found
+                found = self._search_in_sub_pipeline(step, step_id)
+                if found:
+                    return found
             elif step.type == "branch":
-                for branch_name in ["if_true", "if_false"]:
-                    if hasattr(step, branch_name):
-                        branch = getattr(step, branch_name)
-                        if hasattr(branch, "id") and branch.id == step_id:
-                            return branch
+                found = self._search_in_branch(step, step_id)
+                if found:
+                    return found
             elif step.type == "parallel":
-                if hasattr(step, "branches"):
-                    for branch in step.branches:
-                        if hasattr(branch, "id") and branch.id == step_id:
-                            return branch
+                found = self._search_in_parallel(step, step_id)
+                if found:
+                    return found
         return None
 
     def _find_parent_sub_pipeline(
