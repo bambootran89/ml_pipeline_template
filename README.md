@@ -484,12 +484,12 @@ python -m mlproject.src.pipeline.dag_run generate \
 
 python -m mlproject.src.pipeline.dag_run eval \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/dynamic_adapter_eval_eval.yaml \
+    -p mlproject/configs/generated/dynamic_adapter_train_eval.yaml \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run serve \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/dynamic_adapter_eval_serve.yaml \
+    -p mlproject/configs/generated/dynamic_adapter_train_serve.yaml \
     -i ./sample_input.csv \
     -a latest
 

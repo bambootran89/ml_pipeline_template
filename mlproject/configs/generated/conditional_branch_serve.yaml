@@ -35,7 +35,8 @@ pipeline:
       id: train_tft_inference
       type: inference
       enabled: true
-      depends_on: []
+      depends_on:
+      - preprocess
       output_as_feature: false
       wiring:
         inputs:
@@ -47,7 +48,8 @@ pipeline:
       id: train_xgb_inference
       type: inference
       enabled: true
-      depends_on: []
+      depends_on:
+      - preprocess
       output_as_feature: false
       wiring:
         inputs:
