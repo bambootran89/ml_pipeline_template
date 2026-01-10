@@ -1,4 +1,4 @@
-"""Auto-generated Ray Serve deployment for conditional_branch_serve.
+"""Auto-generated Ray Serve deployment for kmeans_then_xgboost_serve.
 
 Generated from serve configuration.
 """
@@ -16,7 +16,7 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 
 app = FastAPI(
-    title="conditional_branch_serve Ray Serve API",
+    title="kmeans_then_xgboost_serve Ray Serve API",
     version="1.0.0",
 )
 
@@ -56,15 +56,15 @@ class ModelService:
         if not self.mlflow_manager.enabled:
             return
 
-        experiment_name = self.cfg.experiment.get("name", "conditional_branch_serve")
+        experiment_name = self.cfg.experiment.get("name", "kmeans_then_xgboost_serve")
 
         # Load models
-        self.models["fitted_train_tft"] = self.mlflow_manager.load_component(
-            name=f"{experiment_name}_train_tft",
+        self.models["fitted_kmeans_features"] = self.mlflow_manager.load_component(
+            name=f"{experiment_name}_kmeans_features",
             alias="production",
         )
-        self.models["fitted_train_xgb"] = self.mlflow_manager.load_component(
-            name=f"{experiment_name}_train_xgb",
+        self.models["fitted_xgboost_model"] = self.mlflow_manager.load_component(
+            name=f"{experiment_name}_xgboost_model",
             alias="production",
         )
 
@@ -162,7 +162,7 @@ class ServeAPI:
 
             # Predict
             preds = await self.model_handle.predict.remote(
-                x_input, "fitted_train_tft"
+                x_input, "fitted_kmeans_features"
             )
 
             return PredictResponse(predictions=preds)
@@ -190,7 +190,7 @@ def main() -> None:
     serve.start(detached=True)
 
     # Bind services
-    config_path = "mlproject/configs/pipelines/conditional_branch.yaml"
+    config_path = "mlproject/configs/pipelines/kmeans_then_xgboost.yaml"
     model_service = ModelService.bind(config_path)
     preprocess_service = PreprocessService.bind(config_path)
 
