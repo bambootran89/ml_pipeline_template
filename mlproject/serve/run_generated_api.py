@@ -22,6 +22,7 @@ Usage:
 import argparse
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 
 from mlproject.src.utils.generator.config_generator import ConfigGenerator
@@ -73,21 +74,26 @@ def generate_and_run(
     # Step 2: Modify generated code to use custom host/port
     print("\n[2/3] Configuring server settings...")
 
-    with open(api_path, "r") as f:
+    with open(api_path, "r", encoding="utf-8") as f:
         code = f.read()
 
     # Inject host/port for FastAPI
     if framework == "fastapi":
-        code = code.replace(
-            'uvicorn.run(\n        "mlproject.serve.api:app",\n        host="0.0.0.0",\n        port=8000,',
-            f'uvicorn.run(\n        app,\n        host="{host}",\n        port={port},',
+        old_uvicorn_call = (
+            'uvicorn.run(\n        "mlproject.serve.api:app",\n        '
+            'host="0.0.0.0",\n        port=8000,'
         )
+        new_uvicorn_call = (
+            f'uvicorn.run(\n        app,\n        host="{host}",\n        '
+            f'port={port},'
+        )
+        code = code.replace(old_uvicorn_call, new_uvicorn_call)
         code = code.replace(
             'uvicorn.run(app, host="0.0.0.0", port=8000)',
             f'uvicorn.run(app, host="{host}", port={port})',
         )
 
-    with open(api_path, "w") as f:
+    with open(api_path, "w", encoding="utf-8") as f:
         f.write(code)
 
     print(f"Configured: {host}:{port}")
@@ -112,8 +118,6 @@ def generate_and_run(
         print("=" * 60)
     except Exception as e:
         print(f"\nServer failed: {e}")
-        import traceback
-
         traceback.print_exc()
         sys.exit(1)
 
@@ -184,7 +188,7 @@ Examples:
 
         if not Path(train_config).exists():
             print(f"Could not auto-infer train config from: {args.serve_config}")
-            print(f"  Please provide --train-config explicitly")
+            print("  Please provide --train-config explicitly")
             sys.exit(1)
 
         print(f"Auto-inferred train config: {train_config}")

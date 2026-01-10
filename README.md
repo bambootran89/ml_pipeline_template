@@ -44,6 +44,8 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
 - [Preprocessing](docs/preprocessing.md)
 - [Adding New Model](docs/adding_new_model.md)
 - [Generating Configs](docs/generating_configs.md)
+- [API Generation and Running](docs/readme_api.md)
+- [API Testing Examples](docs/api_examples.md)
 
 # Getting Started
 ## 1. Prerequisites

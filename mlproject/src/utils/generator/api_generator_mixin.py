@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 
 class ApiGeneratorMixin:
@@ -144,21 +144,25 @@ class ServeService:
 '''
 
         if preprocessor:
-            code += f"""            self.preprocessor = self.mlflow_manager.load_component(
-                name=f"{{experiment_name}}_preprocessor",
-                alias="production",
+            code += """            self.preprocessor = (
+                self.mlflow_manager.load_component(
+                    name=f"{experiment_name}_preprocessor",
+                    alias="production",
+                )
             )
 """
 
-        code += f"""
+        code += """
             # Load models
 """
         for model_key in set(model_keys):
             # Extract step_id from load_map
             step_id = load_map.get(model_key, "model")
-            code += f"""            self.models["{model_key}"] = self.mlflow_manager.load_component(
-                name=f"{{experiment_name}}_{step_id}",
-                alias="production",
+            code += f"""            self.models["{model_key}"] = (
+                self.mlflow_manager.load_component(
+                    name=f"{{experiment_name}}_{step_id}",
+                    alias="production",
+                )
             )
 """
 
@@ -171,8 +175,11 @@ class ServeService:
 
     def _get_input_chunk_length(self) -> int:
         """Get input chunk length from config."""
-        if hasattr(self.cfg, "experiment") and hasattr(self.cfg.experiment, "hyperparams"):
-            return int(self.cfg.experiment.hyperparams.get("input_chunk_length", 24))
+        if hasattr(self.cfg, "experiment") and hasattr(
+            self.cfg.experiment, "hyperparams"
+        ):
+            hyperparams = self.cfg.experiment.hyperparams
+            return int(hyperparams.get("input_chunk_length", 24))
         return 24
 
     def predict(self, features: pd.DataFrame, model_key: str) -> List[float]:
@@ -310,9 +317,11 @@ class ModelService:
 '''
         for model_key in set(model_keys):
             step_id = load_map.get(model_key, "model")
-            code += f"""        self.models["{model_key}"] = self.mlflow_manager.load_component(
-            name=f"{{experiment_name}}_{step_id}",
-            alias="production",
+            code += f"""        self.models["{model_key}"] = (
+            self.mlflow_manager.load_component(
+                name=f"{{experiment_name}}_{step_id}",
+                alias="production",
+            )
         )
 """
 
@@ -407,8 +416,11 @@ class ServeAPI:
 
     def _get_input_chunk_length(self) -> int:
         """Get input chunk length from config."""
-        if hasattr(self.cfg, "experiment") and hasattr(self.cfg.experiment, "hyperparams"):
-            return int(self.cfg.experiment.hyperparams.get("input_chunk_length", 24))
+        if hasattr(self.cfg, "experiment") and hasattr(
+            self.cfg.experiment, "hyperparams"
+        ):
+            hyperparams = self.cfg.experiment.hyperparams
+            return int(hyperparams.get("input_chunk_length", 24))
         return 24
 
     @app.post("/predict", response_model=PredictResponse)
@@ -504,8 +516,6 @@ if __name__ == "__main__":
             ValueError: If framework is not supported.
         """
         # Load serve config
-        from omegaconf import OmegaConf
-
         cfg = OmegaConf.load(serve_config_path)
         assert isinstance(cfg, DictConfig)
 

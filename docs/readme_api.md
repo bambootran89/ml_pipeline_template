@@ -87,13 +87,13 @@ mlproject/serve/generated/
 
 ```bash
 # FastAPI (auto-generates code and runs immediately)
-./serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
 
 # Ray Serve
-./serve_api.sh -f ray mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -f ray mlproject/configs/generated/standard_train_serve.yaml
 
 # Custom port
-./serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 ### Method 2: Run Pre-generated Files
@@ -273,7 +273,7 @@ python -m mlproject.src.pipeline.dag_run generate \
 **Step 2: Generate and run API**
 
 ```bash
-./serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 **Step 3: Test**
@@ -295,7 +295,7 @@ curl -X POST http://localhost:8000/predict \
 **Step 1: Generate and run**
 
 ```bash
-./serve_api.sh mlproject/configs/generated/conditional_branch_serve.yaml
+mlproject/serve_api.sh mlproject/configs/generated/conditional_branch_serve.yaml
 ```
 
 **Step 2: Test**
@@ -310,7 +310,7 @@ curl http://localhost:8000/health
 **Step 1: Generate and run with Ray**
 
 ```bash
-./serve_api.sh -f ray mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -f ray mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 **Step 2: Access Ray Dashboard**
@@ -327,7 +327,7 @@ curl http://localhost:8000/health
 
 ```bash
 # Run on port 9000
-./serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
 
 # Test with custom port
 curl http://localhost:9000/health
@@ -378,7 +378,7 @@ ab -n 1000 -c 10 -T 'application/json' \
 
 ```bash
 # Use different port
-./serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 ### Module Not Found
@@ -388,7 +388,7 @@ ab -n 1000 -c 10 -T 'application/json' \
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
 # Then run
-./serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 ### Model Not Loading
@@ -438,10 +438,10 @@ python -c "from mlproject.src.utils.generator.config_generator import ConfigGene
 
 ```bash
 # Quick run (auto-generate + run)
-./serve_api.sh <serve_config.yaml>
+mlproject/serve_api.sh <serve_config.yaml>
 
 # With options
-./serve_api.sh -f <fastapi|ray> -p <port> -h <host> <serve_config.yaml>
+mlproject/serve_api.sh -f <fastapi|ray> -p <port> -h <host> <serve_config.yaml>
 
 # Python method
 python serve_api.py --serve-config <serve_config.yaml> \
