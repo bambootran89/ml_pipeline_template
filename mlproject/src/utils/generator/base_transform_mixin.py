@@ -170,17 +170,96 @@ class BaseTransformMixin:
 
         return {p.id for p in all_model_producers}
 
+    def _get_step_by_id(self, steps: List[Any], step_id: str) -> Optional[Any]:
+        """Find a step by ID in a list of steps."""
+        for step in steps:
+            if hasattr(step, "id") and step.id == step_id:
+                return step
+        return None
+
+    def _get_step_by_id_recursive(
+        self, steps: List[Any], step_id: str
+    ) -> Optional[Any]:
+        """Find a step by ID recursively (including sub-pipelines)."""
+        for step in steps:
+            if hasattr(step, "id") and step.id == step_id:
+                return step
+            if step.type == "sub_pipeline":
+                if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
+                    found = self._get_step_by_id_recursive(
+                        step.pipeline.steps, step_id
+                    )
+                    if found:
+                        return found
+            elif step.type == "branch":
+                for branch_name in ["if_true", "if_false"]:
+                    if hasattr(step, branch_name):
+                        branch = getattr(step, branch_name)
+                        if hasattr(branch, "id") and branch.id == step_id:
+                            return branch
+            elif step.type == "parallel":
+                if hasattr(step, "branches"):
+                    for branch in step.branches:
+                        if hasattr(branch, "id") and branch.id == step_id:
+                            return branch
+        return None
+
+    def _find_parent_sub_pipeline(
+        self, steps: List[Any], step_id: str
+    ) -> Optional[str]:
+        """Find the parent sub-pipeline ID of a step.
+
+        Args:
+            steps: List of top-level steps.
+            step_id: ID of step to find parent for.
+
+        Returns:
+            Parent sub-pipeline ID if found, None otherwise.
+        """
+        for step in steps:
+            if step.type == "sub_pipeline":
+                if hasattr(step, "pipeline") and hasattr(step.pipeline, "steps"):
+                    # Check if step_id is in this sub-pipeline
+                    for nested_step in step.pipeline.steps:
+                        if hasattr(nested_step, "id") and nested_step.id == step_id:
+                            return step.id
+        return None
+
     def _is_valid_evaluator_dependency(
         self,
         dep: str,
         model_producer_ids: set[str],
+        train_steps: Optional[List[Any]] = None,
     ) -> bool:
-        """Check whether dependency should be kept for evaluator."""
+        """Check whether dependency should be kept for evaluator.
+
+        Args:
+            dep: Dependency step ID to check.
+            model_producer_ids: Set of model producer step IDs.
+            train_steps: Original training steps for type checking.
+
+        Returns:
+            True if dependency should be kept, False otherwise.
+        """
+        # Filter out tuning steps
         if dep.startswith("tune_"):
             return False
 
+        # Filter out model producer steps (they become evaluators)
         if dep in model_producer_ids:
             return False
+
+        # If we have train_steps, check step type
+        if train_steps:
+            step = self._get_step_by_id_recursive(train_steps, dep)
+            if step:
+                # Filter out datamodule steps (they don't exist in eval mode)
+                if step.type == "datamodule":
+                    return False
+                # Filter out trainer/clustering/framework_model
+                # (they become evaluators)
+                if step.type in ["trainer", "clustering", "framework_model"]:
+                    return False
 
         return True
 
