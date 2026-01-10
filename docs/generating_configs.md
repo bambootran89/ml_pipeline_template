@@ -1,4 +1,4 @@
-# DAG-Based Pipeline System (New!)
+# DAG-Based Pipeline System
 
 ## Why DAG Pipelines?
 
@@ -89,10 +89,12 @@ python -m mlproject.src.pipeline.dag_run generate \
 [RUN] Output: mlproject/configs/generated
 [ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_eval.yaml
 [ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_serve.yaml
+[ConfigGenerator] Successfully generated: mlproject/configs/generated/standard_train_tune.yaml
 
 Generated configs:
   - Eval:  mlproject/configs/generated/standard_train_eval.yaml
   - Serve: mlproject/configs/generated/standard_train_serve.yaml
+  - Tune: mlproject/configs/generated/standard_train_tune.yaml
 ```
 
 ## Basic Usage
@@ -103,7 +105,9 @@ Generated configs:
 python -m mlproject.src.pipeline.dag_run train \
     --experiment mlproject/configs/experiments/etth3.yaml \
     --pipeline mlproject/configs/pipelines/standard_train.yaml
-
+```
+### Generation eval, serve, tune configs
+```bash
 python -m mlproject.src.pipeline.dag_run generate \
     -t mlproject/configs/pipelines/standard_train.yaml \
     -o mlproject/configs/generated \
