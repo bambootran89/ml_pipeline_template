@@ -1,18 +1,33 @@
-# API Testing Examples with Realistic Data
+# API Testing Examples
 
-This document provides realistic API testing examples using actual data structure from ETTh1 dataset.
+Realistic API testing examples using ETTh1 dataset structure from experiment configs.
 
-## Data Structure
+## Configuration
 
-Based on `mlproject/configs/base/data.yaml` and `mlproject/configs/experiments/etth1.yaml`:
+From `mlproject/configs/experiments/etth1.yaml` and `mlproject/configs/base/data.yaml`:
 
-- **Features**: `["HUFL", "MUFL", "mobility_inflow"]`
-- **Target columns**: `["HUFL", "MUFL"]`
-- **Index column**: `"date"`
-- **Input chunk length**: `24` (from `experiment.hyperparams.input_chunk_length`)
-- **Output chunk length**: `6` (model predicts 6 future timesteps)
+```yaml
+# Data configuration
+data:
+  features: ["HUFL", "MUFL", "mobility_inflow"]
+  target_columns: ["HUFL", "MUFL"]
+  index_col: "date"
 
-## Example 1: Minimal Test (cURL)
+# Model configuration
+experiment:
+  hyperparams:
+    input_chunk_length: 24    # Required input timesteps
+    output_chunk_length: 6    # Predicted future timesteps
+    n_features: 3             # Number of input features
+    n_targets: 2              # Number of prediction targets
+```
+
+**Prediction Output:**
+- Model predicts `n_targets * output_chunk_length` values
+- For ETTh1: 2 targets × 6 timesteps = 12 prediction values
+- Format: Flattened array of all predictions
+
+## Example 1: Complete Request (cURL)
 
 ```bash
 curl -X POST http://localhost:8000/predict \
@@ -48,11 +63,16 @@ curl -X POST http://localhost:8000/predict \
   }'
 ```
 
-**Expected Response:**
+**Response:**
+
+12 values (2 targets × 6 timesteps):
 
 ```json
 {
-  "predictions": [5.628, 5.701, 5.823, 5.945, 6.078, 6.201]
+  "predictions": [
+    5.628, 5.701, 5.823, 5.945, 6.078, 6.201,
+    2.234, 2.267, 2.301, 2.334, 2.367, 2.401
+  ]
 }
 ```
 
@@ -61,11 +81,11 @@ curl -X POST http://localhost:8000/predict \
 ```python
 import requests
 
-# Health check first
-health_response = requests.get("http://localhost:8000/health")
-print("Health:", health_response.json())
+# Health check
+response = requests.get("http://localhost:8000/health")
+print("Health:", response.json())
 
-# Prepare prediction payload (24 timesteps required)
+# Prediction request (24 timesteps required)
 payload = {
     "data": {
         "date": [
@@ -96,24 +116,20 @@ payload = {
     }
 }
 
-# Make prediction request
-response = requests.post(
-    "http://localhost:8000/predict",
-    json=payload
-)
+response = requests.post("http://localhost:8000/predict", json=payload)
+result = response.json()
 
-print("Predictions:", response.json())
+print("Predictions:", result["predictions"])
+print("Number of predictions:", len(result["predictions"]))
 ```
 
 ## Example 3: Using Helper Script
-
-Generate test data automatically:
 
 ```python
 from examples.generate_test_data import generate_test_data
 import requests
 
-# Generate 24 timesteps of test data
+# Generate test data (24 timesteps)
 test_data = generate_test_data(num_timesteps=24)
 
 # Make prediction
@@ -122,7 +138,9 @@ response = requests.post(
     json={"data": test_data}
 )
 
-print(response.json())
+result = response.json()
+print(f"Received {len(result['predictions'])} predictions")
+print(result)
 ```
 
 ## Example 4: Load Testing
@@ -160,6 +178,29 @@ ab -n 1000 -c 10 -p test_payload.json -T application/json \
    http://localhost:8000/predict
 ```
 
+## Understanding Output Format
+
+The number of predictions depends on model configuration:
+
+```
+predictions_count = n_targets × output_chunk_length
+```
+
+**For ETTh1 config:**
+- n_targets = 2 (HUFL, MUFL)
+- output_chunk_length = 6
+- predictions_count = 2 × 6 = 12
+
+**Output format (flattened):**
+```python
+[
+  # HUFL predictions (6 timesteps)
+  pred_HUFL_t1, pred_HUFL_t2, pred_HUFL_t3, pred_HUFL_t4, pred_HUFL_t5, pred_HUFL_t6,
+  # MUFL predictions (6 timesteps)
+  pred_MUFL_t1, pred_MUFL_t2, pred_MUFL_t3, pred_MUFL_t4, pred_MUFL_t5, pred_MUFL_t6
+]
+```
+
 ## Common Errors
 
 ### Error: Insufficient Data
@@ -170,32 +211,43 @@ ab -n 1000 -c 10 -p test_payload.json -T application/json \
 }
 ```
 
-**Solution**: Provide exactly 24 timesteps (input_chunk_length)
+**Solution:** Provide exactly `input_chunk_length` timesteps (24 for ETTh1)
 
 ### Error: Missing Features
 
 ```json
 {
-  "detail": "Missing required features: ['HUFL', 'MUFL', 'mobility_inflow']"
+  "detail": "Missing required features"
 }
 ```
 
-**Solution**: Include all three features in the data payload
+**Solution:** Include all features: `["HUFL", "MUFL", "mobility_inflow"]`
 
-### Error: Model Not Loaded
+### Error: Wrong Output Count
 
-```json
-{
-  "status": "unhealthy",
-  "model_loaded": false
-}
+If you expect different number of predictions, check:
+
+```bash
+# Check experiment config
+grep -E "n_targets|output_chunk_length" mlproject/configs/experiments/etth1.yaml
 ```
 
-**Solution**: Check MLflow connection and model availability
+## Configuration Reference
 
-## Reference
+All values are read from configs (no hardcoding):
 
-- Data config: `mlproject/configs/base/data.yaml`
+| Parameter | Config Location | ETTh1 Value |
+|-----------|----------------|-------------|
+| input_chunk_length | experiment.hyperparams | 24 |
+| output_chunk_length | experiment.hyperparams | 6 |
+| n_features | experiment.hyperparams | 3 |
+| n_targets | experiment.hyperparams | 2 |
+| features | data.features | ["HUFL", "MUFL", "mobility_inflow"] |
+| target_columns | data.target_columns | ["HUFL", "MUFL"] |
+
+## See Also
+
 - Experiment config: `mlproject/configs/experiments/etth1.yaml`
+- Data config: `mlproject/configs/base/data.yaml`
 - Helper script: `examples/generate_test_data.py`
 - API documentation: `README_API.md`

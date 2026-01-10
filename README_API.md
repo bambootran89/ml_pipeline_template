@@ -179,6 +179,10 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 
 ## 3. Test APIs
 
+**For complete, realistic testing examples, see:** `API_EXAMPLES.md`
+
+The examples below use ETTh1 dataset structure from experiment configs.
+
 ### Health Check
 
 #### Using curl
@@ -198,25 +202,31 @@ curl http://localhost:8000/health
 
 ### Prediction
 
-#### Using curl
+**Note:** For ETTh1 config, input requires 24 timesteps (input_chunk_length). See `API_EXAMPLES.md` for complete examples.
+
+#### Quick Test (simplified)
 
 ```bash
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
-      "HUFL": [1.0, 2.0, 3.0, 4.0, 5.0],
-      "MUFL": [10.0, 20.0, 30.0, 40.0, 50.0],
-      "mobility_inflow": [100.0, 200.0, 300.0, 400.0, 500.0]
+      "date": ["2020-01-01 00:00:00", ...],
+      "HUFL": [5.827, 5.8, 5.969, ...],
+      "MUFL": [1.599, 1.492, 1.492, ...],
+      "mobility_inflow": [1.234, 1.456, 1.678, ...]
     }
   }'
 ```
 
-#### Expected Response
+**Expected Response (12 predictions = 2 targets × 6 timesteps):**
 
 ```json
 {
-  "predictions": [0.123, 0.456, 0.789]
+  "predictions": [
+    5.628, 5.701, 5.823, 5.945, 6.078, 6.201,
+    2.234, 2.267, 2.301, 2.334, 2.367, 2.401
+  ]
 }
 ```
 
@@ -229,14 +239,12 @@ import requests
 response = requests.get("http://localhost:8000/health")
 print(response.json())
 
-# Prediction
-payload = {
-    "data": {
-        "HUFL": [1.0, 2.0, 3.0, 4.0, 5.0],
-        "MUFL": [10.0, 20.0, 30.0, 40.0, 50.0],
-        "mobility_inflow": [100.0, 200.0, 300.0, 400.0, 500.0]
-    }
-}
+# Prediction with realistic data
+# See API_EXAMPLES.md for complete examples or use helper:
+from examples.generate_test_data import generate_test_data
+
+test_data = generate_test_data(num_timesteps=24)
+payload = {"data": test_data}
 
 response = requests.post(
     "http://localhost:8000/predict",
@@ -280,19 +288,16 @@ python -m mlproject.src.pipeline.dag_run generate \
 
 **Step 3: Test**
 
+See `API_EXAMPLES.md` for complete testing examples with realistic data.
+
 ```bash
 # Health check
 curl http://localhost:8000/health
 
-# Prediction
+# Prediction (see API_EXAMPLES.md for full payload)
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{
-    "data": {
-      "feature1": [1, 2, 3, 4, 5],
-      "feature2": [10, 20, 30, 40, 50]
-    }
-  }'
+  -d @test_payload.json
 ```
 
 ### Example 2: Conditional Branch (Multi-Model)
@@ -307,9 +312,7 @@ curl -X POST http://localhost:8000/predict \
 
 ```bash
 curl http://localhost:8000/health
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"data": {"feature1": [1, 2, 3]}}'
+# See API_EXAMPLES.md for realistic test payloads
 ```
 
 ### Example 3: Ray Serve (Distributed)
@@ -362,19 +365,19 @@ print(f"Generated: {fastapi_path}")
 
 ### Example 6: Load Testing
 
+See `API_EXAMPLES.md` Example 4 for complete load testing guide with realistic data.
+
 ```bash
 # Install apache bench
 sudo apt-get install apache2-utils
+
+# Create test payload (see API_EXAMPLES.md for full payload)
+# request.json should contain 24 timesteps of ETTh1 data
 
 # Run 1000 requests with 10 concurrent connections
 ab -n 1000 -c 10 -T 'application/json' \
    -p request.json \
    http://localhost:8000/predict
-```
-
-request.json:
-```json
-{"data": {"feature1": [1, 2, 3], "feature2": [4, 5, 6]}}
 ```
 
 ---
