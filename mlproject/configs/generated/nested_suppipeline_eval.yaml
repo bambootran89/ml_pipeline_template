@@ -1,0 +1,92 @@
+pipeline:
+  name: nested_suppipeline_eval
+  steps:
+  - id: load_data
+    type: data_loader
+    enabled: true
+  - id: init_artifacts
+    type: mlflow_loader
+    enabled: true
+    alias: latest
+    load_map:
+    - step_id: cluster
+      context_key: fitted_cluster
+    - step_id: train_model
+      context_key: fitted_train_model
+    - step_id: normalize
+      context_key: fitted_normalize
+  - id: feature_pipeline
+    type: sub_pipeline
+    enabled: true
+    depends_on:
+    - load_data
+    isolated: false
+    pipeline:
+      steps:
+      - id: normalize
+        type: preprocessor
+        is_train: false
+        wiring:
+          outputs:
+            data: normalized_data
+        alias: latest
+        instance_key: fitted_normalize
+      - id: cluster
+        type: clustering
+        depends_on:
+        - normalize
+        model_name: kmean
+        output_as_feature: true
+        wiring:
+          inputs:
+            data: normalized_data
+            model: fitted_cluster
+            features: preprocessed_data
+          outputs:
+            features: cluster_features
+            model: fitted_cluster
+  - id: cluster_evaluate
+    type: evaluator
+    enabled: true
+    depends_on:
+    - init_artifacts
+    - feature_pipeline
+    wiring:
+      inputs:
+        features: preprocessed_data
+        model: fitted_cluster
+      outputs:
+        metrics: cluster_metrics
+    step_eval_type: clustering
+  - id: train_evaluate
+    type: evaluator
+    enabled: true
+    depends_on:
+    - init_artifacts
+    - feature_pipeline
+    wiring:
+      inputs:
+        features: preprocessed_data
+        model: fitted_train_model
+        targets: target_data
+      outputs:
+        metrics: train_metrics
+  - id: final_profiling
+    type: profiling
+    enabled: true
+    depends_on:
+    - cluster_evaluate
+    - train_evaluate
+    exclude_keys:
+    - cfg
+    - preprocessor
+    - df
+    - train_df
+    - val_df
+    - test_df
+  - id: log_results
+    type: logger
+    enabled: true
+    depends_on:
+    - cluster_evaluate
+    - train_evaluate
