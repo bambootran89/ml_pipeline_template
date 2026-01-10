@@ -158,7 +158,7 @@ class ConfigGenerator:
         if hasattr(step, "wiring") and "inputs" in step.wiring:
             delattr(step.wiring, "inputs")
 
-    def _transform_clustering_in_pipeline(self, step: Any, alias: str) -> None:
+    def _transform_clustering_in_pipeline(self, step: Any, _alias: str) -> None:
         """Transform clustering step in sub-pipeline."""
         self._setup_clustering_wiring(step)
         self._remove_training_configs(step)
@@ -465,6 +465,85 @@ class ConfigGenerator:
 
         return special_steps, special_ids, branch_producer_ids
 
+    def _add_preprocessors_to_eval(
+        self,
+        new_steps: List[Any],
+        train_steps: List[Any],
+        alias: str,
+        init_id: str,
+        data_loader: Optional[Any],
+    ) -> None:
+        """Add preprocessors and dynamic adapters to eval pipeline."""
+        for step in train_steps:
+            if step.type == "preprocessor" and any(
+                s.id == step.id for s in train_steps
+            ):
+                prep = copy.deepcopy(step)
+                prep.is_train = False
+                prep.alias = alias
+                prep.instance_key = f"fitted_{step.id}"
+                prep.depends_on = [init_id]
+                if data_loader:
+                    prep.depends_on.append("load_data")
+                new_steps.append(prep)
+            elif step.type == "dynamic_adapter":
+                # Only add preprocessing adapters in eval mode
+                if (
+                    hasattr(step, "log_artifact")
+                    and step.log_artifact
+                    and hasattr(step, "artifact_type")
+                    and step.artifact_type == "preprocess"
+                ):
+                    adapter = copy.deepcopy(step)
+                    adapter.is_train = False
+                    adapter.instance_key = f"fitted_{step.id}"
+                    adapter.depends_on = [init_id]
+                    if hasattr(step, "depends_on"):
+                        adapter.depends_on.extend(step.depends_on)
+                    self._remove_training_configs(adapter)
+                    new_steps.append(adapter)
+
+    def _add_evaluators_to_eval(
+        self,
+        new_steps: List[Any],
+        all_model_producers: List[Any],
+        branch_producer_ids: Set[str],
+        init_id: str,
+        preprocess_id: Optional[str],
+        sub_pipeline_ids: List[str],
+    ) -> List[str]:
+        """Add evaluators to eval pipeline. Returns list of evaluator IDs."""
+        evaluator_ids = []
+        for mp in all_model_producers:
+            if mp.id not in branch_producer_ids:
+                ev = self._make_evaluator_config(mp, init_id, preprocess_id)
+                if sub_pipeline_ids:
+                    ev.depends_on = [init_id] + sub_pipeline_ids
+                elif preprocess_id:
+                    ev.depends_on = [init_id, preprocess_id]
+                evaluator_ids.append(ev.id)
+                new_steps.append(ev)
+        return evaluator_ids
+
+    def _add_auxiliary_steps(
+        self, new_steps: List[Any], train_steps: List[Any], evaluator_ids: List[str]
+    ) -> None:
+        """Add logger and profiling steps to eval pipeline."""
+        for step in train_steps:
+            if step.type in ["logger", "profiling"]:
+                aux = copy.deepcopy(step)
+                aux.depends_on = evaluator_ids
+                if aux.type == "profiling":
+                    aux.exclude_keys = [
+                        "cfg",
+                        "preprocessor",
+                        "df",
+                        "train_df",
+                        "val_df",
+                        "test_df",
+                    ]
+                new_steps.append(aux)
+
     def _build_eval_steps(
         self,
         train_steps: List[Any],
@@ -486,51 +565,24 @@ class ConfigGenerator:
         all_model_producers = self._extract_model_producers_recursive(train_steps)
 
         # Build and add MLflow loader
-        load_map = self._build_load_map(
-            all_model_producers, all_preprocessors, preprocessor_step
+        self._add_mlflow_loader(
+            new_steps,
+            init_id,
+            alias,
+            self._build_load_map(
+                all_model_producers, all_preprocessors, preprocessor_step
+            ),
         )
-        self._add_mlflow_loader(new_steps, init_id, alias, load_map)
 
         # Add legacy preprocessor
         self._add_top_level_preprocessor_eval(
             new_steps, preprocessor_step, init_id, all_preprocessors, data_loader
         )
 
-        # Add top-level preprocessors
-        for step in train_steps:
-            if step.type == "preprocessor" and any(
-                s.id == step.id for s in train_steps
-            ):
-                prep = copy.deepcopy(step)
-                prep.is_train = False
-                prep.alias = alias
-                prep.instance_key = f"fitted_{step.id}"
-                prep.depends_on = [init_id]
-                if data_loader:
-                    prep.depends_on.append("load_data")
-                new_steps.append(prep)
-            elif step.type == "dynamic_adapter":
-                # Handle dynamic_adapter steps with artifact logging
-                # Only add preprocessing adapters in eval mode
-                # Model adapters are loaded via MLflow and used in evaluators
-                if (
-                    hasattr(step, "log_artifact")
-                    and step.log_artifact
-                    and hasattr(step, "artifact_type")
-                    and step.artifact_type == "preprocess"
-                ):
-                    adapter = copy.deepcopy(step)
-                    adapter.is_train = False
-                    adapter.instance_key = f"fitted_{step.id}"
-                    adapter.depends_on = [init_id]
-                    if hasattr(step, "depends_on"):
-                        adapter.depends_on.extend(step.depends_on)
-                    # Remove training-only configs
-                    if hasattr(adapter, "log_artifact"):
-                        delattr(adapter, "log_artifact")
-                    if hasattr(adapter, "hyperparams"):
-                        delattr(adapter, "hyperparams")
-                    new_steps.append(adapter)
+        # Add preprocessors and dynamic adapters
+        self._add_preprocessors_to_eval(
+            new_steps, train_steps, alias, init_id, data_loader
+        )
 
         # Process special steps
         special_steps, special_ids, branch_producer_ids = self._process_special_steps(
@@ -539,75 +591,43 @@ class ConfigGenerator:
         new_steps.extend(special_steps)
 
         # Generate evaluators
-        evaluator_ids = []
-        preprocess_id = next(
-            (s.id for s in train_steps if s.type == "preprocessor"), None
+        evaluator_ids = self._add_evaluators_to_eval(
+            new_steps,
+            all_model_producers,
+            branch_producer_ids,
+            init_id,
+            next((s.id for s in train_steps if s.type == "preprocessor"), None),
+            [
+                sid
+                for sid, step in zip(special_ids, special_steps)
+                if hasattr(step, "pipeline")
+            ],
         )
 
-        sub_pipeline_ids = [
-            sid
-            for sid, step in zip(special_ids, special_steps)
-            if hasattr(step, "pipeline")
-        ]
-
-        for mp in all_model_producers:
-            if mp.id not in branch_producer_ids:
-                ev = self._make_evaluator_config(mp, init_id, preprocess_id)
-                if sub_pipeline_ids:
-                    ev.depends_on = [init_id] + sub_pipeline_ids
-                elif preprocess_id:
-                    ev.depends_on = [init_id, preprocess_id]
-                evaluator_ids.append(ev.id)
-                new_steps.append(ev)
-
-        # Add branch evaluator IDs
-        branch_ids = [
-            sid
-            for sid, step in zip(special_ids, special_steps)
-            if hasattr(step, "condition")
-        ]
-        evaluator_ids.extend(branch_ids)
-
-        # Add auxiliary steps
-        for step in train_steps:
-            if step.type in ["logger", "profiling"]:
-                aux = copy.deepcopy(step)
-                aux.depends_on = evaluator_ids
-                if aux.type == "profiling":
-                    aux.exclude_keys = [
-                        "cfg",
-                        "preprocessor",
-                        "df",
-                        "train_df",
-                        "val_df",
-                        "test_df",
-                    ]
-                new_steps.append(aux)
+        # Add branch evaluator IDs and auxiliary steps
+        evaluator_ids.extend(
+            [
+                sid
+                for sid, step in zip(special_ids, special_steps)
+                if hasattr(step, "condition")
+            ]
+        )
+        self._add_auxiliary_steps(new_steps, train_steps, evaluator_ids)
 
         return new_steps
 
-    def _build_serve_steps(
+    def _add_preprocessors_to_serve(
         self,
+        new_steps: List[Any],
+        train_steps: List[Any],
         alias: str,
         init_id: str,
-        model_producers: List[Any],
-        preprocessor_step: Optional[Any],
-    ) -> List[Any]:
-        """Build steps for serve pipeline."""
-        new_steps: List[Any] = []
-        train_steps = self.train_cfg.pipeline.steps
+    ) -> str:
+        """Add preprocessors and dynamic adapters to serve pipeline.
 
-        # Extract all producers and preprocessors
-        all_preprocessors = self._extract_preprocessors_recursive(train_steps)
-        all_model_producers = self._extract_model_producers_recursive(train_steps)
-
-        # Build and add MLflow loader
-        load_map = self._build_load_map(
-            all_model_producers, all_preprocessors, preprocessor_step
-        )
-        self._add_mlflow_loader(new_steps, init_id, alias, load_map)
-
-        # Add preprocessors
+        Returns:
+            ID of the last added step.
+        """
         last_id = init_id
         for step in train_steps:
             if step.type == "preprocessor" and any(
@@ -621,9 +641,7 @@ class ConfigGenerator:
                 new_steps.append(prep)
                 last_id = prep.id
             elif step.type == "dynamic_adapter":
-                # Handle dynamic_adapter steps with artifact logging
                 # Only add preprocessing adapters in serve mode
-                # Model adapters are loaded via MLflow and used in inference
                 if (
                     hasattr(step, "log_artifact")
                     and step.log_artifact
@@ -636,34 +654,37 @@ class ConfigGenerator:
                     adapter.depends_on = [init_id]
                     if hasattr(step, "depends_on"):
                         adapter.depends_on.extend(step.depends_on)
-                    # Remove training-only configs
-                    if hasattr(adapter, "log_artifact"):
-                        delattr(adapter, "log_artifact")
-                    if hasattr(adapter, "hyperparams"):
-                        delattr(adapter, "hyperparams")
+                    self._remove_training_configs(adapter)
                     new_steps.append(adapter)
                     last_id = adapter.id
+        return last_id
 
-        # Legacy preprocessor
-        if preprocessor_step and not any(
-            p.id == preprocessor_step.id for p in all_preprocessors
-        ):
-            prep = copy.deepcopy(preprocessor_step)
-            prep.is_train = False
-            prep.alias = alias
-            prep.instance_key = "transform_manager"
-            prep.depends_on = [init_id]
-            new_steps.append(prep)
-            last_id = prep.id
+    def _extract_branch_producer_ids(self, step: Any) -> Set[str]:
+        """Extract producer IDs from branch step."""
+        producer_ids: Set[str] = set()
+        for branch_name in ["if_true", "if_false"]:
+            if hasattr(step, branch_name):
+                branch = getattr(step, branch_name)
+                if hasattr(branch, "id"):
+                    producer_ids.add(branch.id)
+        return producer_ids
 
-        # Check pipeline types
-        has_sub_pipeline = any(s.type == "sub_pipeline" for s in train_steps)
-        has_branch = any(s.type == "branch" for s in train_steps)
-        has_parallel = any(s.type == "parallel" for s in train_steps)
+    def _handle_special_steps_serve(
+        self,
+        new_steps: List[Any],
+        train_steps: List[Any],
+        alias: str,
+        has_sub_pipeline: bool,
+        has_branch: bool,
+    ) -> Tuple[str, Set[str]]:
+        """Handle sub-pipelines and branches in serve mode.
 
+        Returns:
+            Tuple of (last_step_id, branch_producer_ids)
+        """
+        last_id = "init_artifacts"
         branch_producer_ids: Set[str] = set()
 
-        # Handle sub-pipelines
         if has_sub_pipeline:
             for step in train_steps:
                 if step.type == "sub_pipeline":
@@ -671,35 +692,54 @@ class ConfigGenerator:
                     new_steps.append(transformed)
                     last_id = step.id
 
-        # Handle branches
         if has_branch:
             for step in train_steps:
                 if step.type == "branch":
                     transformed = self._transform_branch_step_for_serve(step)
                     new_steps.append(transformed)
                     last_id = step.id
-                    for branch_name in ["if_true", "if_false"]:
-                        if hasattr(step, branch_name):
-                            branch = getattr(step, branch_name)
-                            if hasattr(branch, "id"):
-                                branch_producer_ids.add(branch.id)
+                    branch_producer_ids.update(self._extract_branch_producer_ids(step))
 
-        # Generate inference steps
+        return last_id, branch_producer_ids
+
+    def _get_inference_producers(
+        self,
+        all_model_producers: List[Any],
+        train_steps: List[Any],
+        branch_producer_ids: Set[str],
+        has_sub_pipeline: bool,
+        has_branch: bool,
+        has_parallel: bool,
+        model_producers: List[Any],
+    ) -> List[Any]:
+        """Determine which model producers need inference steps."""
         if has_sub_pipeline or has_branch or has_parallel:
             if has_parallel:
-                producers = [
+                return [
                     mp for mp in all_model_producers if mp.id not in branch_producer_ids
                 ]
             else:
-                producers = [
+                return [
                     mp
                     for mp in all_model_producers
                     if mp.id not in branch_producer_ids
                     and any(s.id == mp.id for s in train_steps)
                 ]
         else:
-            producers = model_producers
+            return model_producers
 
+    def _add_inference_steps(
+        self,
+        new_steps: List[Any],
+        producers: List[Any],
+        init_id: str,
+        last_id: str,
+    ) -> str:
+        """Add inference steps to serve pipeline.
+
+        Returns:
+            ID of the last added inference step.
+        """
         for mp in producers:
             inf_id = f"{mp.id}_inference"
             inf_step = OmegaConf.create(
@@ -720,6 +760,82 @@ class ConfigGenerator:
             )
             new_steps.append(inf_step)
             last_id = inf_id
+        return last_id
+
+    def _build_serve_steps(
+        self,
+        alias: str,
+        init_id: str,
+        model_producers: List[Any],
+        preprocessor_step: Optional[Any],
+    ) -> List[Any]:
+        """Build steps for serve pipeline."""
+        new_steps: List[Any] = []
+        train_steps = self.train_cfg.pipeline.steps
+
+        # Extract all producers and preprocessors
+        all_preprocessors = self._extract_preprocessors_recursive(train_steps)
+        all_model_producers = self._extract_model_producers_recursive(train_steps)
+
+        # Build and add MLflow loader
+        self._add_mlflow_loader(
+            new_steps,
+            init_id,
+            alias,
+            self._build_load_map(
+                all_model_producers, all_preprocessors, preprocessor_step
+            ),
+        )
+
+        # Add preprocessors
+        last_id = self._add_preprocessors_to_serve(
+            new_steps, train_steps, alias, init_id
+        )
+
+        # Legacy preprocessor
+        if preprocessor_step and not any(
+            p.id == preprocessor_step.id for p in all_preprocessors
+        ):
+            legacy_prep = copy.deepcopy(preprocessor_step)
+            legacy_prep.is_train = False
+            legacy_prep.alias = alias
+            legacy_prep.instance_key = "transform_manager"
+            legacy_prep.depends_on = [init_id]
+            new_steps.append(legacy_prep)
+            last_id = legacy_prep.id
+
+        # Check pipeline types and handle special steps
+        pipeline_types = {
+            "has_sub": any(s.type == "sub_pipeline" for s in train_steps),
+            "has_branch": any(s.type == "branch" for s in train_steps),
+            "has_parallel": any(s.type == "parallel" for s in train_steps),
+        }
+
+        special_last_id, branch_ids = self._handle_special_steps_serve(
+            new_steps,
+            train_steps,
+            alias,
+            pipeline_types["has_sub"],
+            pipeline_types["has_branch"],
+        )
+        if pipeline_types["has_sub"] or pipeline_types["has_branch"]:
+            last_id = special_last_id
+
+        # Generate inference steps
+        last_id = self._add_inference_steps(
+            new_steps,
+            self._get_inference_producers(
+                all_model_producers,
+                train_steps,
+                branch_ids,
+                pipeline_types["has_sub"],
+                pipeline_types["has_branch"],
+                pipeline_types["has_parallel"],
+                model_producers,
+            ),
+            init_id,
+            last_id,
+        )
 
         # Final profiling
         new_steps.append(
