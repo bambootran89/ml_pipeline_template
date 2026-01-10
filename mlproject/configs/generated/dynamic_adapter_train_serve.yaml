@@ -27,7 +27,6 @@ pipeline:
   - id: impute_nan
     type: dynamic_adapter
     enabled: true
-    artifact_type: preprocess
     depends_on:
     - init_artifacts
     - preprocess

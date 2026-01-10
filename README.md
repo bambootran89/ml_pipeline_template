@@ -425,6 +425,28 @@ python -m mlproject.src.pipeline.dag_run serve \
     -i ./sample_input.csv \
     -a latest
 
+python -m mlproject.src.pipeline.dag_run tune \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/standard_train_tune.yaml \
+    -n 50  # number of trials
+
+# Generate configs of kmeans_then_xgboost.yaml
+python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/kmeans_then_xgboost.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run eval \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/kmeans_then_xgboost_eval.yaml \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/kmeans_then_xgboost_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
+
 # Generate configs of nested_suppipeline.yaml
 python -m mlproject.src.pipeline.dag_run generate \
     -t mlproject/configs/pipelines/nested_suppipeline.yaml \

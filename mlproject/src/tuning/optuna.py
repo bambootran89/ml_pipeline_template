@@ -28,6 +28,8 @@ class OptunaTuner(BaseTuner):
         mlflow_manager: Optional[MLflowManager] = None,
         metric_name: str = "mae_mean",
         direction: str = "minimize",
+        model_name: Optional[str] = None,
+        model_type: Optional[str] = None,
     ):
         """
         Initialize the OptunaTuner.
@@ -40,8 +42,16 @@ class OptunaTuner(BaseTuner):
             direction (str):
                 Optimization direction, "minimize"
                 or "maximize". Defaults to "minimize".
+            model_name (str, optional):
+                Override model name from cfg.experiment.model.
+            model_type (str, optional):
+                Override model type from cfg.experiment.model_type.
         """
         super().__init__(cfg, splitter, mlflow_manager, metric_name, direction)
+
+        # Store model overrides
+        self.model_name_override = model_name
+        self.model_type_override = model_type
 
         # CV pipeline used inside objective function
         self.cv_pipeline = CrossValidationPipeline(cfg, splitter)
@@ -88,8 +98,17 @@ class OptunaTuner(BaseTuner):
         """
         Objective function evaluated for each Optuna trial.
         """
-        model_name = self.cfg.experiment.model.lower()
-        model_type = self.cfg.experiment.model_type.lower()
+        # Use override if provided, otherwise fall back to config
+        model_name = (
+            self.model_name_override
+            if self.model_name_override
+            else self.cfg.experiment.model.lower()
+        )
+        model_type = (
+            self.model_type_override
+            if self.model_type_override
+            else self.cfg.experiment.model_type.lower()
+        )
         hyperparams = self._suggest_params(trial, model_name)
 
         # Include fixed hyperparameters

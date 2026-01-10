@@ -50,6 +50,7 @@ pipeline:
     enabled: true
     depends_on:
     - init_artifacts
+    - normalize
     - feature_pipeline
     wiring:
       inputs:

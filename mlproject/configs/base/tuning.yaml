@@ -95,3 +95,12 @@ tuning:
         range: [1, 10]
         log: false
 
+    kmeans:
+      n_clusters:
+        type: "int"
+        range: [2, 10]
+        step: 1
+      max_iter:
+        type: "int"
+        range: [100, 500]
+        step: 50

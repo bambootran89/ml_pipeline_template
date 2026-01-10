@@ -31,7 +31,6 @@ pipeline:
   - id: impute_nan
     type: dynamic_adapter
     enabled: true
-    artifact_type: preprocess
     depends_on:
     - init_artifacts
     - preprocess
@@ -44,19 +43,6 @@ pipeline:
         output: imputed_data
     is_train: false
     instance_key: fitted_impute_nan
-  - id: kmeans_evaluate
-    type: evaluator
-    enabled: true
-    depends_on:
-    - init_artifacts
-    - preprocess
-    wiring:
-      inputs:
-        features: preprocessed_data
-        model: fitted_kmeans_features
-      outputs:
-        metrics: kmeans_metrics
-    step_eval_type: clustering
   - id: xgboost_evaluate
     type: evaluator
     enabled: true
@@ -74,7 +60,6 @@ pipeline:
     type: profiling
     enabled: true
     depends_on:
-    - kmeans_evaluate
     - xgboost_evaluate
     params:
       include_keys:
@@ -90,5 +75,4 @@ pipeline:
     type: logger
     enabled: true
     depends_on:
-    - kmeans_evaluate
     - xgboost_evaluate

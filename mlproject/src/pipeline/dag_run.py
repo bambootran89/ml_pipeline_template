@@ -19,7 +19,9 @@ from omegaconf import DictConfig
 from mlproject.src.dataio.loaddata import load_csv_data, load_from_feast
 from mlproject.src.pipeline.flexible_pipeline import FlexiblePipeline
 from mlproject.src.utils.config_class import ConfigMerger
-from mlproject.src.utils.config_generator import ConfigGenerator
+from mlproject.src.utils.generator.config_generator import ConfigGenerator
+
+# from mlproject.src.utils.config_generator import ConfigGenerator
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -374,10 +376,11 @@ def run_generate_configs(
     base_name = Path(train_config).stem
 
     if config_type == "all":
-        paths = generator.generate_all(output_dir, alias)
+        paths = generator.generate_all(output_dir, alias, include_tune=True)
         print("\nGenerated configs:")
         print(f"  - Eval:  {paths['eval']}")
         print(f"  - Serve: {paths['serve']}")
+        print(f"  - Tune: {paths['tune']}")
     elif config_type == "eval":
         out_path = str(Path(output_dir) / f"{base_name}_eval.yaml")
         generator.generate_eval_config(alias=alias, output_path=out_path)

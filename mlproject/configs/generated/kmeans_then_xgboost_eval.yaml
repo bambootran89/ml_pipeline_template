@@ -32,6 +32,7 @@ pipeline:
     enabled: true
     depends_on:
     - init_artifacts
+    - prepare_data
     - preprocess
     wiring:
       inputs:
@@ -45,6 +46,7 @@ pipeline:
     enabled: true
     depends_on:
     - init_artifacts
+    - prepare_data
     - preprocess
     wiring:
       inputs:
