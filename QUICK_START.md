@@ -1,32 +1,36 @@
-# 🚀 QUICK START - Serve API in 1 Command
+# Serve API Generation and Running
 
-## Cách chạy nhanh nhất (1 dòng lệnh):
+Complete guide for generating and running serve APIs from configurations.
+
+## Quick Start
+
+Run API server from serve config in one command:
 
 ```bash
 ./serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
 ```
 
-**Done!** API đã chạy tại `http://localhost:8000` 🎉
+API will start at `http://localhost:8000`
 
 ---
 
-## Chi tiết:
+## Prerequisites
 
-### ✅ Điều kiện cần:
-1. Đã có file serve config (ví dụ: `standard_train_serve.yaml`)
-2. Script có quyền executable: `chmod +x serve_api.sh`
+1. Serve config file exists (example: `standard_train_serve.yaml`)
+2. Script is executable: `chmod +x serve_api.sh`
 
-### 🎯 Làm gì nếu chưa có serve config?
+## Generate Serve Config (if needed)
 
 ```bash
-# Generate serve config từ training config
 python -m mlproject.src.pipeline.dag_run generate \
     mlproject/configs/pipelines/standard_train.yaml \
     --config-type serve \
     --output-dir mlproject/configs/generated
 ```
 
-### 📋 Các options:
+## Command Options
+
+### Basic usage
 
 ```bash
 # FastAPI (default)
@@ -42,78 +46,87 @@ python -m mlproject.src.pipeline.dag_run generate \
 ./serve_api.sh -f ray -p 9000 -h 127.0.0.1 mlproject/configs/generated/standard_train_serve.yaml
 ```
 
----
-
-## 🧪 Test API:
+### Python method
 
 ```bash
-# Health check
-curl http://localhost:8000/health
-
-# Prediction
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"data": {"feature1": [1,2,3], "feature2": [4,5,6]}}'
-
-# Swagger UI (FastAPI only)
-# Mở browser: http://localhost:8000/docs
+python serve_api.py --serve-config mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 ---
 
-## 📚 Chi tiết hơn?
+## Testing API
 
-Xem file: `SERVE_API_GUIDE.md`
+### Health check
+
+```bash
+curl http://localhost:8000/health
+```
+
+### Prediction
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"feature1": [1,2,3], "feature2": [4,5,6]}}'
+```
+
+### Swagger UI (FastAPI only)
+
+Open browser: `http://localhost:8000/docs`
 
 ---
 
-## 🔥 Examples:
+## Examples
 
 ### Example 1: Standard Pipeline
+
 ```bash
 ./serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 ### Example 2: Conditional Branch (Multi-model)
+
 ```bash
 ./serve_api.sh mlproject/configs/generated/conditional_branch_serve.yaml
 ```
 
 ### Example 3: Ray Serve on Port 9000
+
 ```bash
 ./serve_api.sh -f ray -p 9000 mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 ---
 
-## 💡 Behind the scenes:
+## How it Works
 
-Khi chạy `./serve_api.sh`, script sẽ:
+When you run `./serve_api.sh`, the script will:
 
-1. ✅ Tự động sinh code FastAPI/Ray Serve từ serve.yaml
-2. ✅ Configure host & port
-3. ✅ Run API server
-
-**Bạn không cần làm gì thêm!**
+1. Auto-generate FastAPI or Ray Serve code from serve.yaml
+2. Configure host and port
+3. Run API server
 
 ---
 
-## ❓ Troubleshooting:
+## Troubleshooting
 
-### Port đã được dùng?
+### Port already in use
+
 ```bash
 ./serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
 ```
 
-### Module not found?
+### Module not found
+
 ```bash
 export PYTHONPATH=$(pwd):$PYTHONPATH
 ./serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
 ```
 
-### Script không chạy được?
+### Script not executable
+
 ```bash
-# Make sure executable
+# Make executable
 chmod +x serve_api.sh
 
 # Or use Python directly
@@ -122,4 +135,7 @@ python serve_api.py --serve-config mlproject/configs/generated/standard_train_se
 
 ---
 
-That's it! 🎊
+## See Also
+
+- `README_API.md` - Detailed documentation
+- `examples/generate_serve_apis.py` - Example scripts

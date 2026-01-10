@@ -9,8 +9,8 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n✋ Stopped by user")
+        print("\n\nStopped by user")
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\nError: {e}")
         sys.exit(1)

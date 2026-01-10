@@ -65,9 +65,9 @@ def generate_and_run(
             framework=framework,
             experiment_config_path=train_config_path,
         )
-        print(f"✓ Generated: {api_path}")
+        print(f"Generated: {api_path}")
     except Exception as e:
-        print(f"✗ Generation failed: {e}")
+        print(f"Generation failed: {e}")
         sys.exit(1)
 
     # Step 2: Modify generated code to use custom host/port
@@ -90,16 +90,16 @@ def generate_and_run(
     with open(api_path, 'w') as f:
         f.write(code)
 
-    print(f"✓ Configured: {host}:{port}")
+    print(f"Configured: {host}:{port}")
 
     # Step 3: Run the generated API
     print(f"\n[3/3] Starting {framework.upper()} server...")
     print(f"\n{'='*60}")
-    print(f"🚀 API is starting at: http://{host}:{port}")
-    print(f"📖 API docs: http://{host}:{port}/docs")
-    print(f"❤️  Health check: http://{host}:{port}/health")
+    print(f"API starting at: http://{host}:{port}")
+    print(f"API docs: http://{host}:{port}/docs")
+    print(f"Health check: http://{host}:{port}/health")
     print(f"{'='*60}")
-    print("\n💡 Press Ctrl+C to stop the server\n")
+    print("\nPress Ctrl+C to stop the server\n")
     print("-" * 60)
 
     try:
@@ -108,10 +108,10 @@ def generate_and_run(
 
     except KeyboardInterrupt:
         print("\n\n" + "=" * 60)
-        print("✋ Server stopped by user")
+        print("Server stopped by user")
         print("=" * 60)
     except Exception as e:
-        print(f"\n✗ Server failed: {e}")
+        print(f"\nServer failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
@@ -182,7 +182,7 @@ Examples:
         train_config = f"mlproject/configs/pipelines/{train_name}.yaml"
 
         if not Path(train_config).exists():
-            print(f"✗ Could not auto-infer train config from: {args.serve_config}")
+            print(f"Could not auto-infer train config from: {args.serve_config}")
             print(f"  Please provide --train-config explicitly")
             sys.exit(1)
 
