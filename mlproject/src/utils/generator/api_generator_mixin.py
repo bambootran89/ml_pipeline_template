@@ -37,13 +37,53 @@ class ApiGeneratorMixin:
                 inference_steps.extend(self._extract_branch_inferences(step))
         return inference_steps
 
+    def _infer_model_type(self, model_key: str) -> str:
+        """Infer model type from model key.
+
+        Args:
+            model_key: Model key like 'fitted_xgboost_branch'
+
+        Returns:
+            'ml' for traditional ML, 'deep_learning' for DL models
+        """
+        key_lower = model_key.lower()
+
+        # Traditional ML patterns
+        ml_patterns = [
+            "xgboost",
+            "xgb",
+            "catboost",
+            "kmeans",
+            "kmean",
+            "lightgbm",
+            "lgbm",
+            "randomforest",
+            "rf",
+        ]
+
+        for pattern in ml_patterns:
+            if pattern in key_lower:
+                return "ml"
+
+        # Deep learning patterns
+        dl_patterns = ["tft", "nlinear", "transformer", "lstm", "gru", "rnn"]
+
+        for pattern in dl_patterns:
+            if pattern in key_lower:
+                return "deep_learning"
+
+        # Default to ml for unknown
+        return "ml"
+
     def _extract_inference_info(self, step: Any) -> Dict[str, Any]:
         """Extract info from single inference step."""
+        model_key = step.wiring.inputs.model
         return {
             "id": step.id,
-            "model_key": step.wiring.inputs.model,
+            "model_key": model_key,
             "features_key": step.wiring.inputs.features,
             "output_key": step.wiring.outputs.predictions,
+            "model_type": self._infer_model_type(model_key),
         }
 
     def _extract_branch_inferences(self, branch_step: Any) -> List[Dict[str, Any]]:
@@ -167,7 +207,9 @@ class ServeService:
         self.models = {{}}
 
         if self.mlflow_manager.enabled:
-            experiment_name = self.cfg.experiment.get("name", "{pipeline_name}")
+            experiment_name = self.cfg.experiment.get(
+                "name", "{pipeline_name}"
+            )
 
             # Load preprocessor
 '''
@@ -206,6 +248,43 @@ class ServeService:
             return data
         return self.preprocessor.transform(data)
 
+    def _prepare_input(
+        self, features: Any, model_type: str
+    ) -> Any:
+        """Prepare input shape based on model type.
+
+        Args:
+            features: Input features
+            model_type: 'ml' or 'deep_learning'
+
+        Returns:
+            Reshaped input ready for model
+        """
+        import numpy as np
+
+        # Get features as numpy array
+        if isinstance(features, pd.DataFrame):
+            x_input = features.values
+        else:
+            x_input = np.array(features)
+
+        # Shape handling based on model type
+        if model_type == "ml":
+            # Traditional ML: flatten to 2D (n_samples, features)
+            if x_input.ndim == 2:
+                # Single: (timesteps, features) -> (1, features)
+                x_input = x_input.reshape(1, -1)
+            elif x_input.ndim == 3:
+                # Batch: (n, timesteps, features) -> (n, features)
+                x_input = x_input.reshape(x_input.shape[0], -1)
+        else:
+            # Deep learning: need 3D (n_samples, timesteps, features)
+            if x_input.ndim == 2:
+                # Single: (timesteps, features) -> (1, timesteps, features)
+                x_input = x_input[np.newaxis, :]
+
+        return x_input
+
     def run_inference_pipeline(
         self, context: Dict[str, Any]
     ) -> Dict[str, List[float]]:
@@ -217,7 +296,6 @@ class ServeService:
         Returns:
             Dict mapping output_key to predictions for each inference step
         """
-        import numpy as np
         results = {}
 
 '''
@@ -228,31 +306,16 @@ class ServeService:
             model_key = step_info["model_key"]
             features_key = step_info["features_key"]
             output_key = step_info["output_key"]
+            model_type = step_info["model_type"]
 
-            code += f"""        # Step: {step_id}
+            code += f"""        # Step: {step_id} (model_type: {model_type})
         model = self.models.get("{model_key}")
         if model is not None:
             features = context.get("{features_key}")
             if features is not None:
-                # Get features as numpy array
-                if isinstance(features, pd.DataFrame):
-                    x_input = features.values
-                else:
-                    x_input = np.array(features)
-
-                # Shape handling based on model type
-                # Clustering models (KMeans): Keep 2D (timesteps, features)
-                # ML models (XGBoost): Reshape to 3D (1, timesteps, features)
-                model_name = "{model_key}".lower()
-                if x_input.ndim == 2:
-                    if "kmeans" not in model_name and "cluster" not in model_name:
-                        # ML models need 3D: (24, 3) -> (1, 24, 3)
-                        x_input = x_input[np.newaxis, :]
-
-                # Predict
+                x_input = self._prepare_input(features, "{model_type}")
                 preds = model.predict(x_input)
                 results["{output_key}"] = preds.flatten().tolist()
-                # Store in context for downstream steps
                 context["{output_key}"] = preds
 
 """
@@ -329,7 +392,7 @@ if platform.system() == "Darwin":
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
     os.environ["OMP_NUM_THREADS"] = "1"
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -405,6 +468,41 @@ class ModelService:
         if not self.ready:
             raise RuntimeError("ModelService not ready")
 
+    def _prepare_input(
+        self, features: Any, model_type: str
+    ) -> Any:
+        """Prepare input shape based on model type.
+
+        Args:
+            features: Input features
+            model_type: 'ml' or 'deep_learning'
+
+        Returns:
+            Reshaped input ready for model
+        """
+        # Get features as numpy array
+        if isinstance(features, pd.DataFrame):
+            x_input = features.values
+        else:
+            x_input = np.array(features)
+
+        # Shape handling based on model type
+        if model_type == "ml":
+            # Traditional ML: flatten to 2D (n_samples, features)
+            if x_input.ndim == 2:
+                # Single: (timesteps, features) -> (1, features)
+                x_input = x_input.reshape(1, -1)
+            elif x_input.ndim == 3:
+                # Batch: (n, timesteps, features) -> (n, features)
+                x_input = x_input.reshape(x_input.shape[0], -1)
+        else:
+            # Deep learning: need 3D
+            if x_input.ndim == 2:
+                # Single: (timesteps, features) -> (1, timesteps, features)
+                x_input = x_input[np.newaxis, :]
+
+        return x_input
+
     async def run_inference_pipeline(
         self, context: Dict[str, Any]
     ) -> Dict[str, List[float]]:
@@ -426,31 +524,16 @@ class ModelService:
             model_key = step_info["model_key"]
             features_key = step_info["features_key"]
             output_key = step_info["output_key"]
+            model_type = step_info["model_type"]
 
-            code += f"""        # Step: {step_id}
+            code += f"""        # Step: {step_id} (model_type: {model_type})
         model = self.models.get("{model_key}")
         if model is not None:
             features = context.get("{features_key}")
             if features is not None:
-                # Get features as numpy array
-                if isinstance(features, pd.DataFrame):
-                    x_input = features.values
-                else:
-                    x_input = np.array(features)
-
-                # Shape handling based on model type
-                # Clustering models (KMeans): Keep 2D (timesteps, features)
-                # ML models (XGBoost): Reshape to 3D (1, timesteps, features)
-                model_name = "{model_key}".lower()
-                if x_input.ndim == 2:
-                    if "kmeans" not in model_name and "cluster" not in model_name:
-                        # ML models need 3D: (24, 3) -> (1, 24, 3)
-                        x_input = x_input[np.newaxis, :]
-
-                # Predict
+                x_input = self._prepare_input(features, "{model_type}")
                 preds = model.predict(x_input)
                 results["{output_key}"] = preds.flatten().tolist()
-                # Store in context for downstream steps
                 context["{output_key}"] = preds
 
 """
@@ -573,12 +656,13 @@ def main() -> None:
 '''
         code += f"""    # Bind services
     config_path = "{experiment_config_path}"
-    model_service = ModelService.bind(config_path)  # type: ignore[attr-defined]
-    preprocess_service = PreprocessService.bind(config_path)  # type: ignore[attr-defined]
+    # type: ignore comments for Ray Serve .bind() dynamic attributes
+    model_service = ModelService.bind(config_path)  # type: ignore
+    preprocess_service = PreprocessService.bind(config_path)  # type: ignore
 
     # Deploy API
     serve.run(
-        ServeAPI.bind(preprocess_service, model_service),  # type: ignore[attr-defined]
+        ServeAPI.bind(preprocess_service, model_service),  # type: ignore
         route_prefix="/",
     )
 

@@ -30,7 +30,7 @@ pipeline:
         outputs:
           output: "imputed_data"
 
-    - id: "kmeans_features"
+    - id: "kmeans_dynamic"
       type: "dynamic_adapter"
       enabled: true
       log_artifact: true
@@ -50,7 +50,7 @@ pipeline:
     - id: "cluster_profiling"
       type: "profiling"
       enabled: true
-      depends_on: ["kmeans_features"]
+      depends_on: ["kmeans_dynamic"]
       params:
         include_keys: ["cluster_labels"]
 
@@ -68,7 +68,7 @@ pipeline:
       log_artifact: true
       artifact_type: "model"
       enabled: true
-      depends_on: ["kmeans_features"]
+      depends_on: ["kmeans_dynamic"]
       output_as_feature: true
       wiring:
         inputs:

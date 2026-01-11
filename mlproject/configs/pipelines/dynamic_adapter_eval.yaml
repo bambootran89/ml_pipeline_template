@@ -12,7 +12,7 @@ pipeline:
       load_map:
         - { step_id: "preprocess", context_key: "fitted_preprocess" }
         - { step_id: "impute_nan", context_key: "fitted_imputer" }
-        - { step_id: "kmeans_features", context_key: "fitted_kmeans" }
+        - { step_id: "kmeans_dynamic", context_key: "fitted_kmeans" }
         - { step_id: "xgboost_model", context_key: "fitted_xgb" }
 
     # Added step: transforms raw data into a format compatible with the imputer
@@ -32,7 +32,7 @@ pipeline:
         inputs: { X: "preprocessed_data" }  # Uses output from the preprocess step
         outputs: { output: "imputed_data" }
 
-    - id: "kmeans_features"
+    - id: "kmeans_dynamic"
       type: "dynamic_adapter"
       instance_key: "fitted_kmeans"
       run_method: "predict"
