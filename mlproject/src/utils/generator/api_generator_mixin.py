@@ -980,6 +980,7 @@ if __name__ == "__main__":
         # Extract data config from experiment config (preferred) or serve config
         if experiment_config_path and Path(experiment_config_path).exists():
             exp_cfg = OmegaConf.load(experiment_config_path)
+            assert isinstance(exp_cfg, DictConfig)
             data_config = self._extract_data_config(exp_cfg)
         else:
             data_config = self._extract_data_config(cfg)
