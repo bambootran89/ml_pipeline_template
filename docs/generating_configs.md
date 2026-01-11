@@ -198,24 +198,24 @@ python -m mlproject.src.pipeline.dag_run train \
     -p mlproject/configs/pipelines/parallel_ensemble.yaml
 
 python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/nested_suppipeline.yaml \
+    -t mlproject/configs/pipelines/parallel_ensemble.yaml \
     -o mlproject/configs/generated \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run eval \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/nested_suppipeline_eval.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_eval.yaml \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run serve \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/nested_suppipeline_serve.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_serve.yaml \
     -i ./sample_input.csv \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run tune \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/nested_suppipeline_tune.yaml \
+    -p mlproject/configs/generated/parallel_ensemble_tune.yaml \
     -n 5
 ```
 
@@ -274,24 +274,24 @@ python -m mlproject.src.pipeline.dag_run train \
     -p mlproject/configs/pipelines/nested_suppipeline.yaml
 
 python -m mlproject.src.pipeline.dag_run generate \
-    -t mlproject/configs/pipelines/parallel_ensemble.yaml \
+    -t mlproject/configs/pipelines/nested_suppipeline.yaml \
     -o mlproject/configs/generated \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run eval \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/parallel_ensemble_eval.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_eval.yaml \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run serve \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/parallel_ensemble_serve.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_serve.yaml \
     -i ./sample_input.csv \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run tune \
     -e mlproject/configs/experiments/etth3.yaml \
-    -p mlproject/configs/generated/parallel_ensemble_tune.yaml \
+    -p mlproject/configs/generated/nested_suppipeline_tune.yaml \
     -n 5
 ```
 
