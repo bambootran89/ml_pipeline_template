@@ -205,23 +205,35 @@ app = FastAPI(
 # Request/Response Schemas
 
 class PredictRequest(BaseModel):
-    data: Dict[str, List[Any]] = Field(..., description="Input data as dict of columns to values")
+    data: Dict[str, List[Any]] = Field(...,
+        description="Input data as dict of columns to values"
+    )
 
 
 class BatchPredictRequest(BaseModel):
     data: Dict[str, List[Any]] = Field(..., description="Input data with multiple rows")
-    return_probabilities: bool = Field(default=False, description="Return prediction probabilities if available")
+    return_probabilities: bool = Field(
+        default=False,
+        description="Return prediction probabilities if available"
+    )
 
 
 class MultiStepPredictRequest(BaseModel):
     data: Dict[str, List[Any]] = Field(..., description="Input timeseries data")
-    steps_ahead: int = Field(default={output_chunk_length}, description="Number of steps to predict ahead", ge=1)
+    steps_ahead: int = Field(
+        default={output_chunk_length},
+        description="Number of steps to predict ahead",
+        ge=1
+    )
 
 
 class PredictResponse(BaseModel):
     predictions: Dict[str, List[float]]
     metadata: Optional[Dict[str, Any]] = None
 
+class MultiPredictResponse(BaseModel):
+    predictions: Dict[str, List[List[float]]]
+    metadata: Optional[Dict[str, Any]] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -295,16 +307,18 @@ class ServeService:
             x_input = np.array(features)
 
         if model_type == "ml":
-            if x_input.ndim == 2:
-                x_input = x_input.reshape(1, -1)
-            elif x_input.ndim == 3:
-                x_input = x_input.reshape(x_input.shape[0], -1)
+            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
+            x_input = x_input.reshape(1, -1)
         else:
-            if x_input.ndim == 2:
-                x_input = x_input[np.newaxis, :]
+            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
+            x_input = x_input[np.newaxis, :]
         return x_input
 
-    def predict_tabular_batch(self, context: Dict[str, Any], return_probabilities: bool = False) -> Dict[str, Any]:
+    def predict_tabular_batch(
+        self,
+        context: Dict[str, Any],
+        return_probabilities: bool = False
+    ) -> Dict[str, Any]:
         results = {}
         metadata = {"n_samples": 0, "model_type": "tabular"}
 """
@@ -325,7 +339,8 @@ class ServeService:
                 if return_probabilities and hasattr(model, "predict_proba"):
                     try:
                         proba = model.predict_proba(x_input)
-                        results["{step_info['output_key']}_probabilities"] = proba.tolist()
+                        key = "{step_info['output_key']}_probabilities"
+                        results[key] = proba.tolist()
                     except Exception:
                         pass
 """
@@ -335,11 +350,15 @@ class ServeService:
             """
         return {"predictions": results, "metadata": metadata}
 
-    def predict_timeseries_multistep(self, context: Dict[str, Any], steps_ahead: int) -> Dict[str, Any]:
+    def predict_timeseries_multistep(
+        self,
+        context: Dict[str, Any],
+        steps_ahead: int
+    ) -> Dict[str, Any]:
         results = {}
-        n_blocks = (steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1) // self.OUTPUT_CHUNK_LENGTH
+        n_blocks = (steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1)
+        n_blocks = n_blocks // self.OUTPUT_CHUNK_LENGTH
         metadata = {
-            "steps_ahead": steps_ahead,
             "output_chunk_length": self.OUTPUT_CHUNK_LENGTH,
             "n_blocks": n_blocks,
             "model_type": "timeseries"
@@ -356,18 +375,28 @@ class ServeService:
             features = context.get("{step_info['features_key']}")
             if features is not None:
                 all_predictions = []
-                current_input = features.copy() if isinstance(features, pd.DataFrame) else features
+                if isinstance(features, pd.DataFrame):
+                    current_input = features.copy()
+                else:
+                    current_input = features
                 for block_idx in range(n_blocks):
-                    x_input = self._prepare_input_timeseries(current_input, "{step_info['model_type']}")
+                    if len(current_input) < self.INPUT_CHUNK_LENGTH:
+                        break
+                    x_input = self._prepare_input_timeseries(
+                        current_input,
+                        "{step_info['model_type']}"
+                    )
                     block_preds = model.predict(x_input)
-                    if hasattr(block_preds, "flatten"):
-                        block_preds = block_preds.flatten()
-                    all_predictions.extend(block_preds.tolist())
+                    # if hasattr(block_preds, "flatten"):
+                    #     block_preds = block_preds.flatten()
+                    # all_predictions.extend(block_preds.tolist())
+                    all_predictions.append(block_preds[0])
                     if block_idx < n_blocks - 1 and hasattr(current_input, "iloc"):
                         shift = min(self.OUTPUT_CHUNK_LENGTH, len(block_preds))
                         if isinstance(current_input, pd.DataFrame):
                             current_input = current_input.iloc[shift:]
-                results["{step_info['output_key']}"] = all_predictions[:steps_ahead]
+                preds_2d = np.concatenate(all_predictions, axis=0)
+                results["{step_info['output_key']}"] = preds_2d.tolist()
 """
             )
 
@@ -379,7 +408,10 @@ class ServeService:
         if self.DATA_TYPE == "tabular":
             result = self.predict_tabular_batch(context)
         else:
-            result = self.predict_timeseries_multistep(context, steps_ahead=self.OUTPUT_CHUNK_LENGTH)
+            result = self.predict_timeseries_multistep(
+                context,
+                steps_ahead=self.OUTPUT_CHUNK_LENGTH
+            )
         return result.get("predictions", {})
 
 """
@@ -428,8 +460,14 @@ def predict_batch(request: BatchPredictRequest) -> PredictResponse:
         df = pd.DataFrame(request.data)
         preprocessed_data = service.preprocess(df)
         context = {"preprocessed_data": preprocessed_data}
-        result = service.predict_tabular_batch(context, return_probabilities=request.return_probabilities)
-        return PredictResponse(predictions=result["predictions"], metadata=result["metadata"])
+        result = service.predict_tabular_batch(
+            context,
+            return_probabilities=request.return_probabilities
+        )
+        return PredictResponse(
+            predictions=result["predictions"],
+            metadata=result["metadata"]
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -437,20 +475,27 @@ def predict_batch(request: BatchPredictRequest) -> PredictResponse:
             )
         else:
             code_parts.append(
-                f"""
-@app.post("/predict/multistep", response_model=PredictResponse)
-def predict_multistep(request: MultiStepPredictRequest) -> PredictResponse:
+                """
+@app.post("/predict/multistep", response_model=MultiPredictResponse)
+def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
     try:
         df = pd.DataFrame(request.data)
         if len(df) < service.INPUT_CHUNK_LENGTH:
             raise HTTPException(
                 status_code=400,
-                detail=f"Input must have at least {{service.INPUT_CHUNK_LENGTH}} timesteps (got {{len(df)}})"
+                detail=f"Input must have at least \
+                    {{service.INPUT_CHUNK_LENGTH}} timesteps (got {{len(df)}})"
             )
         preprocessed_data = service.preprocess(df)
         context = {{"preprocessed_data": preprocessed_data}}
-        result = service.predict_timeseries_multistep(context, steps_ahead=request.steps_ahead)
-        return PredictResponse(predictions=result["predictions"], metadata=result["metadata"])
+        result = service.predict_timeseries_multistep(
+            context,
+            steps_ahead=request.steps_ahead
+        )
+        return MultiPredictResponse(
+            predictions=result["predictions"],
+            metadata=result["metadata"]
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -555,6 +600,9 @@ class PredictResponse(BaseModel):
     predictions: Dict[str, List[float]]
     metadata: Optional[Dict[str, Any]] = None
 
+class MultiPredictResponse(BaseModel):
+    predictions: Dict[str, List[List[float]]]
+    metadata: Optional[Dict[str, Any]] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -617,16 +665,18 @@ class ModelService:
         else:
             x_input = np.array(features)
         if model_type == "ml":
-            if x_input.ndim == 2:
-                x_input = x_input.reshape(1, -1)
-            elif x_input.ndim == 3:
-                x_input = x_input.reshape(x_input.shape[0], -1)
+            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
+            x_input = x_input.reshape(1, -1)
         else:
-            if x_input.ndim == 2:
-                x_input = x_input[np.newaxis, :]
+            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
+            x_input = x_input[np.newaxis, :]
         return x_input
 
-    async def predict_tabular_batch(self, context: Dict[str, Any], return_probabilities: bool = False) -> Dict[str, Any]:
+    async def predict_tabular_batch(
+        self,
+        context: Dict[str, Any],
+        return_probabilities: bool = False
+    ) -> Dict[str, Any]:
         results = {}
         metadata = {"n_samples": 0, "model_type": "tabular"}
 """
@@ -646,7 +696,8 @@ class ModelService:
                 if return_probabilities and hasattr(model, "predict_proba"):
                     try:
                         proba = model.predict_proba(x_input)
-                        results["{step_info['output_key']}_probabilities"] = proba.tolist()
+                        key = "{step_info['output_key']}_probabilities"
+                        results[key] = proba.tolist()
                     except Exception:
                         pass
 """
@@ -656,11 +707,15 @@ class ModelService:
             """
         return {"predictions": results, "metadata": metadata}
 
-    async def predict_timeseries_multistep(self, context: Dict[str, Any], steps_ahead: int) -> Dict[str, Any]:
+    async def predict_timeseries_multistep(
+        self,
+        context: Dict[str, Any],
+        steps_ahead: int
+    ) -> Dict[str, Any]:
         results = {}
-        n_blocks = (steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1) // self.OUTPUT_CHUNK_LENGTH
+        n_blocks = (steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1)
+        n_blocks = n_blocks // self.OUTPUT_CHUNK_LENGTH
         metadata = {
-            "steps_ahead": steps_ahead,
             "output_chunk_length": self.OUTPUT_CHUNK_LENGTH,
             "n_blocks": n_blocks,
             "model_type": "timeseries"
@@ -676,18 +731,28 @@ class ModelService:
             features = context.get("{step_info['features_key']}")
             if features is not None:
                 all_predictions = []
-                current_input = features.copy() if isinstance(features, pd.DataFrame) else features
+                if isinstance(features, pd.DataFrame):
+                    current_input = features.copy()
+                else:
+                    current_input = features
                 for block_idx in range(n_blocks):
-                    x_input = self._prepare_input_timeseries(current_input, "{step_info['model_type']}")
+                    if len(current_input) < self.INPUT_CHUNK_LENGTH:
+                        break
+                    x_input = self._prepare_input_timeseries(
+                        current_input,
+                        "{step_info['model_type']}"
+                    )
                     block_preds = model.predict(x_input)
-                    if hasattr(block_preds, "flatten"):
-                        block_preds = block_preds.flatten()
-                    all_predictions.extend(block_preds.tolist())
+                    # if hasattr(block_preds, "flatten"):
+                    #     block_preds = block_preds.flatten()
+                    # all_predictions.extend(block_preds.tolist())
+                    all_predictions.append(block_preds[0])
                     if block_idx < n_blocks - 1 and hasattr(current_input, "iloc"):
                         shift = min(self.OUTPUT_CHUNK_LENGTH, len(block_preds))
                         if isinstance(current_input, pd.DataFrame):
                             current_input = current_input.iloc[shift:]
-                results["{step_info['output_key']}"] = all_predictions[:steps_ahead]
+                preds_2d = np.concatenate(all_predictions, axis=0)
+                results["{step_info['output_key']}"] = preds_2d.tolist()
 """
             )
 
@@ -695,11 +760,17 @@ class ModelService:
             """
         return {"predictions": results, "metadata": metadata}
 
-    async def run_inference_pipeline(self, context: Dict[str, Any]) -> Dict[str, List[float]]:
+    async def run_inference_pipeline(
+        self,
+        context: Dict[str, Any]
+    ) -> Dict[str, List[float]]:
         if self.DATA_TYPE == "tabular":
             result = await self.predict_tabular_batch(context)
         else:
-            result = await self.predict_timeseries_multistep(context, steps_ahead=self.OUTPUT_CHUNK_LENGTH)
+            result = await self.predict_timeseries_multistep(
+                context,
+                steps_ahead=self.OUTPUT_CHUNK_LENGTH
+            )
         return result.get("predictions", {})
 
     def is_loaded(self) -> bool:
@@ -796,8 +867,14 @@ class ServeAPI:
             df = pd.DataFrame(request.data)
             preprocessed_data = await self.preprocess_handle.preprocess.remote(df)
             context = {"preprocessed_data": preprocessed_data}
-            result = await self.model_handle.predict_tabular_batch.remote(context, request.return_probabilities)
-            return PredictResponse(predictions=result["predictions"], metadata=result["metadata"])
+            result = await self.model_handle.predict_tabular_batch.remote(
+                context,
+                request.return_probabilities
+            )
+            return PredictResponse(
+                predictions=result["predictions"],
+                metadata=result["metadata"]
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -806,16 +883,29 @@ class ServeAPI:
         else:
             code_parts.append(
                 """
-    @app.post("/predict/multistep", response_model=PredictResponse)
-    async def predict_multistep(self, request: MultiStepPredictRequest) -> PredictResponse:
+    @app.post("/predict/multistep", response_model=MultiPredictResponse)
+    async def predict_multistep(
+        self,
+        request: MultiStepPredictRequest
+    ) -> MultiPredictResponse:
         try:
             df = pd.DataFrame(request.data)
             if len(df) < self.INPUT_CHUNK_LENGTH:
-                raise HTTPException(status_code=400, detail=f"Input must have at least {self.INPUT_CHUNK_LENGTH} timesteps")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Input must have at \
+                      {self.INPUT_CHUNK_LENGTH} timesteps"
+                )
             preprocessed_data = await self.preprocess_handle.preprocess.remote(df)
             context = {"preprocessed_data": preprocessed_data}
-            result = await self.model_handle.predict_timeseries_multistep.remote(context, request.steps_ahead)
-            return PredictResponse(predictions=result["predictions"], metadata=result["metadata"])
+            result = await self.model_handle.predict_timeseries_multistep.remote(
+                context,
+                request.steps_ahead
+            )
+            return MultiPredictResponse(
+                predictions=result["predictions"],
+                metadata=result["metadata"]
+            )
         except HTTPException:
             raise
         except Exception as e:
@@ -832,7 +922,11 @@ class ServeAPI:
             model_loaded = await self.model_handle.is_loaded.remote()
         except Exception:
             model_loaded = False
-        return HealthResponse(status="healthy" if model_loaded else "unhealthy", model_loaded=model_loaded, data_type=self.DATA_TYPE)
+        return HealthResponse(
+            status="healthy" if model_loaded else "unhealthy",
+            model_loaded=model_loaded,
+            data_type=self.DATA_TYPE
+        )
 
 
 def main() -> None:
@@ -843,7 +937,13 @@ def main() -> None:
     model_service = ModelService.bind(config_path)  # type: ignore
     preprocess_service = PreprocessService.bind(config_path)  # type: ignore
 
-    serve.run(ServeAPI.bind(preprocess_service, model_service), route_prefix="/")  # type: ignore
+    serve.run(
+        ServeAPI.bind( # type: ignore
+            preprocess_service,
+            model_service
+        ),
+        route_prefix="/"
+    )
 
     print("[Ray Serve] API ready at http://localhost:8000")
     print("[Ray Serve] Press Ctrl+C to stop")
