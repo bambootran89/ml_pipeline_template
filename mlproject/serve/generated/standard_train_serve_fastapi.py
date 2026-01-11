@@ -1,6 +1,6 @@
 # Auto-generated FastAPI serve for standard_train_serve
 # Generated from serve configuration.
-# Supports: Timeseries multi-step prediction
+# Supports: Tabular batch prediction
 
 import os
 import platform
@@ -22,7 +22,7 @@ from mlproject.src.utils.config_class import ConfigLoader
 app = FastAPI(
     title="standard_train_serve API",
     version="1.0.0",
-    description="Auto-generated serve API for timeseries data",
+    description="Auto-generated serve API for tabular data",
 )
 
 
@@ -57,18 +57,18 @@ class PredictResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
-    data_type: str = "timeseries"
-    features: List[str] = []
+    data_type: str = "tabular"
+    features: List[str] = ["Pclass", "Age", "SibSp", "Parch", "Fare", "Sex", "Embarked"]
 
 
 # Service Implementation
 
 
 class ServeService:
-    DATA_TYPE = "timeseries"
+    DATA_TYPE = "tabular"
     INPUT_CHUNK_LENGTH = 24
     OUTPUT_CHUNK_LENGTH = 6
-    FEATURES = []
+    FEATURES = ["Pclass", "Age", "SibSp", "Parch", "Fare", "Sex", "Embarked"]
 
     def __init__(self, config_path: str) -> None:
         self.cfg = ConfigLoader.load(config_path)
@@ -186,7 +186,7 @@ class ServeService:
         return result.get("predictions", {})
 
 
-service = ServeService("mlproject/configs/experiments/etth3.yaml")
+service = ServeService("mlproject/configs/experiments/tabular.yaml")
 
 
 # API Endpoints
@@ -215,25 +215,18 @@ def predict(request: PredictRequest) -> PredictResponse:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@app.post("/predict/multistep", response_model=PredictResponse)
-def predict_multistep(request: MultiStepPredictRequest) -> PredictResponse:
+@app.post("/predict/batch", response_model=PredictResponse)
+def predict_batch(request: BatchPredictRequest) -> PredictResponse:
     try:
         df = pd.DataFrame(request.data)
-        if len(df) < service.INPUT_CHUNK_LENGTH:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Input must have at least {service.INPUT_CHUNK_LENGTH} timesteps (got {len(df)})",
-            )
         preprocessed_data = service.preprocess(df)
         context = {"preprocessed_data": preprocessed_data}
-        result = service.predict_timeseries_multistep(
-            context, steps_ahead=request.steps_ahead
+        result = service.predict_tabular_batch(
+            context, return_probabilities=request.return_probabilities
         )
         return PredictResponse(
             predictions=result["predictions"], metadata=result["metadata"]
         )
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
