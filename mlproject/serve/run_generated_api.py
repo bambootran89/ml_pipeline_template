@@ -33,6 +33,74 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"
 
 
+def _configure_server_settings(
+    api_path: str, framework: str, host: str, port: int
+) -> None:
+    """Modify generated code to use custom host/port.
+
+    Args:
+        api_path: Path to generated API file.
+        framework: 'fastapi' or 'ray'.
+        host: Host to bind to.
+        port: Port to bind to.
+    """
+    with open(api_path, "r", encoding="utf-8") as f:
+        code = f.read()
+
+    # Inject host/port for FastAPI
+    if framework == "fastapi":
+        code = code.replace(
+            'uvicorn.run(\n        "mlproject.serve.api:app",\n        '
+            'host="0.0.0.0",\n        port=8000,',
+            f'uvicorn.run(\n        app,\n        host="{host}",\n        port={port},',
+        )
+        code = code.replace(
+            'uvicorn.run(app, host="0.0.0.0", port=8000)',
+            f'uvicorn.run(app, host="{host}", port={port})',
+        )
+
+    with open(api_path, "w", encoding="utf-8") as f:
+        f.write(code)
+
+
+def _run_server(api_path: str, framework: str, host: str, port: int) -> None:
+    """Run the generated API server.
+
+    Args:
+        api_path: Path to generated API file.
+        framework: Framework name for display.
+        host: Host to bind to.
+        port: Port to bind to.
+    """
+    print(f"\n[3/3] Starting {framework.upper()} server...")
+    print(f"\n{'='*60}")
+    print(f"API starting at: http://{host}:{port}")
+    print(f"API docs: http://{host}:{port}/docs")
+    print(f"Health check: http://{host}:{port}/health")
+    print(f"{'='*60}")
+    print("\nPress Ctrl+C to stop the server\n")
+    print("-" * 60)
+
+    try:
+        env = os.environ.copy()
+        project_root = Path(__file__).parent.parent.parent
+        env["PYTHONPATH"] = str(project_root)
+        subprocess.run(
+            [sys.executable, api_path],
+            check=False,
+            env=env,
+            cwd=str(project_root),
+        )
+    except KeyboardInterrupt:
+        print("\n\n" + "=" * 60)
+        print("Server stopped by user")
+        print("=" * 60)
+    except Exception as e:
+        print(f"\nServer failed: {e}")
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def generate_and_run(
     serve_config_path: str,
     experiment_config_path: str,
@@ -58,16 +126,14 @@ def generate_and_run(
     print(f"Address: {host}:{port}")
     print("=" * 60)
 
-    # Step 1: Generate API code to persistent directory
+    # Step 1: Generate API code
     print("\n[1/2] Generating API code...")
-
-    output_dir = "mlproject/serve/generated"
     generator = ConfigGenerator(experiment_config_path)
 
     try:
         api_path = generator.generate_api(
             serve_config_path=serve_config_path,
-            output_dir=output_dir,
+            output_dir="mlproject/serve/generated",
             framework=framework,
             experiment_config_path=experiment_config_path,
         )
@@ -76,63 +142,13 @@ def generate_and_run(
         print(f"Generation failed: {e}")
         sys.exit(1)
 
-    # Step 2: Modify generated code to use custom host/port
+    # Step 2: Configure server settings
     print("\n[2/3] Configuring server settings...")
-
-    with open(api_path, "r", encoding="utf-8") as f:
-        code = f.read()
-
-    # Inject host/port for FastAPI
-    if framework == "fastapi":
-        old_uvicorn_call = (
-            'uvicorn.run(\n        "mlproject.serve.api:app",\n        '
-            'host="0.0.0.0",\n        port=8000,'
-        )
-        new_uvicorn_call = (
-            f'uvicorn.run(\n        app,\n        host="{host}",\n        '
-            f"port={port},"
-        )
-        code = code.replace(old_uvicorn_call, new_uvicorn_call)
-        code = code.replace(
-            'uvicorn.run(app, host="0.0.0.0", port=8000)',
-            f'uvicorn.run(app, host="{host}", port={port})',
-        )
-
-    with open(api_path, "w", encoding="utf-8") as f:
-        f.write(code)
-
+    _configure_server_settings(api_path, framework, host, port)
     print(f"Configured: {host}:{port}")
 
-    # Step 3: Run the generated API
-    print(f"\n[3/3] Starting {framework.upper()} server...")
-    print(f"\n{'='*60}")
-    print(f"API starting at: http://{host}:{port}")
-    print(f"API docs: http://{host}:{port}/docs")
-    print(f"Health check: http://{host}:{port}/health")
-    print(f"{'='*60}")
-    print("\nPress Ctrl+C to stop the server\n")
-    print("-" * 60)
-
-    try:
-        # Run the generated file with correct PYTHONPATH
-        env = os.environ.copy()
-        project_root = Path(__file__).parent.parent.parent
-        env["PYTHONPATH"] = str(project_root)
-        subprocess.run(
-            [sys.executable, api_path],
-            check=False,
-            env=env,
-            cwd=str(project_root),
-        )
-
-    except KeyboardInterrupt:
-        print("\n\n" + "=" * 60)
-        print("Server stopped by user")
-        print("=" * 60)
-    except Exception as e:
-        print(f"\nServer failed: {e}")
-        traceback.print_exc()
-        sys.exit(1)
+    # Step 3: Run server
+    _run_server(api_path, framework, host, port)
 
 
 def main() -> None:

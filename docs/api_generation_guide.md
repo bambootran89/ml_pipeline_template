@@ -128,16 +128,16 @@ curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
-      "date": ["2020-01-01 00:00:00", ...],
-      "HUFL": [5.827, 5.8, 5.969, ...],
-      "MUFL": [1.599, 1.492, 1.492, ...],
-      "mobility_inflow": [1.234, 1.456, 1.678, ...]
+      "HUFL": [-0.15, 0.08, 0.01, -0.01, 0.21, -0.15, 0.12, 0.05, -0.08, 0.18, -0.12, 0.22, 0.03, -0.18, 0.15, -0.05, 0.28, -0.22, 0.08, -0.15, 0.32, -0.28, 0.12, -0.18],
+      "MUFL": [1.14, 1.06, 0.93, 1.11, 0.96, 1.05, 0.98, 1.12, 0.95, 1.08, 0.92, 1.15, 0.88, 1.22, 0.85, 1.18, 0.82, 1.25, 0.78, 1.32, 0.75, 1.38, 0.72, 1.42],
+      "mobility_inflow": [1.24, 4.42, 7.28, 1.03, 0.73, 2.5, 3.2, 4.1, 1.8, 5.3, 2.1, 6.4, 1.5, 7.8, 3.6, 4.9, 2.7, 8.2, 1.9, 5.5, 3.8, 6.7, 2.3, 4.2]
     }
   }'
+
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @test_payload.json
 ```
-
-See `docs/api_examples.md` for complete test payloads.
-
 ---
 
 ## FastAPI vs Ray Serve
@@ -154,36 +154,6 @@ See `docs/api_examples.md` for complete test payloads.
 
 ---
 
-## Common Issues
-
-### Issue: serve config not found
-
-```bash
-# Generate it first
-python -m mlproject.src.pipeline.dag_run generate \
-    --train-config mlproject/configs/pipelines/standard_train.yaml \
-    --output-dir mlproject/configs/generated
-```
-
-### Issue: Model not found in MLflow
-
-Check:
-1. Model was trained and logged to MLflow
-2. MLflow tracking URI is correct: `echo $MLFLOW_TRACKING_URI`
-3. Model has alias "latest" or "production"
-
-```bash
-# List models
-mlflow models list
-```
-
-### Issue: Permission denied on serve_api.sh
-
-```bash
-chmod +x mlproject/serve_api.sh
-```
-
----
 
 ## All Available Pipelines
 

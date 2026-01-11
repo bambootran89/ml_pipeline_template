@@ -108,12 +108,19 @@ class ApiGeneratorMixin:
         """Generate FastAPI code."""
         # Build model keys list
         model_keys = [inf["model_key"] for inf in inference_steps]
-        primary_model = model_keys[0] if model_keys else "model"
 
         code = f'''"""Auto-generated FastAPI serve for {pipeline_name}.
 
 Generated from serve configuration.
 """
+
+import os
+import platform
+
+# Fix for macOS OpenMP library conflicts
+if platform.system() == "Darwin":
+    os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+    os.environ["OMP_NUM_THREADS"] = "1"
 
 from typing import Any, Dict, List
 
@@ -138,7 +145,7 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     """Prediction response schema."""
-    predictions: List[float]
+    predictions: Dict[str, List[float]]
 
 
 class HealthResponse(BaseModel):
@@ -199,34 +206,62 @@ class ServeService:
             return data
         return self.preprocessor.transform(data)
 
-    def _get_input_chunk_length(self) -> int:
-        """Get input chunk length from config."""
-        if hasattr(self.cfg, "experiment") and hasattr(
-            self.cfg.experiment, "hyperparams"
-        ):
-            hyperparams = self.cfg.experiment.hyperparams
-            return int(hyperparams.get("input_chunk_length", 24))
-        return 24
+    def run_inference_pipeline(
+        self, context: Dict[str, Any]
+    ) -> Dict[str, List[float]]:
+        """Run all inference steps in pipeline.
 
-    def predict(self, features: pd.DataFrame, model_key: str) -> List[float]:
-        """Run model inference."""
-        model = self.models.get(model_key)
-        if model is None:
-            raise RuntimeError(f"Model {model_key} not loaded")
+        Args:
+            context: Execution context with features and intermediate results
 
-        # Prepare input
-        input_length = self._get_input_chunk_length()
-        x_input = features.values[-input_length:]
+        Returns:
+            Dict mapping output_key to predictions for each inference step
+        """
         import numpy as np
-        x_input = x_input[np.newaxis, :].astype(np.float32)
+        results = {}
 
-        # Predict
-        preds = model.predict(x_input)
-        return preds.flatten().tolist()
+'''
+
+        # Generate inference code for each step
+        for step_info in inference_steps:
+            step_id = step_info["id"]
+            model_key = step_info["model_key"]
+            features_key = step_info["features_key"]
+            output_key = step_info["output_key"]
+
+            code += f"""        # Step: {step_id}
+        model = self.models.get("{model_key}")
+        if model is not None:
+            features = context.get("{features_key}")
+            if features is not None:
+                # Get features as numpy array
+                if isinstance(features, pd.DataFrame):
+                    x_input = features.values
+                else:
+                    x_input = np.array(features)
+
+                # Shape handling based on model type
+                # Clustering models (KMeans): Keep 2D (timesteps, features)
+                # ML models (XGBoost): Reshape to 3D (1, timesteps, features)
+                model_name = "{model_key}".lower()
+                if x_input.ndim == 2:
+                    if "kmeans" not in model_name and "cluster" not in model_name:
+                        # ML models need 3D: (24, 3) -> (1, 24, 3)
+                        x_input = x_input[np.newaxis, :]
+
+                # Predict
+                preds = model.predict(x_input)
+                results["{output_key}"] = preds.flatten().tolist()
+                # Store in context for downstream steps
+                context["{output_key}"] = preds
+
+"""
+
+        code += """        return results
 
 
 # Initialize service
-'''
+"""
 
         code += f'''service = ServeService("{experiment_config_path}")
 
@@ -249,10 +284,13 @@ def predict(request: PredictRequest) -> PredictResponse:
         df = pd.DataFrame(request.data)
 
         # Preprocess
-        features = service.preprocess(df)
+        preprocessed_data = service.preprocess(df)
 
-        # Predict with primary model
-        predictions = service.predict(features, "{primary_model}")
+        # Build context with preprocessed data
+        context = {{"preprocessed_data": preprocessed_data}}
+
+        # Run all inference steps in pipeline
+        predictions = service.run_inference_pipeline(context)
 
         return PredictResponse(predictions=predictions)
 
@@ -277,12 +315,19 @@ if __name__ == "__main__":
     ) -> str:
         """Generate Ray Serve code."""
         model_keys = [inf["model_key"] for inf in inference_steps]
-        primary_model = model_keys[0] if model_keys else "model"
 
         code = f'''"""Auto-generated Ray Serve deployment for {pipeline_name}.
 
 Generated from serve configuration.
 """
+
+import os
+import platform
+
+# Fix for macOS OpenMP library conflicts
+if platform.system() == "Darwin":
+    os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+    os.environ["OMP_NUM_THREADS"] = "1"
 
 from typing import Any, Dict, List, Optional
 
@@ -309,7 +354,7 @@ class PredictRequest(BaseModel):
 
 class PredictResponse(BaseModel):
     """Prediction response."""
-    predictions: List[float]
+    predictions: Dict[str, List[float]]
 
 
 class HealthResponse(BaseModel):
@@ -360,14 +405,57 @@ class ModelService:
         if not self.ready:
             raise RuntimeError("ModelService not ready")
 
-    async def predict(self, features: np.ndarray, model_key: str) -> List[float]:
-        """Run inference."""
-        model = self.models.get(model_key)
-        if model is None:
-            raise ValueError(f"Model {model_key} not found")
+    async def run_inference_pipeline(
+        self, context: Dict[str, Any]
+    ) -> Dict[str, List[float]]:
+        """Run all inference steps in pipeline.
 
-        preds = model.predict(features)
-        return preds.flatten().tolist()
+        Args:
+            context: Execution context with features and intermediate results
+
+        Returns:
+            Dict mapping output_key to predictions for each inference step
+        """
+        results = {}
+
+'''
+
+        # Generate inference code for each step (same as FastAPI)
+        for step_info in inference_steps:
+            step_id = step_info["id"]
+            model_key = step_info["model_key"]
+            features_key = step_info["features_key"]
+            output_key = step_info["output_key"]
+
+            code += f"""        # Step: {step_id}
+        model = self.models.get("{model_key}")
+        if model is not None:
+            features = context.get("{features_key}")
+            if features is not None:
+                # Get features as numpy array
+                if isinstance(features, pd.DataFrame):
+                    x_input = features.values
+                else:
+                    x_input = np.array(features)
+
+                # Shape handling based on model type
+                # Clustering models (KMeans): Keep 2D (timesteps, features)
+                # ML models (XGBoost): Reshape to 3D (1, timesteps, features)
+                model_name = "{model_key}".lower()
+                if x_input.ndim == 2:
+                    if "kmeans" not in model_name and "cluster" not in model_name:
+                        # ML models need 3D: (24, 3) -> (1, 24, 3)
+                        x_input = x_input[np.newaxis, :]
+
+                # Predict
+                preds = model.predict(x_input)
+                results["{output_key}"] = preds.flatten().tolist()
+                # Store in context for downstream steps
+                context["{output_key}"] = preds
+
+"""
+
+        code += '''        return results
 
     def is_loaded(self) -> bool:
         """Check if models loaded."""
@@ -441,16 +529,6 @@ class ServeAPI:
         code += f'''"{experiment_config_path}"'''
 
         code += '''"")
-        self.input_chunk_length = self._get_input_chunk_length()
-
-    def _get_input_chunk_length(self) -> int:
-        """Get input chunk length from config."""
-        if hasattr(self.cfg, "experiment") and hasattr(
-            self.cfg.experiment, "hyperparams"
-        ):
-            hyperparams = self.cfg.experiment.hyperparams
-            return int(hyperparams.get("input_chunk_length", 24))
-        return 24
 
     @app.post("/predict", response_model=PredictResponse)
     async def predict(self, request: PredictRequest) -> PredictResponse:
@@ -460,21 +538,15 @@ class ServeAPI:
             df = pd.DataFrame(request.data)
 
             # Preprocess
-            features = await self.preprocess_handle.preprocess.remote(df)
+            preprocessed_data = await self.preprocess_handle.preprocess.remote(df)
 
-            # Prepare input
-            x_input = features.values[-self.input_chunk_length:]
-            x_input = x_input[np.newaxis, :].astype(np.float32)
+            # Build context with preprocessed data
+            context = {"preprocessed_data": preprocessed_data}
 
-            # Predict
-'''
-        code += f"""            preds = await self.model_handle.predict.remote(
-                x_input, "{primary_model}"
-            )
-"""
+            # Run all inference steps in pipeline
+            predictions = await self.model_handle.run_inference_pipeline.remote(context)
 
-        code += '''
-            return PredictResponse(predictions=preds)
+            return PredictResponse(predictions=predictions)
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -501,12 +573,12 @@ def main() -> None:
 '''
         code += f"""    # Bind services
     config_path = "{experiment_config_path}"
-    model_service = ModelService.bind(config_path)
-    preprocess_service = PreprocessService.bind(config_path)
+    model_service = ModelService.bind(config_path)  # type: ignore[attr-defined]
+    preprocess_service = PreprocessService.bind(config_path)  # type: ignore[attr-defined]
 
     # Deploy API
     serve.run(
-        ServeAPI.bind(preprocess_service, model_service),
+        ServeAPI.bind(preprocess_service, model_service),  # type: ignore[attr-defined]
         route_prefix="/",
     )
 
