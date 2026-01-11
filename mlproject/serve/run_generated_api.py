@@ -7,19 +7,21 @@ and runs it immediately. No manual steps needed!
 Usage:
     python -m mlproject.serve.run_generated_api \\
         --serve-config mlproject/configs/generated/standard_train_serve.yaml \\
+        --experiment-config mlproject/configs/experiments/etth1.yaml \\
         --framework fastapi \\
         --port 8000
 
     # Or with all options:
     python -m mlproject.serve.run_generated_api \\
         --serve-config mlproject/configs/generated/standard_train_serve.yaml \\
-        --train-config mlproject/configs/pipelines/standard_train.yaml \\
+        --experiment-config mlproject/configs/experiments/etth1.yaml \\
         --framework ray \\
         --port 8000 \\
         --host 0.0.0.0
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import traceback
@@ -27,10 +29,13 @@ from pathlib import Path
 
 from mlproject.src.utils.generator.config_generator import ConfigGenerator
 
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
+os.environ["OMP_NUM_THREADS"] = "1"
+
 
 def generate_and_run(
     serve_config_path: str,
-    train_config_path: str,
+    experiment_config_path: str,
     framework: str = "fastapi",
     host: str = "0.0.0.0",
     port: int = 8000,
@@ -39,7 +44,7 @@ def generate_and_run(
 
     Args:
         serve_config_path: Path to serve YAML config.
-        train_config_path: Path to training YAML config.
+        experiment_config_path: Path to experiment YAML config.
         framework: 'fastapi' or 'ray'.
         host: Host to bind to.
         port: Port to bind to.
@@ -47,8 +52,8 @@ def generate_and_run(
     print("=" * 60)
     print(f"Auto-Generate & Run {framework.upper()} API")
     print("=" * 60)
+    print(f"Experiment config: {experiment_config_path}")
     print(f"Serve config: {serve_config_path}")
-    print(f"Train config: {train_config_path}")
     print(f"Framework: {framework}")
     print(f"Address: {host}:{port}")
     print("=" * 60)
@@ -57,14 +62,14 @@ def generate_and_run(
     print("\n[1/2] Generating API code...")
 
     output_dir = "mlproject/serve/generated"
-    generator = ConfigGenerator(train_config_path)
+    generator = ConfigGenerator(experiment_config_path)
 
     try:
         api_path = generator.generate_api(
             serve_config_path=serve_config_path,
             output_dir=output_dir,
             framework=framework,
-            experiment_config_path=train_config_path,
+            experiment_config_path=experiment_config_path,
         )
         print(f"Generated: {api_path}")
     except Exception as e:
@@ -85,7 +90,7 @@ def generate_and_run(
         )
         new_uvicorn_call = (
             f'uvicorn.run(\n        app,\n        host="{host}",\n        '
-            f'port={port},'
+            f"port={port},"
         )
         code = code.replace(old_uvicorn_call, new_uvicorn_call)
         code = code.replace(
@@ -109,8 +114,16 @@ def generate_and_run(
     print("-" * 60)
 
     try:
-        # Run the generated file
-        subprocess.run([sys.executable, api_path], check=False)
+        # Run the generated file with correct PYTHONPATH
+        env = os.environ.copy()
+        project_root = Path(__file__).parent.parent.parent
+        env["PYTHONPATH"] = str(project_root)
+        subprocess.run(
+            [sys.executable, api_path],
+            check=False,
+            env=env,
+            cwd=str(project_root),
+        )
 
     except KeyboardInterrupt:
         print("\n\n" + "=" * 60)
@@ -130,20 +143,22 @@ def main() -> None:
         epilog="""
 Examples:
   # FastAPI on port 8000
-  python -m mlproject.serve.run_generated_api \\
-      --serve-config mlproject/configs/generated/standard_train_serve.yaml \\
+  python -m mlproject.serve.run_generated_api \
+      --serve-config mlproject/configs/generated/standard_train_serve.yaml \
+      --experiment-config mlproject/configs/experiments/etth1.yaml \
       --framework fastapi
 
   # Ray Serve on port 9000
-  python -m mlproject.serve.run_generated_api \\
-      --serve-config mlproject/configs/generated/standard_train_serve.yaml \\
-      --framework ray \\
+  python -m mlproject.serve.run_generated_api \
+      --serve-config mlproject/configs/generated/standard_train_serve.yaml \
+      --experiment-config mlproject/configs/experiments/etth1.yaml \
+      --framework ray \
       --port 9000
 
-  # With custom train config
-  python -m mlproject.serve.run_generated_api \\
-      --serve-config mlproject/configs/generated/conditional_branch_serve.yaml \\
-      --train-config mlproject/configs/pipelines/conditional_branch.yaml \\
+  # Conditional branch pipeline
+  python -m mlproject.serve.run_generated_api \
+      --serve-config mlproject/configs/generated/conditional_branch_serve.yaml \
+      --experiment-config mlproject/configs/experiments/etth1.yaml \
       --framework fastapi
         """,
     )
@@ -154,8 +169,9 @@ Examples:
         help="Path to serve YAML config (e.g., standard_train_serve.yaml)",
     )
     parser.add_argument(
-        "--train-config",
-        help="Path to training YAML config (auto-inferred if not provided)",
+        "--experiment-config",
+        required=True,
+        help="Path to experiment YAML config (e.g., etth1.yaml)",
     )
     parser.add_argument(
         "--framework",
@@ -177,26 +193,15 @@ Examples:
 
     args = parser.parse_args()
 
-    # Auto-infer train config if not provided
-    train_config = args.train_config
-    if not train_config:
-        # Try to infer from serve config name
-        # e.g., standard_train_serve.yaml -> standard_train.yaml
-        serve_path = Path(args.serve_config)
-        train_name = serve_path.stem.replace("_serve", "")
-        train_config = f"mlproject/configs/pipelines/{train_name}.yaml"
-
-        if not Path(train_config).exists():
-            print(f"Could not auto-infer train config from: {args.serve_config}")
-            print("  Please provide --train-config explicitly")
-            sys.exit(1)
-
-        print(f"Auto-inferred train config: {train_config}")
+    # Verify experiment config exists
+    if not Path(args.experiment_config).exists():
+        print(f"Error: Experiment config not found: {args.experiment_config}")
+        sys.exit(1)
 
     # Generate and run
     generate_and_run(
         serve_config_path=args.serve_config,
-        train_config_path=train_config,
+        experiment_config_path=args.experiment_config,
         framework=args.framework,
         host=args.host,
         port=args.port,

@@ -63,18 +63,6 @@ curl -X POST http://localhost:8000/predict \
   }'
 ```
 
-**Response:**
-
-12 values (2 targets × 6 timesteps):
-
-```json
-{
-  "predictions": [
-    5.628, 5.701, 5.823, 5.945, 6.078, 6.201,
-    2.234, 2.267, 2.301, 2.334, 2.367, 2.401
-  ]
-}
-```
 
 ## Example 2: Python Requests
 
@@ -201,37 +189,6 @@ predictions_count = n_targets × output_chunk_length
 ]
 ```
 
-## Common Errors
-
-### Error: Insufficient Data
-
-```json
-{
-  "detail": "Need at least 24 rows, got 10"
-}
-```
-
-**Solution:** Provide exactly `input_chunk_length` timesteps (24 for ETTh1)
-
-### Error: Missing Features
-
-```json
-{
-  "detail": "Missing required features"
-}
-```
-
-**Solution:** Include all features: `["HUFL", "MUFL", "mobility_inflow"]`
-
-### Error: Wrong Output Count
-
-If you expect different number of predictions, check:
-
-```bash
-# Check experiment config
-grep -E "n_targets|output_chunk_length" mlproject/configs/experiments/etth1.yaml
-```
-
 ## Configuration Reference
 
 All values are read from configs (no hardcoding):
@@ -250,4 +207,4 @@ All values are read from configs (no hardcoding):
 - Experiment config: `mlproject/configs/experiments/etth1.yaml`
 - Data config: `mlproject/configs/base/data.yaml`
 - Helper script: `examples/generate_test_data.py`
-- API documentation: `README_API.md`
+- API documentation: `docs/readme_api.md`

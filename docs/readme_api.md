@@ -1,6 +1,67 @@
 # API Generation and Running Guide
 
 Complete guide for generating Python API code from serve configurations and running them.
+
+**New to API generation?** See [Simple API Generation Guide](api_generation_guide.md) for a quick start with FastAPI and Ray Serve.
+
+---
+
+## Quick Start
+
+### Step 1: Generate Serve Config (if not exists)
+
+```bash
+python -m mlproject.src.pipeline.dag_run generate \
+    --train-config mlproject/configs/pipelines/standard_train.yaml \
+    --output-dir mlproject/configs/generated \
+    --alias latest
+```
+
+This generates:
+- `standard_train_eval.yaml`
+- `standard_train_serve.yaml` (we need this)
+- `standard_train_tune.yaml`
+
+### Step 2: Generate and Run FastAPI
+
+```bash
+# Method 1: Auto-generate and run in one command (EASIEST)
+mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/standard_train_serve.yaml
+
+# Method 2: Generate only, then run manually
+python -m mlproject.serve.run_generated_api \
+    --experiment-config mlproject/configs/experiments/etth3.yaml \
+    --serve-config mlproject/configs/generated/standard_train_serve.yaml \
+    --framework fastapi \
+    --port 8000
+```
+
+### Step 3: Generate and Run Ray Serve
+
+```bash
+# Method 1: Auto-generate and run in one command (EASIEST)
+mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml -f ray mlproject/configs/generated/standard_train_serve.yaml
+
+# Method 2: Generate only, then run manually
+python -m mlproject.serve.run_generated_api \
+    --experiment-config mlproject/configs/experiments/etth3.yaml \
+    --serve-config mlproject/configs/generated/standard_train_serve.yaml \
+    --framework ray \
+    --port 8000
+```
+
+### Step 4: Test the API
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Prediction (see docs/api_examples.md for complete examples)
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @test_payload.json
+```
+
 ---
 
 ## 1. Generate Python API Files
@@ -18,7 +79,7 @@ fastapi_path = generator.generate_api(
     serve_config_path="mlproject/configs/generated/standard_train_serve.yaml",
     output_dir="mlproject/serve/generated",
     framework="fastapi",
-    experiment_config_path="mlproject/configs/pipelines/standard_train.yaml"
+    experiment_config_path="mlproject/configs/experiments/etth3.yaml"
 )
 print(f"FastAPI generated: {fastapi_path}")
 
@@ -27,7 +88,7 @@ ray_path = generator.generate_api(
     serve_config_path="mlproject/configs/generated/standard_train_serve.yaml",
     output_dir="mlproject/serve/generated",
     framework="ray",
-    experiment_config_path="mlproject/configs/pipelines/standard_train.yaml"
+    experiment_config_path="mlproject/configs/experiments/etth3.yaml"
 )
 print(f"Ray Serve generated: {ray_path}")
 ```
@@ -41,27 +102,74 @@ python examples/generate_serve_apis.py
 
 ### Method 3: Command Line (Generate Only)
 
+#### Generate FastAPI Only
+
 ```bash
 python -c "
 from mlproject.src.utils.generator.config_generator import ConfigGenerator
 
-gen = ConfigGenerator('mlproject/configs/pipelines/standard_train.yaml')
+gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
 
-# FastAPI
-gen.generate_api(
+# Generate FastAPI file
+api_path = gen.generate_api(
     serve_config_path='mlproject/configs/generated/standard_train_serve.yaml',
     output_dir='mlproject/serve/generated',
     framework='fastapi',
-    experiment_config_path='mlproject/configs/pipelines/standard_train.yaml'
+    experiment_config_path='mlproject/configs/experiments/etth3.yaml'
 )
+print(f'Generated FastAPI: {api_path}')
+"
+```
 
-# Ray Serve
-gen.generate_api(
+Output: `mlproject/serve/generated/standard_train_serve_fastapi.py`
+
+#### Generate Ray Serve Only
+
+```bash
+python -c "
+from mlproject.src.utils.generator.config_generator import ConfigGenerator
+
+gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
+
+# Generate Ray Serve file
+api_path = gen.generate_api(
     serve_config_path='mlproject/configs/generated/standard_train_serve.yaml',
     output_dir='mlproject/serve/generated',
     framework='ray',
-    experiment_config_path='mlproject/configs/pipelines/standard_train.yaml'
+    experiment_config_path='mlproject/configs/experiments/etth3.yaml'
 )
+print(f'Generated Ray Serve: {api_path}')
+"
+```
+
+Output: `mlproject/serve/generated/standard_train_serve_ray.py`
+
+#### Generate Both FastAPI and Ray Serve
+
+```bash
+python -c "
+from mlproject.src.utils.generator.config_generator import ConfigGenerator
+
+gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
+
+# Generate both
+fastapi = gen.generate_api(
+    serve_config_path='mlproject/configs/generated/standard_train_serve.yaml',
+    output_dir='mlproject/serve/generated',
+    framework='fastapi',
+    experiment_config_path='mlproject/configs/experiments/etth3.yaml'
+)
+
+ray = gen.generate_api(
+    serve_config_path='mlproject/configs/generated/standard_train_serve.yaml',
+    output_dir='mlproject/serve/generated',
+    framework='ray',
+    experiment_config_path='mlproject/configs/experiments/etth3.yaml'
+)
+
+print(f'Generated:')
+print(f'  FastAPI: {fastapi}')
+print(f'  Ray Serve: {ray}')
 "
 ```
 
@@ -87,13 +195,13 @@ mlproject/serve/generated/
 
 ```bash
 # FastAPI (auto-generates code and runs immediately)
-mlproject/serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/standard_train_serve.yaml
 
 # Ray Serve
-mlproject/serve_api.sh -f ray mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml -f ray mlproject/configs/generated/standard_train_serve.yaml
 
 # Custom port
-mlproject/serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
+mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml -p 9000 mlproject/configs/generated/standard_train_serve.yaml
 ```
 
 ### Method 2: Run Pre-generated Files
@@ -127,51 +235,13 @@ python -m mlproject.serve.run_generated_api \
     --port 8000
 ```
 
-### Server Output
-
-When server starts, you will see:
-
-```
-============================================================
-Auto-Generate & Run FASTAPI API
-============================================================
-Serve config: mlproject/configs/generated/standard_train_serve.yaml
-Train config: mlproject/configs/pipelines/standard_train.yaml
-Framework: fastapi
-Address: 0.0.0.0:8000
-============================================================
-
-[1/2] Generating API code...
-[ApiGenerator] Generated fastapi API: mlproject/serve/generated/standard_train_serve_fastapi.py
-Generated: mlproject/serve/generated/standard_train_serve_fastapi.py
-
-[2/3] Configuring server settings...
-Configured: 0.0.0.0:8000
-
-[3/3] Starting FASTAPI server...
-
-============================================================
-API starting at: http://0.0.0.0:8000
-API docs: http://0.0.0.0:8000/docs
-Health check: http://0.0.0.0:8000/health
-============================================================
-
-Press Ctrl+C to stop the server
-
-------------------------------------------------------------
-INFO:     Started server process [12345]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-```
-
 ---
 
 ## 3. Test APIs
 
 **For complete, realistic testing examples, see:** `API_EXAMPLES.md`
 
-The examples below use ETTh1 dataset structure from experiment configs.
+The examples below use ETTh3 dataset structure from experiment configs.
 
 ### Health Check
 
@@ -192,7 +262,7 @@ curl http://localhost:8000/health
 
 ### Prediction
 
-**Note:** For ETTh1 config, input requires 24 timesteps (input_chunk_length). See `API_EXAMPLES.md` for complete examples.
+**Note:** For ETTh3 config, input requires 24 timesteps (input_chunk_length). See `API_EXAMPLES.md` for complete examples.
 
 #### Quick Test (simplified)
 
@@ -201,277 +271,17 @@ curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
-      "date": ["2020-01-01 00:00:00", ...],
-      "HUFL": [5.827, 5.8, 5.969, ...],
-      "MUFL": [1.599, 1.492, 1.492, ...],
-      "mobility_inflow": [1.234, 1.456, 1.678, ...]
+      "HUFL": [-0.15, 0.08, 0.01, -0.01, 0.21, -0.15, 0.12, 0.05, -0.08, 0.18, -0.12, 0.22, 0.03, -0.18, 0.15, -0.05, 0.28, -0.22, 0.08, -0.15, 0.32, -0.28, 0.12, -0.18],
+      "MUFL": [1.14, 1.06, 0.93, 1.11, 0.96, 1.05, 0.98, 1.12, 0.95, 1.08, 0.92, 1.15, 0.88, 1.22, 0.85, 1.18, 0.82, 1.25, 0.78, 1.32, 0.75, 1.38, 0.72, 1.42],
+      "mobility_inflow": [1.24, 4.42, 7.28, 1.03, 0.73, 2.5, 3.2, 4.1, 1.8, 5.3, 2.1, 6.4, 1.5, 7.8, 3.6, 4.9, 2.7, 8.2, 1.9, 5.5, 3.8, 6.7, 2.3, 4.2]
     }
   }'
-```
 
-**Expected Response (12 predictions = 2 targets × 6 timesteps):**
-
-```json
-{
-  "predictions": [
-    5.628, 5.701, 5.823, 5.945, 6.078, 6.201,
-    2.234, 2.267, 2.301, 2.334, 2.367, 2.401
-  ]
-}
-```
-
-### Using Python Requests
-
-```python
-import requests
-
-# Health check
-response = requests.get("http://localhost:8000/health")
-print(response.json())
-
-# Prediction with realistic data
-# See API_EXAMPLES.md for complete examples or use helper:
-from examples.generate_test_data import generate_test_data
-
-test_data = generate_test_data(num_timesteps=24)
-payload = {"data": test_data}
-
-response = requests.post(
-    "http://localhost:8000/predict",
-    json=payload
-)
-print(response.json())
-```
-
-### Interactive API Documentation (FastAPI only)
-
-FastAPI auto-generates interactive Swagger UI documentation.
-
-Open in browser: `http://localhost:8000/docs`
-
-Features:
-- View all endpoints
-- Test requests interactively
-- See request/response schemas
-- Download OpenAPI spec
-
----
-
-## 4. Examples
-
-### Example 1: Standard Single-Model Pipeline
-
-**Step 1: Generate serve config (if not exists)**
-
-```bash
-python -m mlproject.src.pipeline.dag_run generate \
-    mlproject/configs/pipelines/standard_train.yaml \
-    --config-type serve \
-    --output-dir mlproject/configs/generated
-```
-
-**Step 2: Generate and run API**
-
-```bash
-mlproject/serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
-```
-
-**Step 3: Test**
-
-See `API_EXAMPLES.md` for complete testing examples with realistic data.
-
-```bash
-# Health check
-curl http://localhost:8000/health
-
-# Prediction (see API_EXAMPLES.md for full payload)
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d @test_payload.json
 ```
 
-### Example 2: Conditional Branch (Multi-Model)
+list processes and kill
 
-**Step 1: Generate and run**
-
-```bash
-mlproject/serve_api.sh mlproject/configs/generated/conditional_branch_serve.yaml
-```
-
-**Step 2: Test**
-
-```bash
-curl http://localhost:8000/health
-# See API_EXAMPLES.md for realistic test payloads
-```
-
-### Example 3: Ray Serve (Distributed)
-
-**Step 1: Generate and run with Ray**
-
-```bash
-mlproject/serve_api.sh -f ray mlproject/configs/generated/standard_train_serve.yaml
-```
-
-**Step 2: Access Ray Dashboard**
-
-Open browser: `http://localhost:8265`
-
-**Step 3: Test API**
-
-```bash
-curl http://localhost:8000/health
-```
-
-### Example 4: Custom Port
-
-```bash
-# Run on port 9000
-mlproject/serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
-
-# Test with custom port
-curl http://localhost:9000/health
-```
-
-### Example 5: Generate Only (No Run)
-
-```python
-from mlproject.src.utils.generator.config_generator import ConfigGenerator
-
-generator = ConfigGenerator("mlproject/configs/pipelines/standard_train.yaml")
-
-# Generate FastAPI file
-fastapi_path = generator.generate_api(
-    serve_config_path="mlproject/configs/generated/standard_train_serve.yaml",
-    output_dir="mlproject/serve/generated",
-    framework="fastapi",
-    experiment_config_path="mlproject/configs/pipelines/standard_train.yaml"
-)
-
-print(f"Generated: {fastapi_path}")
-# File is created but not running yet
-# You can edit it before running
-```
-
-### Example 6: Load Testing
-
-See `API_EXAMPLES.md` Example 4 for complete load testing guide with realistic data.
-
-```bash
-# Install apache bench
-sudo apt-get install apache2-utils
-
-# Create test payload (see API_EXAMPLES.md for full payload)
-# request.json should contain 24 timesteps of ETTh1 data
-
-# Run 1000 requests with 10 concurrent connections
-ab -n 1000 -c 10 -T 'application/json' \
-   -p request.json \
-   http://localhost:8000/predict
-```
-
----
-
-## Troubleshooting
-
-### Port Already in Use
-
-```bash
-# Use different port
-mlproject/serve_api.sh -p 9000 mlproject/configs/generated/standard_train_serve.yaml
-```
-
-### Module Not Found
-
-```bash
-# Set PYTHONPATH
-export PYTHONPATH=$(pwd):$PYTHONPATH
-
-# Then run
-mlproject/serve_api.sh mlproject/configs/generated/standard_train_serve.yaml
-```
-
-### Model Not Loading
-
-Check:
-1. MLflow tracking URI: `echo $MLFLOW_TRACKING_URI`
-2. Model exists: `mlflow models list`
-3. Alias is correct (default: "production")
-
-```bash
-# Set MLflow URI if needed
-export MLFLOW_TRACKING_URI=http://localhost:5000
-```
-
-### Import Errors
-
-```bash
-# Install dependencies
-pip install fastapi uvicorn ray[serve] pandas numpy
-```
-
----
-
-## Command Reference
-
-### Generate API Code
-
-```bash
-# FastAPI
-python -c "from mlproject.src.utils.generator.config_generator import ConfigGenerator; \
-           gen = ConfigGenerator('train.yaml'); \
-           gen.generate_api(serve_config_path='serve.yaml', \
-                           output_dir='output/', \
-                           framework='fastapi', \
-                           experiment_config_path='train.yaml')"
-
-# Ray Serve
-python -c "from mlproject.src.utils.generator.config_generator import ConfigGenerator; \
-           gen = ConfigGenerator('train.yaml'); \
-           gen.generate_api(serve_config_path='serve.yaml', \
-                           output_dir='output/', \
-                           framework='ray', \
-                           experiment_config_path='train.yaml')"
-```
-
-### Run API
-
-```bash
-# Quick run (auto-generate + run)
-mlproject/serve_api.sh <serve_config.yaml>
-
-# With options
-mlproject/serve_api.sh -f <fastapi|ray> -p <port> -h <host> <serve_config.yaml>
-
-# Python method
-python serve_api.py --serve-config <serve_config.yaml> \
-                    --framework <fastapi|ray> \
-                    --port <port>
-
-# Run pre-generated file
-python mlproject/serve/generated/<pipeline>_fastapi.py
-python mlproject/serve/generated/<pipeline>_ray.py
-```
-
-### Test API
-
-```bash
-# Health
-curl http://localhost:8000/health
-
-# Predict
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{"data": {...}}'
-
-# Docs (FastAPI only)
-open http://localhost:8000/docs
-```
-
----
-
-## See Also
-
-- `QUICK_START.md` - Quick reference guide
-- `examples/generate_serve_apis.py` - Example generation script
-- `mlproject/serve/generated/README.md` - Generated files documentation
+lsof -nP -iTCP:8000 -sTCP:LISTEN

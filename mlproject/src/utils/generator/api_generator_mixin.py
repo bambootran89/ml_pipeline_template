@@ -71,9 +71,31 @@ class ApiGeneratorMixin:
             if step.type == "preprocessor":
                 return {
                     "id": step.id,
-                    "instance_key": step.instance_key,
+                    "instance_key": getattr(step, "instance_key", None),
                 }
         return None
+
+    def _get_preprocessor_artifact_name(
+        self, preprocessor: Optional[Dict[str, Any]], load_map: Dict[str, str]
+    ) -> Optional[str]:
+        """Get preprocessor artifact name from load_map.
+
+        Args:
+            preprocessor: Preprocessor step info
+            load_map: Mapping from context_key to step_id
+
+        Returns:
+            Artifact name (step_id) or None
+        """
+        if not preprocessor:
+            return None
+
+        instance_key = preprocessor.get("instance_key")
+        if not instance_key:
+            return None
+
+        # Lookup in load_map to get artifact name (step_id)
+        return load_map.get(instance_key)
 
     def _generate_fastapi_code(
         self,
@@ -143,10 +165,14 @@ class ServeService:
             # Load preprocessor
 '''
 
-        if preprocessor:
-            code += """            self.preprocessor = (
+        # Get preprocessor artifact name from load_map
+        preprocessor_artifact = self._get_preprocessor_artifact_name(
+            preprocessor, load_map
+        )
+        if preprocessor_artifact:
+            code += f"""            self.preprocessor = (
                 self.mlflow_manager.load_component(
-                    name=f"{experiment_name}_preprocessor",
+                    name=f"{{experiment_name}}_{preprocessor_artifact}",
                     alias="production",
                 )
             )
@@ -156,7 +182,7 @@ class ServeService:
             # Load models
 """
         for model_key in set(model_keys):
-            # Extract step_id from load_map
+            # Extract step_id from load_map (artifact name)
             step_id = load_map.get(model_key, "model")
             code += f"""            self.models["{model_key}"] = (
                 self.mlflow_manager.load_component(
@@ -371,9 +397,12 @@ class PreprocessService:
         experiment_name = self.cfg.experiment.get("name", "{pipeline_name}")
 '''
 
-        if preprocessor:
-            code += """        self.preprocessor = self.mlflow_manager.load_component(
-            name=f"{experiment_name}_preprocessor",
+        preprocessor_artifact = self._get_preprocessor_artifact_name(
+            preprocessor, load_map
+        )
+        if preprocessor_artifact:
+            code += f"""        self.preprocessor = self.mlflow_manager.load_component(
+            name=f"{{experiment_name}}_{preprocessor_artifact}",
             alias="production",
         )
 """
@@ -407,11 +436,11 @@ class ServeAPI:
         """Initialize API."""
         self.preprocess_handle = preprocess_handle
         self.model_handle = model_handle
-        self.cfg = ConfigLoader.load("'''
+        self.cfg = ConfigLoader.load(""'''
 
         code += f'''"{experiment_config_path}"'''
 
-        code += '''")
+        code += '''"")
         self.input_chunk_length = self._get_input_chunk_length()
 
     def _get_input_chunk_length(self) -> int:

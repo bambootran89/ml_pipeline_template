@@ -18,6 +18,7 @@ echo ""
 FRAMEWORK="fastapi"
 PORT=8000
 HOST="0.0.0.0"
+EXPERIMENT_CONFIG=""
 
 # Parse arguments
 SERVE_CONFIG=""
@@ -26,6 +27,7 @@ show_help() {
     echo "Usage: ./serve_api.sh [OPTIONS] <serve_config.yaml>"
     echo ""
     echo "Options:"
+    echo "  -e, --experiment EXPERIMENT Experiment config (e.g., etth1.yaml)"
     echo "  -f, --framework FRAMEWORK   Framework: fastapi or ray (default: fastapi)"
     echo "  -p, --port PORT            Port number (default: 8000)"
     echo "  -h, --host HOST            Host address (default: 0.0.0.0)"
@@ -33,10 +35,10 @@ show_help() {
     echo ""
     echo "Examples:"
     echo "  # FastAPI on port 8000"
-    echo "  ./serve_api.sh mlproject/configs/generated/standard_train_serve.yaml"
+    echo "  ./serve_api.sh -e mlproject/configs/experiments/etth1.yaml mlproject/configs/generated/standard_train_serve.yaml"
     echo ""
     echo "  # Ray Serve on port 9000"
-    echo "  ./serve_api.sh -f ray -p 9000 mlproject/configs/generated/standard_train_serve.yaml"
+    echo "  ./serve_api.sh -e mlproject/configs/experiments/etth1.yaml -f ray -p 9000 mlproject/configs/generated/standard_train_serve.yaml"
     echo ""
     exit 0
 }
@@ -44,6 +46,10 @@ show_help() {
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
+        -e|--experiment)
+            EXPERIMENT_CONFIG="$2"
+            shift 2
+            ;;
         -f|--framework)
             FRAMEWORK="$2"
             shift 2
@@ -73,13 +79,27 @@ if [ -z "$SERVE_CONFIG" ]; then
     show_help
 fi
 
-# Check if file exists
+# Check if experiment config provided
+if [ -z "$EXPERIMENT_CONFIG" ]; then
+    echo -e "${YELLOW}Error: Experiment config not provided${NC}"
+    echo -e "${YELLOW}Use -e to specify experiment config (e.g., -e mlproject/configs/experiments/etth1.yaml)${NC}"
+    echo ""
+    show_help
+fi
+
+# Check if files exist
 if [ ! -f "$SERVE_CONFIG" ]; then
-    echo -e "${YELLOW}Error: File not found: $SERVE_CONFIG${NC}"
+    echo -e "${YELLOW}Error: Serve config not found: $SERVE_CONFIG${NC}"
+    exit 1
+fi
+
+if [ ! -f "$EXPERIMENT_CONFIG" ]; then
+    echo -e "${YELLOW}Error: Experiment config not found: $EXPERIMENT_CONFIG${NC}"
     exit 1
 fi
 
 echo -e "${GREEN}Configuration:${NC}"
+echo "  Experiment config: $EXPERIMENT_CONFIG"
 echo "  Serve config: $SERVE_CONFIG"
 echo "  Framework: $FRAMEWORK"
 echo "  Host: $HOST"
@@ -92,6 +112,7 @@ echo ""
 
 python -m mlproject.serve.run_generated_api \
     --serve-config "$SERVE_CONFIG" \
+    --experiment-config "$EXPERIMENT_CONFIG" \
     --framework "$FRAMEWORK" \
     --host "$HOST" \
     --port "$PORT"

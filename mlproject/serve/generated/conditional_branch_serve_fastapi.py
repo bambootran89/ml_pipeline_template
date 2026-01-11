@@ -1,4 +1,4 @@
-"""Auto-generated FastAPI serve for standard_train_serve.
+"""Auto-generated FastAPI serve for conditional_branch_serve.
 
 Generated from serve configuration.
 """
@@ -13,7 +13,7 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 
 app = FastAPI(
-    title="standard_train_serve API",
+    title="conditional_branch_serve API",
     version="1.0.0",
     description="Auto-generated serve API",
 )
@@ -51,7 +51,9 @@ class ServeService:
         self.models = {}
 
         if self.mlflow_manager.enabled:
-            experiment_name = self.cfg.experiment.get("name", "standard_train_serve")
+            experiment_name = self.cfg.experiment.get(
+                "name", "conditional_branch_serve"
+            )
 
             # Load preprocessor
             self.preprocessor = self.mlflow_manager.load_component(
@@ -60,8 +62,12 @@ class ServeService:
             )
 
             # Load models
-            self.models["fitted_train_model"] = self.mlflow_manager.load_component(
-                name=f"{experiment_name}_train_model",
+            self.models["fitted_train_xgb"] = self.mlflow_manager.load_component(
+                name=f"{experiment_name}_train_xgb",
+                alias="production",
+            )
+            self.models["fitted_train_tft"] = self.mlflow_manager.load_component(
+                name=f"{experiment_name}_train_tft",
                 alias="production",
             )
 
@@ -123,7 +129,7 @@ def predict(request: PredictRequest) -> PredictResponse:
         features = service.preprocess(df)
 
         # Predict with primary model
-        predictions = service.predict(features, "fitted_train_model")
+        predictions = service.predict(features, "fitted_train_tft")
 
         return PredictResponse(predictions=predictions)
 
