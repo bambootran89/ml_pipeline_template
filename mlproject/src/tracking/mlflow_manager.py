@@ -479,7 +479,8 @@ class MLflowManager:
                 return None
 
             last_run = runs.iloc[0]  # type: ignore
-            run_id = last_run.info.run_id  # <-- fixed access
+            # Access run_id from pandas Series, not from .info attribute
+            run_id = last_run["run_id"]
 
             print(f"[MLflowManager] Latest run resolved: run_id='{run_id}'.")
             artifact_uri = f"runs:/{run_id}/{name}"
@@ -531,6 +532,11 @@ class MLflowManager:
         """
         Load a PyFunc model using registry alias, else fallback to latest run.
 
+        Fallback strategy:
+        1. Try specified alias (e.g., "production")
+        2. If failed and alias != "latest", try alias "latest"
+        3. If still failed, fallback to latest run artifact
+
         Args:
             name: Registry model name.
             alias: Registry alias (default: latest).
@@ -546,19 +552,30 @@ class MLflowManager:
         model_uri = f"models:/{name}@{alias}"
         print(f"[MLflowManager] Attempting to load '{name}' using alias '{alias}'.")
 
+        # Try with specified alias
         try:
             loaded = mlflow.pyfunc.load_model(model_uri)
             print(f"[MLflowManager] Loaded '{name}' via alias '{alias}'.")
+            return self._unwrap(loaded, name)
         except Exception as exc:
-            print(
-                f"[MLflowManager] Alias '{alias}' not found for '{name}', "
-                "falling back to latest."
-            )
+            print(f"[MLflowManager] Alias '{alias}' not found for '{name}'.")
             print(f"[MLflowManager] Root error: {exc}")
-            loaded = self._fallback_latest(name, alias)
-            if loaded is None:
-                return None
 
+        # If alias was not "latest", try with "latest" alias
+        if alias != "latest":
+            print(f"[MLflowManager] Trying alias 'latest' for '{name}'...")
+            try:
+                latest_uri = f"models:/{name}@latest"
+                loaded = mlflow.pyfunc.load_model(latest_uri)
+                print(f"[MLflowManager] Loaded '{name}' via alias 'latest'.")
+                return self._unwrap(loaded, name)
+            except Exception as latest_exc:
+                print(f"[MLflowManager] Alias 'latest' also not found for '{name}'.")
+                print(f"[MLflowManager] Error: {latest_exc}")
+
+        # Final fallback: try to load from latest run
+        print(f"[MLflowManager] Falling back to latest run for '{name}'...")
+        loaded = self._fallback_latest(name, alias)
         if loaded is None:
             return None
 
