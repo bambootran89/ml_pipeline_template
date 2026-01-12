@@ -43,10 +43,6 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         pipeline_name = cfg.pipeline.name
         steps = cfg.pipeline.steps
 
-        load_map = self._extract_load_map(steps)
-        preprocessor = self._extract_preprocessor_info(steps)
-        inference_steps = self._extract_inference_steps(steps)
-
         # Extract data config from experiment config (preferred) or serve config
         if experiment_config_path and Path(experiment_config_path).exists():
             exp_cfg = OmegaConf.load(experiment_config_path)
@@ -58,9 +54,9 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         if framework == "fastapi":
             code = self._generate_fastapi_code(
                 pipeline_name,
-                load_map,
-                preprocessor,
-                inference_steps,
+                self._extract_load_map(steps),
+                self._extract_preprocessor_info(steps),
+                self._extract_inference_steps(steps),
                 experiment_config_path,
                 data_config,
             )
@@ -68,9 +64,9 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         elif framework == "ray":
             code = self._generate_ray_serve_code(
                 pipeline_name,
-                load_map,
-                preprocessor,
-                inference_steps,
+                self._extract_load_map(steps),
+                self._extract_preprocessor_info(steps),
+                self._extract_inference_steps(steps),
                 experiment_config_path,
                 data_config,
             )

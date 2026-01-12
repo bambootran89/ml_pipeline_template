@@ -125,20 +125,8 @@ class EvalPipelineMixin(BaseTransformMixin):
         init_id: str,
         preprocessor_id: Optional[str],
         all_model_producers: Optional[List[Any]] = None,
-        train_steps: Optional[List[Any]] = None,
     ) -> DictConfig:
-        """Create evaluator config for a model producer step.
-
-        Args:
-            mp: Model producer step.
-            init_id: MLflow loader step ID.
-            preprocessor_id: Top-level preprocessor step ID.
-            all_model_producers: All model producers in pipeline.
-            train_steps: Original training steps for validation.
-
-        Returns:
-            Evaluator step configuration.
-        """
+        """Create evaluator config for a model producer step."""
         base_name = self._extract_base_name(mp.id)
         eval_id = f"{base_name}_evaluate"
 
@@ -156,7 +144,6 @@ class EvalPipelineMixin(BaseTransformMixin):
             init_id=init_id,
             preprocessor_id=preprocessor_id,
             all_model_producers=all_model_producers,
-            train_steps=train_steps,
         )
 
         step_cfg: Dict[str, Any] = {
@@ -198,20 +185,8 @@ class EvalPipelineMixin(BaseTransformMixin):
         init_id: str,
         preprocessor_id: Optional[str],
         all_model_producers: Optional[List[Any]],
-        train_steps: Optional[List[Any]] = None,
     ) -> List[str]:
-        """Build evaluator step dependencies.
-
-        Args:
-            mp: Model producer step.
-            init_id: MLflow loader step ID.
-            preprocessor_id: Top-level preprocessor step ID.
-            all_model_producers: All model producers in pipeline.
-            train_steps: Original training steps for validation.
-
-        Returns:
-            List of valid dependency step IDs.
-        """
+        """Build evaluator step dependencies."""
         model_producer_ids = self._collect_model_producer_ids(
             all_model_producers,
         )
@@ -220,22 +195,8 @@ class EvalPipelineMixin(BaseTransformMixin):
 
         if hasattr(mp, "depends_on") and mp.depends_on:
             for dep in mp.depends_on:
-                if self._is_valid_evaluator_dependency(
-                    dep, model_producer_ids, train_steps
-                ):
-                    # Check if dep is inside a sub-pipeline
-                    if train_steps:
-                        parent_pipeline = self._find_parent_sub_pipeline(
-                            train_steps, dep
-                        )
-                        if parent_pipeline and parent_pipeline not in depends_on:
-                            # Replace internal step with parent sub-pipeline
-                            depends_on.append(parent_pipeline)
-                        elif not parent_pipeline and dep not in depends_on:
-                            depends_on.append(dep)
-                    else:
-                        if dep not in depends_on:
-                            depends_on.append(dep)
+                if self._is_valid_evaluator_dependency(dep, model_producer_ids):
+                    depends_on.append(dep)
 
         if preprocessor_id and preprocessor_id not in depends_on:
             depends_on.append(preprocessor_id)
@@ -335,22 +296,8 @@ class EvalPipelineMixin(BaseTransformMixin):
         init_id: str,
         preprocess_id: Optional[str],
         sub_pipeline_ids: List[str],
-        train_steps: Optional[List[Any]] = None,
     ) -> List[str]:
-        """Add evaluators to eval pipeline.
-
-        Args:
-            new_steps: List to append evaluators to.
-            all_model_producers: All model producers in pipeline.
-            branch_producer_ids: IDs of producers in branches.
-            init_id: MLflow loader step ID.
-            preprocess_id: Top-level preprocessor step ID.
-            sub_pipeline_ids: IDs of sub-pipelines.
-            train_steps: Original training steps for validation.
-
-        Returns:
-            List of evaluator step IDs.
-        """
+        """Add evaluators to eval pipeline. Returns list of evaluator IDs."""
         evaluator_ids = []
         for mp in all_model_producers:
             if mp.id not in branch_producer_ids:
@@ -365,7 +312,7 @@ class EvalPipelineMixin(BaseTransformMixin):
                     continue
 
                 ev = self._make_evaluator_config(
-                    mp, init_id, preprocess_id, all_model_producers, train_steps
+                    mp, init_id, preprocess_id, all_model_producers
                 )
                 if sub_pipeline_ids:
                     for sid in sub_pipeline_ids:
@@ -445,7 +392,6 @@ class EvalPipelineMixin(BaseTransformMixin):
                 for sid, step in zip(special_ids, special_steps)
                 if hasattr(step, "pipeline")
             ],
-            train_steps,
         )
 
         evaluator_ids.extend(

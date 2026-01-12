@@ -12,6 +12,7 @@ from .serve_pipeline_mixin import ServePipelineMixin
 from .tune_mixin import TuneMixin
 
 
+# pylint: disable=too-many-ancestors
 class ConfigGenerator(
     EvalPipelineMixin, ServePipelineMixin, TuneMixin, ApiGeneratorMixin
 ):

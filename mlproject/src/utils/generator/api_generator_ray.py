@@ -8,7 +8,7 @@ from .api_generator_extractors import ApiGeneratorExtractorsMixin
 class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
     """Ray Serve code generation mixin."""
 
-    def _generate_ray_serve_code(
+    def _generate_ray_serve_code(  # pylint: disable=too-many-locals
         self,
         pipeline_name: str,
         load_map: Dict[str, str],

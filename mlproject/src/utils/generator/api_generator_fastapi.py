@@ -8,7 +8,7 @@ from .api_generator_extractors import ApiGeneratorExtractorsMixin
 class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
     """FastAPI code generation mixin."""
 
-    def _generate_fastapi_code(
+    def _generate_fastapi_code(  # pylint: disable=too-many-locals
         self,
         pipeline_name: str,
         load_map: Dict[str, str],
