@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from .api_generator_extractors import ApiGeneratorExtractorsMixin
+from .extractors import ApiGeneratorExtractorsMixin
 
 
 class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):

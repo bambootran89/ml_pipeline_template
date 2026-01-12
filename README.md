@@ -9,20 +9,21 @@
 [![Docker](https://img.shields.io/badge/Deployment-Docker%20%7C%20K8s-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
 ## Overview
-This ML platform is designed for **production-ready ML projects**, emphasizing:
-- **Eliminating training-serving skew** through unified artifact packaging
-- **Feature Store integration** for consistent feature engineering
-- **Distributed serving** with Ray for scalability
-- **Design patterns** (Strategy, Facade, Factory) for maintainability
-- **MLOps best practices** (versioning, monitoring, reproducibility)
+This is a **DAG-driven ML framework** built for production-grade scalability and reliability. It bridges the gap between research and deployment by focusing on:
+- **DAG-Based Orchestration**: Unified execution engine (`dag_run`) for training, tuning, and serving.
+- **Feature Store-Centric**: Native **Feast** integration for consistent offline/online feature management.
+- **Zero-Skew Deployment**: Bundled preprocessors and models to eliminate training-serving discrepancy.
+- **Hybrid Serving**: High-performance inference via **FastAPI** or distributed scaling with **Ray Serve**.
+- **Automated MLOps**: Built-in **Optuna** tuning, **MLflow** tracking, and **Kubernetes** readiness.
 
 ## Key Takeaways
 
 ### For Data Scientists
 - **Focus on modeling**: Preprocessing handled automatically
-- **Experiment tracking**: All runs logged to MLflow
 - **Easy experimentation**: Change config, not code
-- **Reproducibility**: Versioned artifacts + configs
+- **Config-Driven**: Define complex pipelines and hyperparameters in YAML; no code changes needed for experiments.
+- **Auto-Optimization**: Integrated Bayesian tuning (Optuna) and automated backtesting.
+- **Reproducibility**: Full experiment tracking and versioned artifacts via MLflow.
 
 ### For MLOps Engineers
 - **Zero-skew deployment**: Preprocessor + Model bundled
@@ -31,10 +32,10 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
 - **Monitoring**: Built-in metrics and dashboards
 
 ### For Data Engineers
-- **Feature Store**: Feast for feature management
-- **Consistent features**: Same definitions for training/serving
-- **Materialization**: Offline → Online sync
-- **Multi-entity**: Batch queries for efficiency
+- **Feature Store Integration**: Centralized management using Feast.
+- **Consistent features**: Same feature definitions used for both training and online serving.
+- **Materialization**: Automated Offline → Online sync for real-time feature availability.
+- **Multi-entity support**: Optimized batch queries and point-in-time joins for efficiency.
 
 ## Documentation
 - [Architecture](docs/architecture.md)
@@ -46,7 +47,6 @@ This ML platform is designed for **production-ready ML projects**, emphasizing:
 - [Generating Configs](docs/generating_configs.md)
 - **[Simple API Generation Guide](docs/api_generation_guide.md)** - Quick start for FastAPI and Ray Serve
 - [API Generation and Running](docs/readme_api.md) - Complete reference
-- [API Testing Examples](docs/api_examples.md)
 
 # Getting Started
 ## 1. Prerequisites

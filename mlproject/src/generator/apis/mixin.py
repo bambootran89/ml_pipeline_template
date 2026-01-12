@@ -14,8 +14,8 @@ from pathlib import Path
 
 from omegaconf import DictConfig, OmegaConf
 
-from .api_generator_fastapi import ApiGeneratorFastAPIMixin
-from .api_generator_ray import ApiGeneratorRayServeMixin
+from .fastapi import ApiGeneratorFastAPIMixin
+from .ray import ApiGeneratorRayServeMixin
 
 
 class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):

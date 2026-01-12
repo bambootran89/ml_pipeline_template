@@ -27,7 +27,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from mlproject.src.utils.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.config_generator import ConfigGenerator
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"

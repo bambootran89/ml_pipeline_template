@@ -6,10 +6,10 @@ from typing import Dict
 
 from omegaconf import DictConfig, OmegaConf
 
-from .api_generator_mixin import ApiGeneratorMixin
-from .eval_pipeline_mixin import EvalPipelineMixin
-from .serve_pipeline_mixin import ServePipelineMixin
-from .tune_mixin import TuneMixin
+from .apis.mixin import ApiGeneratorMixin
+from .pipeline.eval_mixin import EvalPipelineMixin
+from .pipeline.serve_mixin import ServePipelineMixin
+from .pipeline.tune_mixin import TuneMixin
 
 
 # pylint: disable=too-many-ancestors
