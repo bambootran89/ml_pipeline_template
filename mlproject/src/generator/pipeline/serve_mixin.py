@@ -245,7 +245,7 @@ class ServePipelineMixin(BaseTransformMixin):
             last_id = inf_id
         return last_id
 
-    def _build_serve_steps(
+    def build_serve_steps(
         self,
         alias: str,
         init_id: str,

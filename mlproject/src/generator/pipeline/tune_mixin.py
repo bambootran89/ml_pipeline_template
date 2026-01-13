@@ -219,7 +219,7 @@ class TuneMixin(BaseTransformMixin):
 
         new_steps.append(modified_branch_step)
 
-    def _build_tune_steps(self, train_steps: List[Any]) -> List[Any]:
+    def build_tune_steps(self, train_steps: List[Any]) -> List[Any]:
         """Build steps for tune pipeline.
 
         Args:

@@ -3,12 +3,13 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from .extractors import ApiGeneratorExtractorsMixin
+from .types import DataConfig, GenerationContext
 
 
 class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
     """FastAPI code generation mixin."""
 
-    def _generate_fastapi_code(  # pylint: disable=too-many-locals
+    def _generate_fastapi_code(
         self,
         pipeline_name: str,
         load_map: Dict[str, str],
@@ -18,34 +19,62 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
         data_config: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Generate FastAPI code."""
-        model_keys = [inf["model_key"] for inf in inference_steps]
+        ctx = self._create_generation_context(
+            pipeline_name,
+            load_map,
+            preprocessor,
+            inference_steps,
+            experiment_config_path,
+            data_config,
+        )
+        return self._build_fastapi_code(ctx)
 
-        if data_config is None:
-            data_config = {
-                "data_type": "timeseries",
-                "features": [],
-                "target_columns": [],
-                "input_chunk_length": 24,
-                "output_chunk_length": 6,
-            }
+    def _create_generation_context(
+        self,
+        pipeline_name: str,
+        load_map: Dict[str, str],
+        preprocessor: Optional[Dict[str, Any]],
+        inference_steps: List[Dict[str, Any]],
+        experiment_config_path: str,
+        data_config: Optional[Dict[str, Any]],
+    ) -> GenerationContext:
+        """Create generation context from parameters."""
+        return GenerationContext(
+            pipeline_name=pipeline_name,
+            load_map=load_map,
+            preprocessor=preprocessor,
+            inference_steps=inference_steps,
+            experiment_config_path=experiment_config_path,
+            data_config=DataConfig.from_dict(data_config),
+            model_keys=[inf["model_key"] for inf in inference_steps],
+        )
 
-        data_type = data_config.get("data_type", "timeseries")
-        features = data_config.get("features", [])
-        input_chunk_length = data_config.get("input_chunk_length", 24)
-        output_chunk_length = data_config.get("output_chunk_length", 6)
+    def _build_fastapi_code(self, ctx: GenerationContext) -> str:
+        """Build complete FastAPI code."""
+        parts = [
+            self._gen_header(ctx),
+            self._gen_service_init(ctx),
+            self._gen_service_methods(),
+            self._gen_tabular_inference(ctx.inference_steps),
+            self._gen_timeseries_inference(ctx),
+            self._gen_service_entrypoint(),
+            self._gen_api_init(ctx),
+            self._gen_api_endpoints(ctx),
+            self._gen_main(),
+        ]
+        return "".join(parts)
 
-        # Build code using single quotes for inner docstrings
-        code_parts = []
-
-        # Header
+    def _gen_header(self, ctx: GenerationContext) -> str:
+        """Generate file header and imports."""
         desc = (
             "Tabular batch prediction"
-            if data_type == "tabular"
+            if ctx.data_config.data_type == "tabular"
             else "Timeseries multi-step prediction"
         )
-        api_desc = "tabular" if data_type == "tabular" else "timeseries"
-        code_parts.append(
-            f"""# Auto-generated FastAPI serve for {pipeline_name}
+        api_type = ctx.data_config.data_type
+        features_str = repr(ctx.data_config.features)
+
+        return f"""# Auto-generated FastAPI serve for {ctx.pipeline_name}
 # Generated from serve configuration.
 # Supports: {desc}
 
@@ -67,9 +96,9 @@ from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 
 app = FastAPI(
-    title="{pipeline_name} API",
+    title="{ctx.pipeline_name} API",
     version="1.0.0",
-    description="Auto-generated serve API for {api_desc} data",
+    description="Auto-generated serve API for {api_type} data",
 )
 
 
@@ -92,7 +121,7 @@ class BatchPredictRequest(BaseModel):
 class MultiStepPredictRequest(BaseModel):
     data: Dict[str, List[Any]] = Field(..., description="Input timeseries data")
     steps_ahead: int = Field(
-        default={output_chunk_length},
+        default={ctx.data_config.output_chunk_length},
         description="Number of steps to predict ahead",
         ge=1
     )
@@ -109,17 +138,17 @@ class MultiPredictResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
-    data_type: str = "{data_type}"
-    features: List[str] = {features}
+    data_type: str = "{ctx.data_config.data_type}"
+    features: List[str] = {features_str}
 
 
 # Service Implementation
 
 class ServeService:
-    DATA_TYPE = "{data_type}"
-    INPUT_CHUNK_LENGTH = {input_chunk_length}
-    OUTPUT_CHUNK_LENGTH = {output_chunk_length}
-    FEATURES = {features}
+    DATA_TYPE = "{ctx.data_config.data_type}"
+    INPUT_CHUNK_LENGTH = {ctx.data_config.input_chunk_length}
+    OUTPUT_CHUNK_LENGTH = {ctx.data_config.output_chunk_length}
+    FEATURES = {features_str}
 
     def __init__(self, config_path: str) -> None:
         self.cfg = ConfigLoader.load(config_path)
@@ -128,16 +157,18 @@ class ServeService:
         self.models = {{}}
 
         if self.mlflow_manager.enabled:
-            experiment_name = self.cfg.experiment.get("name", "{pipeline_name}")
+            experiment_name = self.cfg.experiment.get("name", "{ctx.pipeline_name}")
 """
-        )
 
-        # Load preprocessor
+    def _gen_service_init(self, ctx: GenerationContext) -> str:
+        """Generate service initialization code."""
+        parts = []
+
         preprocessor_artifact = self._get_preprocessor_artifact_name(
-            preprocessor, load_map
+            ctx.preprocessor, ctx.load_map
         )
         if preprocessor_artifact:
-            code_parts.append(
+            parts.append(
                 f"""
             self.preprocessor = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{preprocessor_artifact}",
@@ -146,10 +177,9 @@ class ServeService:
 """
             )
 
-        # Load models
-        for model_key in set(model_keys):
-            step_id = load_map.get(model_key, "model")
-            code_parts.append(
+        for model_key in set(ctx.model_keys):
+            step_id = ctx.load_map.get(model_key, "model")
+            parts.append(
                 f"""
             self.models["{model_key}"] = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{step_id}",
@@ -158,9 +188,11 @@ class ServeService:
 """
             )
 
-        # Service methods
-        code_parts.append(
-            """
+        return "".join(parts)
+
+    def _gen_service_methods(self) -> str:
+        """Generate service helper methods."""
+        return """
     def preprocess(self, data: pd.DataFrame) -> pd.DataFrame:
         if self.preprocessor is None:
             return data
@@ -193,11 +225,12 @@ class ServeService:
         results = {}
         metadata = {"n_samples": 0, "model_type": "tabular"}
 """
-        )
 
-        # Tabular inference steps
+    def _gen_tabular_inference(self, inference_steps: List[Dict[str, Any]]) -> str:
+        """Generate tabular inference logic."""
+        parts = []
         for step_info in inference_steps:
-            code_parts.append(
+            parts.append(
                 f"""
         model = self.models.get("{step_info['model_key']}")
         if model is not None:
@@ -216,8 +249,11 @@ class ServeService:
                         pass
 """
             )
+        return "".join(parts)
 
-        code_parts.append(
+    def _gen_timeseries_inference(self, ctx: GenerationContext) -> str:
+        """Generate timeseries inference logic."""
+        parts = [
             """
         return {"predictions": results, "metadata": metadata}
 
@@ -235,11 +271,10 @@ class ServeService:
             "model_type": "timeseries"
         }
 """
-        )
+        ]
 
-        # Timeseries inference steps
-        for step_info in inference_steps:
-            code_parts.append(
+        for step_info in ctx.inference_steps:
+            parts.append(
                 f"""
         model = self.models.get("{step_info['model_key']}")
         if model is not None:
@@ -270,9 +305,11 @@ class ServeService:
                 results["{step_info['output_key']}"] = preds_2d.tolist()
 """
             )
+        return "".join(parts)
 
-        code_parts.append(
-            """
+    def _gen_service_entrypoint(self) -> str:
+        """Generate service entrypoint method."""
+        return """
         return {"predictions": results, "metadata": metadata}
 
     def run_inference_pipeline(self, context: Dict[str, Any]) -> Dict[str, List[float]]:
@@ -286,12 +323,11 @@ class ServeService:
         return result.get("predictions", {})
 
 """
-        )
 
-        # Initialize service
-        code_parts.append(
-            f"""
-service = ServeService("{experiment_config_path}")
+    def _gen_api_init(self, ctx: GenerationContext) -> str:
+        """Generate API initialization."""
+        return f"""
+service = ServeService("{ctx.experiment_config_path}")
 
 
 # API Endpoints
@@ -319,12 +355,11 @@ def predict(request: PredictRequest) -> PredictResponse:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 """
-        )
 
-        # Add data-type specific endpoints
-        if data_type == "tabular":
-            code_parts.append(
-                """
+    def _gen_api_endpoints(self, ctx: GenerationContext) -> str:
+        """Generate data-type specific endpoints."""
+        if ctx.data_config.data_type == "tabular":
+            return """
 @app.post("/predict/batch", response_model=PredictResponse)
 def predict_batch(request: BatchPredictRequest) -> PredictResponse:
     try:
@@ -343,10 +378,7 @@ def predict_batch(request: BatchPredictRequest) -> PredictResponse:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 """
-            )
-        else:
-            code_parts.append(
-                """
+        return """
 @app.post("/predict/multistep", response_model=MultiPredictResponse)
 def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
     try:
@@ -354,7 +386,7 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
         if len(df) < service.INPUT_CHUNK_LENGTH:
             raise HTTPException(
                 status_code=400,
-                detail=f"Input must have at least \
+                detail=f"Input must have at least \\
                     {{service.INPUT_CHUNK_LENGTH}} timesteps (got {{len(df)}})"
             )
         preprocessed_data = service.preprocess(df)
@@ -373,14 +405,11 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 """
-            )
 
-        code_parts.append(
-            """
+    def _gen_main(self) -> str:
+        """Generate main entry point."""
+        return """
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 """
-        )
-
-        return "".join(code_parts)

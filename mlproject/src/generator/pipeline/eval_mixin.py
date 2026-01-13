@@ -341,7 +341,7 @@ class EvalPipelineMixin(BaseTransformMixin):
                     ]
                 new_steps.append(aux)
 
-    def _build_eval_steps(
+    def build_eval_steps(
         self,
         train_steps: List[Any],
         alias: str,
