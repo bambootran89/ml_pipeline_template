@@ -30,11 +30,11 @@ class ConfigGenerator:
         ), f"Expected DictConfig but got {type(loaded).__name__}"
         self.train_cfg: DictConfig = loaded
         self.experiment_name: str = Path(train_config_path).stem
-
+        train_steps = self.train_cfg.pipeline.steps
         # Composition: create instances of mixins
-        self._eval_generator = EvalPipelineMixin()
-        self._serve_generator = ServePipelineMixin()
-        self._tune_generator = TuneMixin()
+        self._eval_generator = EvalPipelineMixin(train_steps)
+        self._serve_generator = ServePipelineMixin(train_steps)
+        self._tune_generator = TuneMixin(train_steps)
         self._api_generator = ApiGeneratorMixin()
 
     def _save_config(self, cfg: DictConfig, path: str) -> None:

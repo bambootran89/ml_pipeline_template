@@ -21,6 +21,14 @@ class BaseTransformMixin:
 
     MODEL_PRODUCER_TYPES = ["trainer", "clustering", "framework_model"]
 
+    def __init__(self, train_steps: List[Any]) -> None:
+        """Initialize the transformer with training pipeline steps.
+
+        Args:
+            train_steps: List of steps from the original training configuration.
+        """
+        self.train_steps = train_steps
+
     def _is_model_producer(self, step: Any) -> bool:
         """Check if step is a model producer."""
         if hasattr(step, "type"):

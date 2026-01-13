@@ -196,7 +196,20 @@ class EvalPipelineMixin(BaseTransformMixin):
         if hasattr(mp, "depends_on") and mp.depends_on:
             for dep in mp.depends_on:
                 if self._is_valid_evaluator_dependency(dep, model_producer_ids):
-                    depends_on.append(dep)
+                    # Check if dep is inside a sub-pipeline
+                    if self.train_steps:
+                        parent_pipeline = self._find_parent_sub_pipeline(
+                            self.train_steps, dep
+                        )
+                        print(mp, parent_pipeline, dep)
+                        if parent_pipeline and parent_pipeline not in depends_on:
+                            # Replace internal step with parent sub-pipeline
+                            depends_on.append(parent_pipeline)
+                        elif not parent_pipeline and dep not in depends_on:
+                            depends_on.append(dep)
+                    else:
+                        if dep not in depends_on:
+                            depends_on.append(dep)
 
         if preprocessor_id and preprocessor_id not in depends_on:
             depends_on.append(preprocessor_id)
