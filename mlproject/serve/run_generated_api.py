@@ -27,7 +27,7 @@ import sys
 import traceback
 from pathlib import Path
 
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.config_generator import ApiGenerator
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -128,7 +128,7 @@ def generate_and_run(
 
     # Step 1: Generate API code
     print("\n[1/2] Generating API code...")
-    generator = ConfigGenerator(experiment_config_path)
+    generator = ApiGenerator()
 
     try:
         api_path = generator.generate_api(

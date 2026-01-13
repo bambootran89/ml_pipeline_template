@@ -28,7 +28,7 @@ preprocessing:
   artifacts_dir: "mlproject/artifacts/preprocessing"
 
 experiment:
-  name: "xgboost_tuning"
+  name: "tune_xgboost_tuning"
   type: "timeseries"
   model: "xgboost"
   model_type: "ml"

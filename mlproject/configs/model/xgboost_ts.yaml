@@ -1,5 +1,5 @@
 experiment:
-  name: "xgboost"
+  name: "ts_xgboost"
   type: "timeseries"
   model: "xgboost"
   model_type: "ml"

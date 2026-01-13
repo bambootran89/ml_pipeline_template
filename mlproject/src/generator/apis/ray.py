@@ -78,7 +78,7 @@ if platform.system() == "Darwin":
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
     os.environ["OMP_NUM_THREADS"] = "1"
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -118,7 +118,7 @@ class PredictResponse(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 class MultiPredictResponse(BaseModel):
-    predictions: Dict[str, List[List[float]]]
+    predictions: Dict[str, Union[List[List[float]], List[float]]]
     metadata: Optional[Dict[str, Any]] = None
 
 class HealthResponse(BaseModel):
@@ -171,7 +171,7 @@ class ModelService:
                 x_input = self._prepare_input_tabular(features)
                 metadata["n_samples"] = len(x_input)
                 preds = model.predict(x_input)
-                results["{s['output_key']}"] = preds.flatten().tolist()
+                results["{s['output_key']}"] = preds.tolist()
                 if return_probabilities and hasattr(model, "predict_proba"):
                     try:
                         proba = model.predict_proba(x_input)
@@ -336,10 +336,10 @@ class PreprocessService:
         """Generate ServeAPI."""
         if ctx.data_config.data_type == "tabular":
             specific_endpoint = """
-    @app.post("/predict/batch", response_model=PredictResponse)
+    @app.post("/predict/batch", response_model=MultiPredictResponse)
     async def predict_batch(
         self, request: BatchPredictRequest
-    ) -> PredictResponse:
+    ) -> MultiPredictResponse:
         try:
             df = pd.DataFrame(request.data)
             preprocessed_data = (
@@ -349,7 +349,7 @@ class PreprocessService:
             result = await self.model_handle.predict_tabular_batch.remote(
                 context, request.return_probabilities
             )
-            return PredictResponse(
+            return MultiPredictResponse(
                 predictions=result["predictions"],
                 metadata=result["metadata"]
             )
@@ -400,8 +400,8 @@ class ServeAPI:
         self.model_handle = model_handle
         self.cfg = ConfigLoader.load("{ctx.experiment_config_path}")
 
-    @app.post("/predict", response_model=PredictResponse)
-    async def predict(self, request: PredictRequest) -> PredictResponse:
+    @app.post("/predict", response_model=MultiPredictResponse)
+    async def predict(self, request: PredictRequest) -> MultiPredictResponse:
         try:
             df = pd.DataFrame(request.data)
             preprocessed_data = (
@@ -413,7 +413,7 @@ class ServeAPI:
                     context
                 )
             )
-            return PredictResponse(predictions=predictions)
+            return MultiPredictResponse(predictions=predictions)
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 {specific_endpoint}

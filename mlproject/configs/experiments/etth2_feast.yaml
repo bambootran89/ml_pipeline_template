@@ -38,7 +38,7 @@ data:
     - "hour_cos"
 
 experiment:
-  name: "univariate_nlinear"
+  name: "feast_univariate_nlinear"
   type: "univariate"
   model: "nlinear"
   model_type: "dl"
