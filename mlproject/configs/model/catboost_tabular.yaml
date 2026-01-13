@@ -1,0 +1,18 @@
+experiment:
+  name: 'tab_catboost'
+  type: 'classification'
+  model: "xgboost"
+  model_type: "ml"
+  hyperparams:
+    input_chunk_length: 24
+    output_chunk_length: 6
+    type: "clasification"
+    args:
+      iterations: 1000
+      learning_rate: 0.05
+      depth: 6
+      loss_function: "MultiRMSE"
+      task_type: "CPU"
+      early_stopping_rounds: 20
+      verbose: 100
+      allow_writing_files: False

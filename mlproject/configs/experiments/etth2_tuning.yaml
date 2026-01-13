@@ -27,7 +27,7 @@ data:
   type: timeseries
 
 experiment:
-  name: "univariate_nlinear"
+  name: "tune_univariate_nlinear"
   type: "univariate"
   model: "nlinear"
   model_type: "dl"

@@ -431,6 +431,11 @@ python -m mlproject.src.pipeline.dag_run generate \
     -a latest
 
 python -m mlproject.src.pipeline.dag_run generate \
+    -t mlproject/configs/pipelines/conditional_branch_tabular.yaml \
+    -o mlproject/configs/generated \
+    -a latest
+
+python -m mlproject.src.pipeline.dag_run generate \
     -t mlproject/configs/pipelines/kmeans_then_xgboost.yaml \
     -o mlproject/configs/generated \
     -a latest
@@ -477,6 +482,32 @@ python -m mlproject.src.pipeline.dag_run train \
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/etth3.yaml \
     -p mlproject/configs/pipelines/dynamic_adapter_train.yaml
+
+# or feast
+
+python -m mlproject.src.pipeline.dag_run train \
+    --experiment mlproject/configs/experiments/etth3_feast.yaml \
+    --pipeline mlproject/configs/pipelines/standard_train.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3_feast.yaml \
+    -p mlproject/configs/pipelines/conditional_branch_feast.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3_feast.yaml \
+    -p mlproject/configs/pipelines/kmeans_then_xgboost.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3_feast.yaml \
+    -p mlproject/configs/pipelines/parallel_ensemble.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3_feast.yaml \
+    -p mlproject/configs/pipelines/nested_suppipeline.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/etth3_feast.yaml \
+    -p mlproject/configs/pipelines/dynamic_adapter_train.yaml
 ```
 
 ### Generate Artifacts - Tabular
@@ -488,7 +519,7 @@ python -m mlproject.src.pipeline.dag_run train \
 
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/tabular.yaml \
-    -p mlproject/configs/pipelines/conditional_branch.yaml
+    -p mlproject/configs/pipelines/conditional_branch_tabular.yaml
 
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/tabular.yaml \
@@ -504,6 +535,32 @@ python -m mlproject.src.pipeline.dag_run train \
 
 python -m mlproject.src.pipeline.dag_run train \
     -e mlproject/configs/experiments/tabular.yaml \
+    -p mlproject/configs/pipelines/dynamic_adapter_train.yaml
+
+# or feast
+
+python -m mlproject.src.pipeline.dag_run train \
+    --experiment mlproject/configs/experiments/feast_tabular.yaml \
+    --pipeline mlproject/configs/pipelines/standard_train.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/feast_tabular.yaml \
+    -p mlproject/configs/pipelines/conditional_branch_tabular.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/feast_tabular.yaml \
+    -p mlproject/configs/pipelines/kmeans_then_xgboost.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/feast_tabular.yaml \
+    -p mlproject/configs/pipelines/parallel_ensemble.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/feast_tabular.yaml \
+    -p mlproject/configs/pipelines/nested_suppipeline.yaml
+
+python -m mlproject.src.pipeline.dag_run train \
+    -e mlproject/configs/experiments/feast_tabular.yaml \
     -p mlproject/configs/pipelines/dynamic_adapter_train.yaml
 ```
 

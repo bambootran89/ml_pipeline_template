@@ -33,7 +33,7 @@ pipeline:
     - id: "ensemble_models"
       type: "parallel"
       enabled: true
-      depends_on: ["preprocess"]
+      depends_on: ["prepare_data"]
       max_workers: 3
       branches:
         # Branch 1: XGBoost
@@ -68,7 +68,7 @@ pipeline:
             n_clusters: 3
           wiring:
             inputs:
-              data: "preprocessed_data"
+              datamodule: "prepare_data_datamodule"
             outputs:
               features: "cluster_features"
               model: "kmeans_branch_model"

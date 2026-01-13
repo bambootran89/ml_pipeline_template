@@ -21,6 +21,14 @@ class BaseTransformMixin:
 
     MODEL_PRODUCER_TYPES = ["trainer", "clustering", "framework_model"]
 
+    def __init__(self, train_steps: List[Any]) -> None:
+        """Initialize the transformer with training pipeline steps.
+
+        Args:
+            train_steps: List of steps from the original training configuration.
+        """
+        self.train_steps = train_steps
+
     def _is_model_producer(self, step: Any) -> bool:
         """Check if step is a model producer."""
         if hasattr(step, "type"):
@@ -247,14 +255,14 @@ class BaseTransformMixin:
         self,
         dep: str,
         model_producer_ids: set[str],
-        train_steps: Optional[List[Any]] = None,
+        # train_steps: Optional[List[Any]] = None,
     ) -> bool:
         """Check whether dependency should be kept for evaluator.
 
         Args:
             dep: Dependency step ID to check.
             model_producer_ids: Set of model producer step IDs.
-            train_steps: Original training steps for type checking.
+            # train_steps: Original training steps for type checking.
 
         Returns:
             True if dependency should be kept, False otherwise.
@@ -268,8 +276,8 @@ class BaseTransformMixin:
             return False
 
         # If we have train_steps, check step type
-        if train_steps:
-            step = self._get_step_by_id_recursive(train_steps, dep)
+        if self.train_steps:
+            step = self._get_step_by_id_recursive(self.train_steps, dep)
             if step:
                 # Filter out datamodule steps (they don't exist in eval mode)
                 if step.type == "datamodule":

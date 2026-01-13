@@ -112,7 +112,7 @@ tuning:
 
 # 7. Experiment metadata
 experiment:
-  name: 'Tabular_Titanic_Experiment'
+  name: 'feast_Tabular_Titanic_Experiment'
   type: 'classification'
   model: "xgboost"
   model_type: "ml"

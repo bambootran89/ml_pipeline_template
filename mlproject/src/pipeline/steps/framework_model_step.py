@@ -305,7 +305,6 @@ class FrameworkModelStep(BasePipelineStep):
     def _get_input_data(self, context: Dict[str, Any]) -> pd.DataFrame:
         """Retrieve input data from context using wiring."""
         data = self.get_input(context, "data", required=False)
-
         if data is not None:
             return data
 
@@ -341,8 +340,6 @@ class FrameworkModelStep(BasePipelineStep):
             print(f"[{self.step_id}] Config source: simple override")
 
         # Get and prepare data
-        df = self._get_input_data(context)
-
         # Get hyperparams from effective config
         hyperparams = dict(self.effective_cfg.experiment.get("hyperparams", {}))
 
@@ -350,8 +347,16 @@ class FrameworkModelStep(BasePipelineStep):
         wrapper = ModelFactory.create(self.model_name, self.effective_cfg)
 
         # Build datamodule
-        datamodule = DataModuleFactory.build(self.effective_cfg, df)
-        datamodule.setup()
+        datamodule = self.get_input(context, "datamodule", required=False)
+        if datamodule is None:
+            print("datamodule is None, the we get from data")
+            df = self._get_input_data(context)
+            if df is None:
+                raise ValueError(
+                    f"data must be specified if datamodule is {datamodule}"
+                )
+            datamodule = DataModuleFactory.build(self.effective_cfg, df)
+            datamodule.setup()
 
         # Build trainer
         trainer = TrainerFactory.create(

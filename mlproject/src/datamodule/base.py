@@ -54,7 +54,10 @@ class BaseDataModule:
         self.input_chunk = input_chunk
         self.output_chunk = output_chunk
         data_cfg = self.cfg.get("data", {})
-        self.target_columns = data_cfg.get("target_columns", [])
+        self.target_columns = []
+        for col in data_cfg.get("target_columns", []):
+            if col in self.df.columns:
+                self.target_columns.append(col)
         self.features = data_cfg.get("features", [])
         data_type = data_cfg.get(
             "type",

@@ -256,7 +256,6 @@ class PreprocessorStep(BasePipelineStep):
             df_transformed[target_columns],
             "target_data",
         )
-
         return context
 
 

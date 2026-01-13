@@ -49,7 +49,7 @@ pipeline:
         type: "framework_model"
         log_artifact: true
         artifact_type: "model"
-        experiment_config: "mlproject/configs/model/tft_ts.yaml"
+        experiment_config: "mlproject/configs/model/tft_ts_feast.yaml"
         wiring:
           inputs:
             datamodule: "prepare_data_datamodule"

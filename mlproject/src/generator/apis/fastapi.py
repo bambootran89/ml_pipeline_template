@@ -132,7 +132,7 @@ class PredictResponse(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 class MultiPredictResponse(BaseModel):
-    predictions: Dict[str, List[List[float]]]
+    predictions: Dict[str, Union[List[List[float]], List[float]]]
     metadata: Optional[Dict[str, Any]] = None
 
 class HealthResponse(BaseModel):
@@ -239,7 +239,7 @@ class ServeService:
                 x_input = self._prepare_input_tabular(features)
                 metadata["n_samples"] = len(x_input)
                 preds = model.predict(x_input)
-                results["{step_info['output_key']}"] = preds.flatten().tolist()
+                results["{step_info['output_key']}"] = preds.tolist()
                 if return_probabilities and hasattr(model, "predict_proba"):
                     try:
                         proba = model.predict_proba(x_input)
@@ -343,14 +343,14 @@ def health_check() -> HealthResponse:
     )
 
 
-@app.post("/predict", response_model=PredictResponse)
-def predict(request: PredictRequest) -> PredictResponse:
+@app.post("/predict", response_model=MultiPredictResponse)
+def predict(request: PredictRequest) -> MultiPredictResponse:
     try:
         df = pd.DataFrame(request.data)
         preprocessed_data = service.preprocess(df)
         context = {{"preprocessed_data": preprocessed_data}}
         predictions = service.run_inference_pipeline(context)
-        return PredictResponse(predictions=predictions)
+        return MultiPredictResponse(predictions=predictions)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -360,8 +360,8 @@ def predict(request: PredictRequest) -> PredictResponse:
         """Generate data-type specific endpoints."""
         if ctx.data_config.data_type == "tabular":
             return """
-@app.post("/predict/batch", response_model=PredictResponse)
-def predict_batch(request: BatchPredictRequest) -> PredictResponse:
+@app.post("/predict/batch", response_model=MultiPredictResponse)
+def predict_batch(request: BatchPredictRequest) -> MultiPredictResponse:
     try:
         df = pd.DataFrame(request.data)
         preprocessed_data = service.preprocess(df)
@@ -370,7 +370,7 @@ def predict_batch(request: BatchPredictRequest) -> PredictResponse:
             context,
             return_probabilities=request.return_probabilities
         )
-        return PredictResponse(
+        return MultiPredictResponse(
             predictions=result["predictions"],
             metadata=result["metadata"]
         )
@@ -386,11 +386,11 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
         if len(df) < service.INPUT_CHUNK_LENGTH:
             raise HTTPException(
                 status_code=400,
-                detail=f"Input must have at least \\
-                    {{service.INPUT_CHUNK_LENGTH}} timesteps (got {{len(df)}})"
+                detail=f"Input must have at least \
+                    {service.INPUT_CHUNK_LENGTH} timesteps (got {len(df)})"
             )
         preprocessed_data = service.preprocess(df)
-        context = {{"preprocessed_data": preprocessed_data}}
+        context = {"preprocessed_data": preprocessed_data}
         result = service.predict_timeseries_multistep(
             context,
             steps_ahead=request.steps_ahead

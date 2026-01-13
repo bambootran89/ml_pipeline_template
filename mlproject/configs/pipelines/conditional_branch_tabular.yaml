@@ -7,7 +7,7 @@
 # This allows complete customization of model, hyperparams, data settings.
 
 pipeline:
-  name: "conditional_model_selection"
+  name: "tabular_conditional_model_selection"
 
   steps:
     # Stage 1: Data Loading
@@ -42,14 +42,13 @@ pipeline:
         key: "data_size"
         operator: ">"
         value: 100
-
       # Execute if data_size > 100 → Load TFT config from external file
       if_true:
-        id: "train_tft"
+        id: "train_tab_catboost"
         type: "framework_model"
         log_artifact: true
         artifact_type: "model"
-        experiment_config: "mlproject/configs/model/tft_ts.yaml"
+        experiment_config: "mlproject/configs/model/catboost_tabular.yaml"
         wiring:
           inputs:
             datamodule: "prepare_data_datamodule"
@@ -58,11 +57,11 @@ pipeline:
 
       # Execute if data_size <= 100 → Load XGBoost config from external file
       if_false:
-        id: "train_xgb"
+        id: "train_tab_xgboost"
         type: "framework_model"
         log_artifact: true
         artifact_type: "model"
-        experiment_config: "mlproject/configs/model/xgboost_ts.yaml"
+        experiment_config: "mlproject/configs/model/xgboost_tabular.yaml"
         wiring:
           inputs:
             datamodule: "prepare_data_datamodule"

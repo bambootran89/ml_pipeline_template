@@ -105,8 +105,16 @@ class EvalPipelineMixin(BaseTransformMixin):
 
     def _transform_branch_step_for_eval(self, branch_step: Any) -> Any:
         """Transform a branch step for eval mode."""
-        transformed = copy.deepcopy(branch_step)
 
+        model_producer_ids = self._collect_model_producer_ids(
+            self._extract_model_producers_recursive(self.train_steps),
+        )
+        depends_on = self._corect_dependencies(
+            mp=branch_step, model_producer_ids=model_producer_ids
+        )
+        if hasattr(branch_step, "depends_on"):
+            branch_step.depends_on = depends_on
+        transformed = copy.deepcopy(branch_step)
         if hasattr(transformed, "if_true"):
             evaluator = self._transform_branch_to_evaluator(transformed.if_true)
             if evaluator:
@@ -116,7 +124,6 @@ class EvalPipelineMixin(BaseTransformMixin):
             evaluator = self._transform_branch_to_evaluator(transformed.if_false)
             if evaluator:
                 transformed.if_false = evaluator
-
         return transformed
 
     def _make_evaluator_config(
@@ -145,7 +152,6 @@ class EvalPipelineMixin(BaseTransformMixin):
             preprocessor_id=preprocessor_id,
             all_model_producers=all_model_producers,
         )
-
         step_cfg: Dict[str, Any] = {
             "id": eval_id,
             "type": "evaluator",
@@ -190,18 +196,65 @@ class EvalPipelineMixin(BaseTransformMixin):
         model_producer_ids = self._collect_model_producer_ids(
             all_model_producers,
         )
-
         depends_on = [init_id]
 
         if hasattr(mp, "depends_on") and mp.depends_on:
             for dep in mp.depends_on:
                 if self._is_valid_evaluator_dependency(dep, model_producer_ids):
-                    depends_on.append(dep)
+                    # Check if dep is inside a sub-pipeline
+                    if self.train_steps:
+                        parent_pipeline = self._find_parent_sub_pipeline(
+                            self.train_steps, dep
+                        )
+                        if parent_pipeline and parent_pipeline not in depends_on:
+                            # Replace internal step with parent sub-pipeline
+                            depends_on.append(parent_pipeline)
+                        elif not parent_pipeline and dep not in depends_on:
+                            depends_on.append(dep)
+                    else:
+                        if dep not in depends_on:
+                            depends_on.append(dep)
 
         if preprocessor_id and preprocessor_id not in depends_on:
             depends_on.append(preprocessor_id)
-
         return depends_on
+
+    def _corect_dependencies(
+        self,
+        mp: Any,
+        model_producer_ids: Optional[set[str]],
+    ) -> List[str]:
+        """Build evaluator step dependencies with recursive replacement."""
+
+        resolved: List[str] = []
+        visited: set[str] = set()
+
+        producer_id_set: set[str] = set()
+        if model_producer_ids is not None:
+            producer_id_set = model_producer_ids
+
+        def _resolve(dep: str) -> None:
+            if dep in visited:
+                return
+
+            visited.add(dep)
+
+            if self._is_valid_evaluator_dependency(dep, producer_id_set):
+                resolved.append(dep)
+                return
+
+            for step in self.train_steps:
+                if step["id"] == dep and step.get("depends_on"):
+                    for child_dep in step["depends_on"]:
+                        _resolve(child_dep)
+
+        if not getattr(mp, "depends_on", None):
+            return []
+
+        for dep in mp.depends_on:
+            _resolve(dep)
+
+        return resolved
 
     def _add_top_level_preprocessor_eval(
         self,
@@ -358,7 +411,6 @@ class EvalPipelineMixin(BaseTransformMixin):
 
         all_preprocessors = self._extract_preprocessors_recursive(train_steps)
         all_model_producers = self._extract_model_producers_recursive(train_steps)
-
         self._add_mlflow_loader(
             new_steps,
             init_id,
