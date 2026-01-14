@@ -16,12 +16,13 @@ class ApiGeneratorExtractorsMixin:
                 inference_steps.append(self._extract_inference_info(step))
             elif step.type == "branch":
                 inference_steps.extend(self._extract_branch_inferences(step))
+            elif step.type == "sub_pipeline":
+                inference_steps.extend(self._extract_sub_pipeline_inferences(step))
         return inference_steps
 
     def _infer_model_type(self, model_key: str) -> str:
         """Infer model type from model key."""
         key_lower = model_key.lower()
-
         ml_patterns = [
             "xgboost",
             "xgb",
@@ -63,6 +64,17 @@ class ApiGeneratorExtractorsMixin:
                 branch = getattr(branch_step, branch_name)
                 if branch.type == "inference":
                     inferences.append(self._extract_inference_info(branch))
+        return inferences
+
+    def _extract_sub_pipeline_inferences(
+        self, sub_pipeline: Any
+    ) -> List[Dict[str, Any]]:
+        """Extract inference info from sub_pipeline step."""
+        inferences = []
+        print(sub_pipeline)
+        for step in sub_pipeline.pipeline.steps:
+            if step.type == "inference":
+                inferences.append(self._extract_inference_info(step))
         return inferences
 
     def _extract_load_map(self, steps: List[Any]) -> Dict[str, str]:

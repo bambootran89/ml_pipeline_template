@@ -42,7 +42,11 @@ class ServePipelineMixin(BaseTransformMixin):
             elif step.type in ["clustering", "model"]:
                 step.type = "inference"
                 self._transform_model_or_clustering_in_pipeline(step, alias)
-
+                step.wiring.outputs.predictions = (
+                    step.wiring.outputs.predictions
+                    if hasattr(step.wiring.outputs, "predictions")
+                    else f"{step['id']}_predictions"
+                )
         return transformed
 
     def _create_inference_wiring(self, model_id: str) -> Dict[str, Any]:

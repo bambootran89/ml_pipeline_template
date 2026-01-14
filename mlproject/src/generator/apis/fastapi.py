@@ -390,8 +390,8 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
         if len(df) < service.INPUT_CHUNK_LENGTH:
             raise HTTPException(
                 status_code=400,
-                detail=f"Input must have at least \
-                    {service.INPUT_CHUNK_LENGTH} timesteps (got {len(df)})"
+                detail=f"Input must have at least "
+                       f"{service.INPUT_CHUNK_LENGTH} timesteps (got {len(df)})"
             )
         preprocessed_data = service.preprocess(df)
         context = {"preprocessed_data": preprocessed_data}
