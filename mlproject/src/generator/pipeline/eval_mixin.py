@@ -212,6 +212,43 @@ class EvalPipelineMixin(BaseTransformMixin):
             depends_on.append(preprocessor_id)
         return depends_on
 
+    def _corect_dependencies(
+        self,
+        mp: Any,
+        model_producer_ids: Optional[set[str]],
+    ) -> List[str]:
+        """Build evaluator step dependencies with recursive replacement."""
+
+        resolved: List[str] = []
+        visited: set[str] = set()
+
+        producer_id_set: set[str] = set()
+        if model_producer_ids is not None:
+            producer_id_set = model_producer_ids
+
+        def _resolve(dep: str) -> None:
+            if dep in visited:
+                return
+
+            visited.add(dep)
+
+            if self._is_valid_evaluator_dependency(dep, producer_id_set):
+                resolved.append(dep)
+                return
+
+            for step in self.train_steps:
+                if step["id"] == dep and step.get("depends_on"):
+                    for child_dep in step["depends_on"]:
+                        _resolve(child_dep)
+
+        if not getattr(mp, "depends_on", None):
+            return []
+
+        for dep in mp.depends_on:
+            _resolve(dep)
+
+        return resolved
+
     def _add_top_level_preprocessor_eval(
         self,
         new_steps: List[Any],
