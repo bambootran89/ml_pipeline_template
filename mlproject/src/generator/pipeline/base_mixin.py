@@ -8,15 +8,6 @@ from omegaconf import OmegaConf
 class BaseTransformMixin:
     """
     Mixin providing core utility methods for pipeline configuration transformation.
-
-    This class contains shared helper functions used during both Evaluation and
-    Serving configuration generation. Its main responsibilities include:
-    - Resetting step state for non-training execution (is_train=False).
-    - Removing training-only parameters and artifacts (e.g. hyperparams).
-    - Preparing wiring configuration for clustering models.
-    - Managing load_map construction for loading trained models and
-    preprocessors from MLflow.
-
     """
 
     MODEL_PRODUCER_TYPES = ["trainer", "clustering", "framework_model"]
@@ -107,8 +98,19 @@ class BaseTransformMixin:
         for attr in ["log_artifact", "artifact_type", "hyperparams"]:
             if hasattr(step, attr):
                 delattr(step, attr)
+        if step.type == "inference":
+            wiring = getattr(step, "wiring", None)
+            if wiring is None:
+                return
 
-    def _setup_clustering_wiring(self, step: Any) -> None:
+            inputs = getattr(wiring, "inputs", None)
+            if inputs is None:
+                return
+
+            if hasattr(inputs, "datamodule"):
+                delattr(inputs, "datamodule")
+
+    def _setup_model_or_clustering_wiring(self, step: Any) -> None:
         """Setup wiring for clustering step in eval/serve mode."""
         if not hasattr(step, "wiring"):
             step.wiring = OmegaConf.create({})
@@ -133,9 +135,11 @@ class BaseTransformMixin:
         if hasattr(step, "wiring") and "inputs" in step.wiring:
             delattr(step.wiring, "inputs")
 
-    def _transform_clustering_in_pipeline(self, step: Any, _alias: str) -> None:
+    def _transform_model_or_clustering_in_pipeline(
+        self, step: Any, _alias: str
+    ) -> None:
         """Transform clustering step in sub-pipeline."""
-        self._setup_clustering_wiring(step)
+        self._setup_model_or_clustering_wiring(step)
         self._remove_training_configs(step)
 
     def _extract_base_name(self, step_id: str) -> str:
@@ -250,6 +254,43 @@ class BaseTransformMixin:
                         if hasattr(nested_step, "id") and nested_step.id == step_id:
                             return step.id
         return None
+
+    def _corect_dependencies(
+        self,
+        mp: Any,
+        model_producer_ids: Optional[set[str]],
+    ) -> List[str]:
+        """Build evaluator step dependencies with recursive replacement."""
+
+        resolved: List[str] = []
+        visited: set[str] = set()
+
+        producer_id_set: set[str] = set()
+        if model_producer_ids is not None:
+            producer_id_set = model_producer_ids
+
+        def _resolve(dep: str) -> None:
+            if dep in visited:
+                return
+
+            visited.add(dep)
+
+            if self._is_valid_evaluator_dependency(dep, producer_id_set):
+                resolved.append(dep)
+                return
+
+            for step in self.train_steps:
+                if step["id"] == dep and step.get("depends_on"):
+                    for child_dep in step["depends_on"]:
+                        _resolve(child_dep)
+
+        if not getattr(mp, "depends_on", None):
+            return []
+
+        for dep in mp.depends_on:
+            _resolve(dep)
+
+        return resolved
 
     def _is_valid_evaluator_dependency(
         self,

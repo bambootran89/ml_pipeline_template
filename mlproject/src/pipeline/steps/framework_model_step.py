@@ -23,6 +23,13 @@ from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.trainer.factory import TrainerFactory
 
 
+def _ensure_df(x: Any) -> pd.DataFrame:
+    """Convert pandas DataFrame to numpy array if needed."""
+    if isinstance(x, np.ndarray):
+        return pd.DataFrame(x)
+    return x
+
+
 class FrameworkModelStep(BasePipelineStep):
     """
     Step to train models using internal ModelFactory and TrainerFactory.
@@ -303,21 +310,23 @@ class FrameworkModelStep(BasePipelineStep):
         return base_cfg
 
     def _get_input_data(self, context: Dict[str, Any]) -> pd.DataFrame:
-        """Retrieve input data from context using wiring."""
-        data = self.get_input(context, "data", required=False)
-        if data is not None:
-            return data
+        """Assemble DataFrame from features and targets."""
+        f = self.get_input(context, "features")
+        tg = self.get_input(context, "targets", required=False)
+        if f is None:
+            raise ValueError(f"Step '{self.step_id}': features is None.")
 
-        # Fallback to common keys
-        fallback_keys = ["preprocessed_data", "df", "train_df"]
-        for key in fallback_keys:
-            if key in context:
-                return context[key]
+        data_cfg: Dict[str, Any] = self.cfg.get("data", {})
+        data_type: str = str(data_cfg.get("type", "tabular")).lower()
 
-        raise KeyError(
-            f"[{self.step_id}] Could not find input data. "
-            f"Available keys: {list(context.keys())}"
-        )
+        if data_type == "timeseries":
+            return f.copy()
+
+        if tg is not None:
+            tg = _ensure_df(tg)
+            return pd.concat([f, tg], axis=1)
+
+        return f.copy()
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """

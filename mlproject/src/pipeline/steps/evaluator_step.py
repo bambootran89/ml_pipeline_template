@@ -17,6 +17,13 @@ from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
+def _ensure_df(x: Any) -> pd.DataFrame:
+    """Convert pandas DataFrame to numpy array if needed."""
+    if isinstance(x, np.ndarray):
+        return pd.DataFrame(x)
+    return x
+
+
 def _ensure_numpy(x: Any) -> np.ndarray:
     """Convert pandas DataFrame to numpy array if needed."""
     if isinstance(x, pd.DataFrame):
@@ -112,6 +119,7 @@ class EvaluatorStep(BasePipelineStep):
         if dm is None:
             df = self._build_eval_frame(context)
             dm = DataModuleFactory.build(self.cfg, df)
+            dm.setup()
         y_true, y_pred, x_test = self._eval_from_datamodule(wrapper, dm)
         metrics = self.evaluator.evaluate(y_true, y_pred, x=x_test, model=wrapper)
 
@@ -135,8 +143,8 @@ class EvaluatorStep(BasePipelineStep):
             return f.copy()
 
         if tg is not None:
-            tg = _ensure_numpy(tg)
-            return pd.concat([f, pd.DataFrame(tg)], axis=1)
+            tg = _ensure_df(tg)
+            return pd.concat([f, tg], axis=1)
 
         return f.copy()
 

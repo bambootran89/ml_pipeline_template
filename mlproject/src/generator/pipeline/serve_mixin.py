@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from omegaconf import DictConfig, OmegaConf
 
-from .base_transform_mixin import BaseTransformMixin
+from .base_mixin import BaseTransformMixin
 
 
 class ServePipelineMixin(BaseTransformMixin):
@@ -14,30 +14,6 @@ class ServePipelineMixin(BaseTransformMixin):
     This mixin encapsulates all utilities required to convert a training
     pipeline configuration into a serving (inference-only) pipeline,
     without altering any model logic or execution semantics.
-
-    Core responsibilities:
-    - Switch all applicable steps from training mode to inference/load mode
-      (`is_train=False`, alias assignment, instance_key setup).
-    - Remove training-only dependencies (e.g. `load_data`) that are not
-      applicable in serving environments.
-    - Rewrite wiring for inference steps to consume fitted models and
-      preprocessed features.
-    - Transform sub-pipelines so they operate in inference mode only.
-    - Transform branch steps (`if_true` / `if_false`) into inference steps
-      where the branch produces a model.
-    - Handle complex pipeline structures (sub-pipeline, branch, parallel)
-      and ensure correct dependency ordering.
-    - Generate inference steps for all eligible model producers.
-    - Preserve backward compatibility for legacy preprocessor placement.
-    - Append final profiling for post-inference inspection.
-
-    The mixin assumes the host class provides shared helpers such as:
-    `_is_model_producer`, `_remove_training_configs`,
-    `_extract_model_producers_recursive`, `_extract_preprocessors_recursive`,
-    `_add_mlflow_loader`, and `_build_load_map`.
-
-    This class is purely structural: it reorganizes pipeline steps and
-    wiring for serving, while keeping model behavior and data flow intact.
     """
 
     def _transform_sub_pipeline_for_serve(
@@ -50,18 +26,22 @@ class ServePipelineMixin(BaseTransformMixin):
         ):
             return transformed
 
-        if hasattr(transformed, "depends_on"):
-            transformed.depends_on = [
-                dep for dep in transformed.depends_on if dep != "load_data"
-            ]
-            if not transformed.depends_on:
-                delattr(transformed, "depends_on")
+        model_producer_ids = self._collect_model_producer_ids(
+            self._extract_model_producers_recursive(self.train_steps),
+        )
+        depends_on = self._corect_dependencies(
+            mp=sub_pipeline_step, model_producer_ids=model_producer_ids
+        )
+        if hasattr(sub_pipeline_step, "depends_on"):
+            sub_pipeline_step.depends_on = depends_on
+        transformed = copy.deepcopy(sub_pipeline_step)
 
         for step in transformed.pipeline.steps:
             if step.type == "preprocessor":
                 self._transform_preprocessor_in_pipeline(step, alias)
-            elif step.type == "clustering":
-                self._transform_clustering_in_pipeline(step, alias)
+            elif step.type in ["clustering", "model"]:
+                step.type = "inference"
+                self._transform_model_or_clustering_in_pipeline(step, alias)
 
         return transformed
 
