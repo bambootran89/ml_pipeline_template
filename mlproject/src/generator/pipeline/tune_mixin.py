@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 from omegaconf import DictConfig, OmegaConf
 
-from .base_transform_mixin import BaseTransformMixin
+from .base_mixin import BaseTransformMixin
 
 
 class TuneMixin(BaseTransformMixin):
@@ -14,30 +14,6 @@ class TuneMixin(BaseTransformMixin):
     This mixin is responsible for converting a training pipeline into a
     tuning-aware pipeline by inserting tuner steps and rewiring model
     producers to consume tuned hyperparameters.
-
-    Core responsibilities:
-    - Insert a dedicated tuner step immediately before each model producer.
-    - Modify model producer steps so they explicitly depend on the
-      corresponding tuner and consume tuned parameters
-      (`use_tuned_params=True`, `tune_step_id` set).
-    - Preserve original execution order and dependencies as much as possible,
-      only extending them where tuning requires it.
-    - Recursively handle complex pipeline structures, including:
-      * Sub-pipelines (nested pipelines).
-      * Parallel branches.
-      * Conditional branches (`if_true` / `if_false`).
-    - Maintain a mapping between model producer IDs and their associated
-      tuner step IDs to ensure consistent rewiring.
-
-    Design constraints:
-    - No training or tuning logic is changed; this mixin only restructures
-      the pipeline configuration.
-    - Original step semantics, ordering, and non-model steps remain intact.
-    - The mixin assumes the host class provides `_is_model_producer`.
-
-    The output of this mixin is a valid pipeline definition that can be
-    executed by a tuning engine (e.g. Optuna-based) while remaining fully
-    compatible with the original training pipeline structure.
     """
 
     def _create_tuner_step(self, model_producer: Any) -> DictConfig:
