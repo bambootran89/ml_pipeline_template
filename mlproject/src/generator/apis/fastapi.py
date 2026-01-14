@@ -293,9 +293,6 @@ class ServeService:
                         "{step_info['model_type']}"
                     )
                     block_preds = model.predict(x_input)
-                    # if hasattr(block_preds, "flatten"):
-                    #     block_preds = block_preds.flatten()
-                    # all_predictions.extend(block_preds.tolist())
                     all_predictions.append(block_preds[0])
                     if block_idx < n_blocks - 1 and hasattr(current_input, "iloc"):
                         shift = min(self.OUTPUT_CHUNK_LENGTH, len(block_preds))

@@ -569,21 +569,22 @@ You can generate APIs for any of these pipelines:
 ```bash
 # Standard
 mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/standard_train_serve.yaml
-
+mlproject/serve_api.sh -e mlproject/configs/experiments/tabular.yaml mlproject/configs/generated/standard_train_serve.yaml
 # Conditional Branch
 mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/conditional_branch_serve.yaml
-
+mlproject/serve_api.sh -e mlproject/configs/experiments/tabular.yaml mlproject/configs/generated/conditional_branch_serve.yaml --> error
 # KMeans + XGBoost
 mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/kmeans_then_xgboost_serve.yaml
-
+mlproject/serve_api.sh -e mlproject/configs/experiments/tabular.yaml mlproject/configs/generated/kmeans_then_xgboost_serve.yaml
 # Parallel Ensemble
 mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/parallel_ensemble_serve.yaml
-
+mlproject/serve_api.sh -e mlproject/configs/experiments/tabular.yaml mlproject/configs/generated/parallel_ensemble_serve.yaml
 # Nested Sub-pipeline
 mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/nested_suppipeline_serve.yaml
-
+mlproject/serve_api.sh -e mlproject/configs/experiments/tabular.yaml mlproject/configs/generated/nested_suppipeline_serve.yaml
 # Dynamic Adapter
 mlproject/serve_api.sh -e mlproject/configs/experiments/etth3.yaml mlproject/configs/generated/dynamic_adapter_train_serve.yaml
+mlproject/serve_api.sh -e mlproject/configs/experiments/tabular.yaml mlproject/configs/generated/dynamic_adapter_train_serve.yaml
 ```
 
 Replace `mlproject/serve_api.sh` with `mlproject/serve_api.sh -f ray` for Ray Serve.
