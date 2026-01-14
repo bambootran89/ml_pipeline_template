@@ -301,7 +301,11 @@ class ServeService:
                         shift = min(self.OUTPUT_CHUNK_LENGTH, len(block_preds))
                         if isinstance(current_input, pd.DataFrame):
                             current_input = current_input.iloc[shift:]
-                preds_2d = np.concatenate(all_predictions, axis=0)
+                all_predictions = np.array(all_predictions)
+                if all_predictions.ndim == 1:
+                    preds_2d = all_predictions
+                else:
+                    preds_2d = np.concatenate(all_predictions, axis=0)
                 results["{step_info['output_key']}"] = preds_2d.tolist()
 """
             )

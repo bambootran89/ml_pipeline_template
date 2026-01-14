@@ -21,14 +21,15 @@ style:
 	${PYTHON} -m isort -rc ./${MAIN_FOLDER}/
 	${PYTHON} -m  autoflake --in-place --remove-unused-variables --remove-all-unused-imports -r mlproject/
 	${PYTHON} -m  autopep8 --in-place --aggressive --aggressive --aggressive -r mlproject/
-	flake8 ./${MAIN_FOLDER}/
+	flake8 ./${MAIN_FOLDER}/ --exclude=*/generated/*
 	${PYTHON} -m pylint ./${MAIN_FOLDER}/
 
 test:
-	${PYTHON} -m flake8 ./${MAIN_FOLDER}/
+	${PYTHON} -m flake8 ./${MAIN_FOLDER}/ --exclude=*/generated/*
 	${PYTHON} -m mypy ./${MAIN_FOLDER}/
 	CUDA_VISIBLE_DEVICES=""  ${PYTHON} -m pytest -v -s --durations=0 --disable-warnings ${TEST_FOLDER}/
 	${PYTHON} -m pylint ./${MAIN_FOLDER}/
+
 
 docker-build:
 	docker build -t $(IMAGE_NAME):$(TAG) .
