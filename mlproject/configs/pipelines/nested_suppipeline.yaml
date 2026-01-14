@@ -11,34 +11,35 @@ pipeline:
       type: "data_loader"
       enabled: true
 
-    # Stage 2: Feature Engineering Sub-Pipeline
-    - id: "feature_pipeline"
+    # Step 2: Preprocessing - fit and transform data
+    - id: "preprocess"
+      type: "preprocessor"
+      enabled: true
+      log_artifact: true
+      artifact_type: "preprocess"
+      depends_on: ["load_data"]
+      is_train: true
+
+    - id: "prepare_data"
+      type: "datamodule"
+      depends_on: ["preprocess"]
+      wiring:
+        inputs:
+          features: "preprocessed_data"
+          targets: "target_data"
+        outputs: { datamodule: "prepare_data_datamodule" }
+    # Stage 2: Clustering Sub-Pipeline
+    - id: "cluster_pipeline"
       type: "sub_pipeline"
       enabled: true
-      depends_on: ["load_data"]
+      depends_on: ["prepare_data"]
       isolated: false
-
       # Inline pipeline definition
       pipeline:
         steps:
-          # Sub-step 1: Preprocessing
-          - id: "normalize"
-            type: "preprocessor"
-            is_train: true
-            log_artifact: true
-            artifact_type: "preprocess"
-            wiring:
-              inputs:
-                df: "df"
-                train_df: "train_df"
-                test_df: "test_df"
-              outputs:
-                data: "normalized_data"
-
-          # Sub-step 2: Clustering for feature generation
-          - id: "cluster"
+          # Sub-step 1: Clustering for feature generation
+          - id: "cluster_type_1"
             type: "clustering"
-            depends_on: ["normalize"]
             model_name: "kmean"
             log_artifact: true
             artifact_type: "model"
@@ -47,28 +48,30 @@ pipeline:
               n_clusters: 4
             wiring:
               inputs:
-                data: "normalized_data"
+                datamodule: "prepare_data_datamodule"
               outputs:
-                features: "cluster_features"
-                model: "cluster_model"
-
-    # Stage 3: Model Training
-    # Uses feat_normalized_data (prefixed output from sub-pipeline)
-    - id: "prepare_data"
-      type: "datamodule"
-      depends_on: ["feature_pipeline"]
-      wiring:
-        inputs:
-          features: "preprocessed_data"
-          targets: "target_data"
-        outputs:
-          datamodule: "prepare_data_datamodule"
-
+                features: "cluster_1_features"
+                model: "cluster_model_1"
+          # Sub-step 1: Clustering for feature generation
+          - id: "cluster_type_2"
+            type: "clustering"
+            model_name: "kmean"
+            log_artifact: true
+            artifact_type: "model"
+            output_as_feature: true
+            hyperparams:
+              n_clusters: 2
+            wiring:
+              inputs:
+                datamodule: "prepare_data_datamodule"
+              outputs:
+                features: "cluster_2_features"
+                model: "cluster_model_2"
 
     - id: "train_model"
       type: "trainer"
       enabled: true
-      depends_on: ["feature_pipeline"]
+      depends_on: ["cluster_pipeline"]
       log_artifact: true
       artifact_type: "model"
       wiring:

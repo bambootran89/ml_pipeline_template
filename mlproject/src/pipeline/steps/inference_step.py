@@ -73,9 +73,8 @@ class InferenceStep(BasePipelineStep):
             Context with predictions added.
         """
         self.validate_dependencies(context)
-
         # Get data using wiring
-        df: pd.DataFrame = self.get_input(context, "data")
+        df: pd.DataFrame = self.get_input(context, "features")
 
         model = self.get_input(context, "model")
 

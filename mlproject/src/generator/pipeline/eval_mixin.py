@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from omegaconf import DictConfig, OmegaConf
 
-from .base_transform_mixin import BaseTransformMixin
+from .base_mixin import BaseTransformMixin
 
 
 class EvalPipelineMixin(BaseTransformMixin):
@@ -14,22 +14,6 @@ class EvalPipelineMixin(BaseTransformMixin):
     This mixin encapsulates all logic required to transform a training pipeline
     into an evaluation (eval) pipeline without altering the original training
     behavior or artifacts.
-
-    Responsibilities include:
-    - Transforming sub-pipelines, branches, and parallel steps for eval mode.
-    - Replacing model producer steps with evaluator steps where appropriate.
-    - Building evaluator wiring (inputs/outputs) and dependency graphs.
-    - Injecting MLflow artifact loaders and preprocessing steps for eval.
-    - Handling legacy preprocessors and dynamic adapters.
-    - Attaching auxiliary steps such as logging and profiling after evaluation.
-
-    The mixin is designed to be composed into a higher-level pipeline generator
-    (e.g. ConfigGenerator) and assumes the presence of shared helper methods
-    such as `_is_model_producer`, `_remove_training_configs`,
-    `_extract_model_producers_recursive`, and `_add_mlflow_loader`.
-
-    No training logic or evaluation semantics are modified; only pipeline
-    structure and execution dependencies are rewritten for eval execution.
     """
 
     def _transform_sub_pipeline_for_eval(
@@ -42,11 +26,20 @@ class EvalPipelineMixin(BaseTransformMixin):
         ):
             return transformed
 
+        model_producer_ids = self._collect_model_producer_ids(
+            self._extract_model_producers_recursive(self.train_steps),
+        )
+        depends_on = self._corect_dependencies(
+            mp=sub_pipeline_step, model_producer_ids=model_producer_ids
+        )
+        if hasattr(sub_pipeline_step, "depends_on"):
+            sub_pipeline_step.depends_on = depends_on
+        transformed = copy.deepcopy(sub_pipeline_step)
         for step in transformed.pipeline.steps:
             if step.type == "preprocessor":
                 self._transform_preprocessor_in_pipeline(step, alias)
-            elif step.type == "clustering":
-                self._transform_clustering_in_pipeline(step, alias)
+            elif step.type in ["clustering", "model"]:
+                self._transform_model_or_clustering_in_pipeline(step, alias)
 
         return transformed
 

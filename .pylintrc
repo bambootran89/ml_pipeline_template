@@ -1,3 +1,7 @@
+[MASTER]
+ignore-patterns=^\.#|.*/generated/.*
+
+
 [MAIN]
 
 # Analyse import fallback blocks. This can be used to support both Python 2 and
