@@ -188,8 +188,20 @@ class EvalBuilder:
                 "source_model_key": model_key,
                 "base_features_key": "preprocessed_data",
                 "output_key": feat.output_key,
+                "apply_windowing": self._should_apply_windowing(feat.source_step_id),
             }
         )
+
+    def _should_apply_windowing(self, step_id: str) -> bool:
+        """Check if windowing should be applied based on step ID."""
+        # Heuristic: Imputers and clusterers usually work on raw features
+        # while forecasters work on windows
+        step_lower = step_id.lower()
+        if any(
+            x in step_lower for x in ["impute", "cluster", "kmeans", "pca", "scaler"]
+        ):
+            return False
+        return True
 
     def _transform_sub_pipeline(
         self, step: Any, alias: str, feature_pipeline: Optional[FeaturePipeline]

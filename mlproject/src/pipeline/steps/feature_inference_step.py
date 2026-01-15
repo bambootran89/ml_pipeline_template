@@ -37,6 +37,8 @@ class FeatureInferenceStep(BasePipelineStep):
         base_features_key: str = "preprocessed_data",
         output_key: str = "features",
         experiment_config: Optional[Any] = None,
+        inference_method: str = "predict",
+        apply_windowing: bool = True,
         **kwargs: Any,
     ) -> None:
         """Initialize feature inference step."""
@@ -44,6 +46,8 @@ class FeatureInferenceStep(BasePipelineStep):
         self.source_model_key = source_model_key
         self.base_features_key = base_features_key
         self.output_key = output_key
+        self.inference_method = inference_method
+        self.apply_windowing = apply_windowing
 
         # Merge experiment config to access global settings (e.g. data type, chunks)
         if experiment_config is None:
@@ -78,10 +82,27 @@ class FeatureInferenceStep(BasePipelineStep):
         # Prepare input
         x = self._prepare_input(base_features)
 
-        print(f"[{self.step_id}] Generating features from '{self.source_model_key}'")
+        # Determine inference method
+        method_name = self.inference_method
+        if not hasattr(model, method_name):
+            # Auto-detect fallback for common transformers
+            if method_name == "predict" and hasattr(model, "transform"):
+                print(
+                    f"[{self.step_id}] Model missing 'predict', falling back to 'transform'"
+                )
+                method_name = "transform"
+            else:
+                raise AttributeError(
+                    f"Step '{self.step_id}': Model '{self.source_model_key}' "
+                    f"has no method '{method_name}'"
+                )
+
+        print(
+            f"[{self.step_id}] Generating features from '{self.source_model_key}' using '{method_name}'"
+        )
         print(f"  Input shape: {x.shape}")
 
-        if data_type == "timeseries":
+        if data_type == "timeseries" and self.apply_windowing:
             # Apply windowing
             hyperparams = self.effective_cfg.get("experiment", {}).get(
                 "hyperparams", {}
@@ -92,8 +113,14 @@ class FeatureInferenceStep(BasePipelineStep):
             x_windows = self._create_windows(x, input_chunk, output_chunk)
             print(f"  Windowed shape: {x_windows.shape}")
 
-            # Predict
-            features = model.predict(x_windows)
+            # Predict/Transform
+            inference_func = getattr(model, method_name)
+            features = inference_func(x_windows)
+
+            # Flatten 3D output (N, T, F) -> (N, T*F)
+            if features.ndim == 3:
+                print(f"  Flattening 3D output {features.shape} to 2D")
+                features = features.reshape(features.shape[0], -1)
 
             # Pad output to align with original length
             n = len(x)
@@ -124,15 +151,15 @@ class FeatureInferenceStep(BasePipelineStep):
                 end_align = start_align + expected_len
 
                 if end_align <= n:
-                    full_preds[start_align:end_align] = features.reshape(
-                        expected_len, -1
-                    )
+                    full_preds[start_align:end_align] = features
                     features = full_preds
                     print(f"  Padded features from {expected_len} to {n}")
 
         else:
-            # Tabular
-            features = model.predict(x)
+            # Tabular or NO windowing
+            # For no windowing, process raw rows directly (e.g. imputer)
+            inference_func = getattr(model, method_name)
+            features = inference_func(x)
 
         print(f"  Output shape: {features.shape}")
 
@@ -177,13 +204,13 @@ class FeatureInferenceStep(BasePipelineStep):
         """
 
         if isinstance(features, pd.DataFrame):
-            return features.values.astype(np.float32)
+            return features.values.astype(np.float64)
 
         if isinstance(features, np.ndarray):
-            return features.astype(np.float32)
+            return features.astype(np.float64)
 
         if isinstance(features, (list, tuple)):
-            return np.array(features, dtype=np.float32)
+            return np.array(features, dtype=np.float64)
 
         raise TypeError(f"Unsupported feature type: {type(features).__name__}")
 

@@ -245,15 +245,16 @@ class ServeBuilder:
             return None
 
         inf_id = f"{branch.id}_inference"
-        wiring = self._create_inference_wiring(branch.id)
 
         config = {
             "id": inf_id,
-            "type": "inference",
+            "type": "feature_inference",
             "enabled": True,
             "depends_on": ["preprocess"],
-            "output_as_feature": getattr(branch, "output_as_feature", False),
-            "wiring": wiring,
+            "source_model_key": f"fitted_{branch.id}",
+            "base_features_key": "preprocessed_data",
+            "output_key": f"{branch.id}_predictions",
+            "apply_windowing": self._should_apply_windowing(branch.id),
         }
 
         return OmegaConf.create(config)
@@ -321,17 +322,13 @@ class ServeBuilder:
             inf_step = OmegaConf.create(
                 {
                     "id": inf_id,
-                    "type": "inference",
+                    "type": "feature_inference",
                     "enabled": True,
                     "depends_on": [init_id, last_id],
-                    "output_as_feature": getattr(producer, "output_as_feature", False),
-                    "wiring": {
-                        "inputs": {
-                            "model": f"fitted_{producer.id}",
-                            "features": "preprocessed_data",
-                        },
-                        "outputs": {"predictions": f"{producer.id}_predictions"},
-                    },
+                    "source_model_key": f"fitted_{producer.id}",
+                    "base_features_key": "preprocessed_data",
+                    "output_key": f"{producer.id}_predictions",
+                    "apply_windowing": self._should_apply_windowing(producer.id),
                 }
             )
 
@@ -339,6 +336,15 @@ class ServeBuilder:
             last_id = inf_id
 
         return last_id
+
+    def _should_apply_windowing(self, step_id: str) -> bool:
+        """Check if windowing should be applied based on step ID."""
+        step_lower = step_id.lower()
+        if any(
+            x in step_lower for x in ["impute", "cluster", "kmeans", "pca", "scaler"]
+        ):
+            return False
+        return True
 
     def _add_final_profiling(self, steps: List[Any], last_id: str) -> None:
         """Add final profiling step."""
