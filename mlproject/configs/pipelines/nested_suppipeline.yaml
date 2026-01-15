@@ -1,18 +1,6 @@
 # Fixed nested sub-pipeline with proper feature engineering
 # This config works with the new ConfigGenerator
 
-experiment:
-  name: nested_feature_engineering
-  model: xgboost
-  model_type: ml
-  hyperparams:
-    n_estimators: 100
-    max_depth: 6
-
-data:
-  type: tabular
-  target_columns: [target]
-
 pipeline:
   name: "nested_feature_engineering"
   steps:

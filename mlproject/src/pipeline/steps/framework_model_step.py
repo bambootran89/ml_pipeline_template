@@ -316,17 +316,33 @@ class FrameworkModelStep(BasePipelineStep):
         if f is None:
             raise ValueError(f"Step '{self.step_id}': features is None.")
 
+        # Auto-restore column names if input is numpy array (e.g. from sklearn)
+        data_cfg_eff = self.effective_cfg.get("data", {})
+        feature_names = list(data_cfg_eff.get("features", []))
+        target_names = list(data_cfg_eff.get("target_columns", []))
+
+        if isinstance(f, np.ndarray):
+            f = pd.DataFrame(f)
+            if feature_names and len(feature_names) == f.shape[1]:
+                f.columns = feature_names
+
+        if tg is not None and isinstance(tg, np.ndarray):
+            tg = pd.DataFrame(tg)
+            if target_names and len(target_names) == tg.shape[1]:
+                tg.columns = target_names
+
         data_cfg: Dict[str, Any] = self.cfg.get("data", {})
         data_type: str = str(data_cfg.get("type", "tabular")).lower()
 
         if data_type == "timeseries":
-            return f.copy()
+            return _ensure_df(f).copy()
 
         if tg is not None:
             tg = _ensure_df(tg)
+            f = _ensure_df(f)
             return pd.concat([f, tg], axis=1)
 
-        return f.copy()
+        return _ensure_df(f).copy()
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -396,16 +412,77 @@ class FrameworkModelStep(BasePipelineStep):
         print(f"[{self.step_id}] Model step completed")
         return context
 
-    def _generate_features(self, wrapper: Any, datamodule: Any) -> np.ndarray:
+    def _generate_features(
+        self, wrapper: Any, datamodule: Any
+    ) -> pd.DataFrame | np.ndarray:
         """Generate features from trained model."""
-        if hasattr(datamodule, "get_data"):
-            x_train, _, _, _, _, _ = datamodule.get_data()
-        elif hasattr(datamodule, "get_test_windows"):
-            x_train, _ = datamodule.get_test_windows()
-        else:
-            raise AttributeError("DataModule does not support data extraction")
+        # Try to predict on the entire original dataframe to ensure maximum coverage
+        if hasattr(datamodule, "df") and hasattr(datamodule, "features"):
+            df = datamodule.df
 
-        predictions = wrapper.predict(x_train)
+            # Check for timeseries vs tabular
+            # datamodule.data_type is available
+            if getattr(datamodule, "data_type", "tabular") == "timeseries":
+                if hasattr(datamodule, "_create_windows"):
+                    input_chunk = getattr(datamodule, "input_chunk", 1)
+                    output_chunk = getattr(datamodule, "output_chunk", 1)
+                    x_all, _ = datamodule._create_windows(df, input_chunk, output_chunk)
+                    predictions = wrapper.predict(x_all)
+
+                    # Pad predictions if they are windowed
+                    n = len(df)
+                    if len(predictions) < n:
+                        # Assuming stride=1 logic from BaseDataModule
+                        # Windows start at index `input_chunk` (first valid end_idx)
+                        # And end at `n - output_chunk`
+                        # Alignment: prediction at index `t` uses history ending at `t`?
+                        # Using end_idx-1 as the alignment point (last input timestamp)
+
+                        start_align = input_chunk - 1
+                        expected_len = len(predictions)
+
+                        # Verify if shapes match our assumption
+                        # If stride != 1, this logic is brittle, but likely stride=1
+                        if start_align + expected_len <= n:
+                            full_preds = np.full((n, 1), np.nan)
+                            if predictions.ndim > 1:
+                                full_preds = np.full((n, predictions.shape[1]), np.nan)
+
+                            full_preds[
+                                start_align : start_align + expected_len
+                            ] = predictions.reshape(expected_len, -1)
+                            predictions = full_preds
+                            print(
+                                f"[{self.step_id}] Padded features from {expected_len} to {n}"
+                            )
+                else:
+                    # Fallback to train only if we can't recreate windows
+                    x_train, _, _, _, _, _ = datamodule.get_data()
+                    predictions = wrapper.predict(x_train)
+            else:
+                # Tabular
+                x_all = df[datamodule.features].values
+                predictions = wrapper.predict(x_all)
+
+            # Assign index if available
+            if len(predictions) == len(df):
+                if predictions.ndim == 1:
+                    predictions = predictions.reshape(-1, 1)
+
+                # Convert to DataFrame with index
+                # Use default columns or let caller rename
+                return pd.DataFrame(predictions, index=df.index)
+
+        else:
+            # Fallback
+            if hasattr(datamodule, "get_data"):
+                x_train, _, _, _, _, _ = datamodule.get_data()
+                predictions = wrapper.predict(x_train)
+            elif hasattr(datamodule, "get_test_windows"):
+                x_train, _ = datamodule.get_test_windows()
+                predictions = wrapper.predict(x_train)
+            else:
+                raise AttributeError("DataModule does not support data extraction")
 
         if predictions.ndim == 1:
             predictions = predictions.reshape(-1, 1)

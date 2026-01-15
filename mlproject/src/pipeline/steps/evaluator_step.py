@@ -223,6 +223,39 @@ class EvaluatorStep(PipelineStep):
         else:
             input_df = features_df.copy()
 
+        # Restore feature names if lost (e.g. from numpy)
+        # This is critical for DataModule which expects specific column names
+        expected_features = data_cfg.get("features", [])
+        # Only rename if we have features only (no targets concatenated yet or we handle targets separately)
+        # In this logic, input_df might contain targets.
+        # But for 'timeseries' path above, input_df = features_df.
+        # And targets are handled inside DataModule via target_columns lookup on input_df?
+        # BaseDataModule splits x/y from 'df' using features and target_columns.
+        # So 'df' must contain both.
+
+        # If input_df has fewer columns than features + targets, we might be missing targets.
+        # But if input_df has same num columns as features, and we are missing targets,
+        # BaseDataModule will fail to find targets.
+
+        # In cluster_type_1_evaluate, targets are NOT provided.
+        # And DataModule might need them?
+        # BaseDataModule.__init__:
+        # raises error if df empty.
+        # self.target_columns loops cfg.get("target_columns") and checks if in df.columns.
+
+        # So if targets are missing from df, self.target_columns will be empty.
+        # Then _prepare_data calls _create_windows.
+        # _create_windows tries to get y_win using self.target_columns.
+        # If self.target_columns is empty, y_win will be empty?
+        # df.iloc[...][[]].values -> shape (window, 0).
+
+        # So it seems acceptable if targets are missing given BaseDataModule logic.
+
+        # So main issue is FEATURES.
+        if len(expected_features) == input_df.shape[1]:
+            print(f"[{self.step_id}] Restoring feature names: {expected_features}")
+            input_df.columns = expected_features
+
         # Build DataModule
         print(
             f"[{self.step_id}] Building DataModule with composed features: "

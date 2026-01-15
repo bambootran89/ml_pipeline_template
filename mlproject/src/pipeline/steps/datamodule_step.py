@@ -153,12 +153,18 @@ class DataModuleStep(BasePipelineStep):
             # Align samples
             additional = self._align_samples(additional, n_samples, key)
 
+            # Force index alignment if lengths match
+            # This handles cases where additional features lost their index (e.g. from numpy)
+            if len(additional) == len(composed):
+                additional.index = composed.index
+
+            # Prefix columns to avoid collisions
+            if isinstance(additional, pd.DataFrame):
+                additional.columns = [f"{key}_{c}" for c in additional.columns]
+
             # Concatenate
             composed = pd.concat([composed, additional], axis=1)
             print(f"  + {key}: {additional.shape} -> Total: {composed.shape}")
-
-        # Reset column names to avoid duplicates
-        composed.columns = [f"feat_{i}" for i in range(composed.shape[1])]
 
         return composed
 

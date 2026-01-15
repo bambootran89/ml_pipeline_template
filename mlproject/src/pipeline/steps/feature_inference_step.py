@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from omegaconf import OmegaConf
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
@@ -35,52 +36,23 @@ class FeatureInferenceStep(BasePipelineStep):
         source_model_key: str = "model",
         base_features_key: str = "preprocessed_data",
         output_key: str = "features",
+        experiment_config: Optional[Any] = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize feature inference step.
-
-        Parameters
-        ----------
-        step_id : str
-            Unique step identifier.
-        cfg : Any
-            Configuration object.
-        enabled : bool
-            Whether step should execute.
-        depends_on : Optional[List[str]]
-            Prerequisite steps.
-        source_model_key : str
-            Context key for source model.
-        base_features_key : str
-            Context key for base features.
-        output_key : str
-            Context key to store generated features.
-        **kwargs
-            Additional parameters.
-        """
+        """Initialize feature inference step."""
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.source_model_key = source_model_key
         self.base_features_key = base_features_key
         self.output_key = output_key
 
+        # Merge experiment config to access global settings (e.g. data type, chunks)
+        if experiment_config is None:
+            self.effective_cfg = cfg
+        else:
+            self.effective_cfg = OmegaConf.merge(cfg, experiment_config)
+
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute feature generation.
-
-        Parameters
-        ----------
-        context : Dict[str, Any]
-            Pipeline context.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Context with generated features added.
-
-        Raises
-        ------
-        KeyError
-            If required model or features not found.
-        """
+        """Execute feature generation."""
         self.validate_dependencies(context)
 
         # Get model
@@ -99,25 +71,96 @@ class FeatureInferenceStep(BasePipelineStep):
                 f"'{self.base_features_key}' not found in context"
             )
 
+        # Check data type
+        data_cfg = self.effective_cfg.get("data", {})
+        data_type = str(data_cfg.get("type", "tabular")).lower()
+
         # Prepare input
         x = self._prepare_input(base_features)
 
-        # Generate features
-        print(
-            f"[{self.step_id}] Generating features from " f"'{self.source_model_key}'"
-        )
+        print(f"[{self.step_id}] Generating features from '{self.source_model_key}'")
         print(f"  Input shape: {x.shape}")
 
-        features = model.predict(x)
+        if data_type == "timeseries":
+            # Apply windowing
+            hyperparams = self.effective_cfg.get("experiment", {}).get(
+                "hyperparams", {}
+            )
+            input_chunk = hyperparams.get("input_chunk_length", 1)
+            output_chunk = hyperparams.get("output_chunk_length", 1)
+
+            x_windows = self._create_windows(x, input_chunk, output_chunk)
+            print(f"  Windowed shape: {x_windows.shape}")
+
+            # Predict
+            features = model.predict(x_windows)
+
+            # Pad output to align with original length
+            n = len(x)
+            expected_len = len(features)
+
+            # Alignment assumption: last input point aligns with prediction time?
+            # Or standard windowing: start_align = input_chunk.
+            # We align end of window. Windows start at index `input_chunk` (if stride=1 logic).
+            start_align = input_chunk
+
+            # Correction: _create_windows iterates range(input_chunk, n - output_chunk + 1)
+            # So first window ends at index `input_chunk`.
+            # If we want alignment such that feature[t] corresponds to input[t],
+            # then the prediction for window ending at t is available at t.
+
+            if len(features) < n:
+                # Initialize with NaNs
+                full_preds = np.full((n, 1), np.nan)
+                if features.ndim > 1:
+                    full_preds = np.full((n, features.shape[1]), np.nan)
+
+                # Careful with alignment.
+                # Window 0 uses x[0:input_chunk]. Corresponds to time step `input_chunk-1`.
+                # Let's align it to `input_chunk-1`?
+                # FrameworkModelStep used `start_align = input_chunk - 1`.
+
+                start_align = input_chunk - 1
+                end_align = start_align + expected_len
+
+                if end_align <= n:
+                    full_preds[start_align:end_align] = features.reshape(
+                        expected_len, -1
+                    )
+                    features = full_preds
+                    print(f"  Padded features from {expected_len} to {n}")
+
+        else:
+            # Tabular
+            features = model.predict(x)
 
         print(f"  Output shape: {features.shape}")
 
         # Store in context
         context[self.output_key] = features
-
         print(f"[{self.step_id}] Stored features in '{self.output_key}'")
 
         return context
+
+    def _create_windows(
+        self, x: np.ndarray, input_chunk: int, output_chunk: int
+    ) -> np.ndarray:
+        """Create sliding windows from input array."""
+        n = len(x)
+        windows = []
+        stride = 1
+
+        # Logic matching BaseDataModule._create_windows
+        for end_idx in range(input_chunk, n - output_chunk + 1, stride):
+            start_idx = end_idx - input_chunk
+            # Flatten window
+            win = x[start_idx:end_idx].reshape(-1)
+            windows.append(win)
+
+        if not windows:
+            return np.empty((0, input_chunk * x.shape[1]))
+
+        return np.stack(windows)
 
     def _prepare_input(self, features: Any) -> np.ndarray:
         """Prepare input for model prediction.
