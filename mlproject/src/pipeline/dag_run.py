@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
@@ -275,13 +276,42 @@ def run_serve(
         if not pred_keys:
             raise RuntimeError("No predictions found in pipeline context")
 
-        predictions = context[pred_keys[0]]
-        print(f"[RUN] Generated {len(predictions)} predictions")
+        # Use the first key for preview, but inform the user if others exist
+        main_key = pred_keys[0]
+        predictions = context[main_key]
+
+        print(f"[RUN] Generated {len(predictions)} predictions [Key: {main_key}]")
+        if len(pred_keys) > 1:
+            print(f"[RUN] Other available predictions: {pred_keys[1:]}")
 
         if hasattr(predictions, "shape"):
             print(f"[RUN] Prediction shape: {predictions.shape}")
 
-        if hasattr(predictions, "flatten") and len(predictions) > 0:
+        # Prediction preview
+        try:
+            data = np.asarray(predictions)
+
+            # Simple preview: show count and first/last few samples
+            print(f"[RUN] Total predictions: {len(data)} [Key: {main_key}]")
+            if len(pred_keys) > 1:
+                print(f"[RUN] Other available predictions: {pred_keys[1:]}")
+
+            if hasattr(predictions, "shape"):
+                print(f"[RUN] Prediction shape: {predictions.shape}")
+
+            preview_len = min(5, len(data))
+            if preview_len > 0:
+                print(f"[RUN] First {preview_len} values:")
+                print(f"{data[:preview_len]}")
+
+                if len(data) > preview_len:
+                    print(f"[RUN] Last 5 values:")
+                    print(f"{data[-5:]}")
+            else:
+                print("[RUN] WARNING: Prediction array is empty!")
+
+        except Exception as e:
+            print(f"[DEBUG] Preview logic failed: {e}")
             preview_len = min(10, len(predictions))
             print(f"[RUN] First {preview_len}: {predictions[:preview_len]}")
 

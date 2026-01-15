@@ -113,47 +113,26 @@ class FeatureInferenceStep(BasePipelineStep):
             x_windows = self._create_windows(x, input_chunk, output_chunk)
             print(f"  Windowed shape: {x_windows.shape}")
 
+            # Detect model type: DL models keep 3D, sklearn models need 2D flattened
+            # Check model_type value: 'dl' for deep learning, others (ml/regression/None) for sklearn
+            model_type_value = getattr(model, "model_type", None)
+            is_dl_model = model_type_value in ["dl", "timeseries", "multivariate"]
+
+            if not is_dl_model and x_windows.ndim == 3:
+                # Flatten for sklearn models (KMeans, XGBoost, raw sklearn, etc.)
+                x_windows = x_windows.reshape(x_windows.shape[0], -1)
+
             # Predict/Transform
             inference_func = getattr(model, method_name)
             features = inference_func(x_windows)
 
             # Flatten 3D output (N, T, F) -> (N, T*F)
             if features.ndim == 3:
-                print(f"  Flattening 3D output {features.shape} to 2D")
                 features = features.reshape(features.shape[0], -1)
 
-            # Pad output to align with original length
-            n = len(x)
-            expected_len = len(features)
-
-            # Alignment assumption: last input point aligns with prediction time?
-            # Or standard windowing: start_align = input_chunk.
-            # We align end of window. Windows start at index `input_chunk` (if stride=1 logic).
-            start_align = input_chunk
-
-            # Correction: _create_windows iterates range(input_chunk, n - output_chunk + 1)
-            # So first window ends at index `input_chunk`.
-            # If we want alignment such that feature[t] corresponds to input[t],
-            # then the prediction for window ending at t is available at t.
-
-            if len(features) < n:
-                # Initialize with NaNs
-                full_preds = np.full((n, 1), np.nan)
-                if features.ndim > 1:
-                    full_preds = np.full((n, features.shape[1]), np.nan)
-
-                # Careful with alignment.
-                # Window 0 uses x[0:input_chunk]. Corresponds to time step `input_chunk-1`.
-                # Let's align it to `input_chunk-1`?
-                # FrameworkModelStep used `start_align = input_chunk - 1`.
-
-                start_align = input_chunk - 1
-                end_align = start_align + expected_len
-
-                if end_align <= n:
-                    full_preds[start_align:end_align] = features
-                    features = full_preds
-                    print(f"  Padded features from {expected_len} to {n}")
+            # Resulting 'features' are already the valid model predictions.
+            # We skip padding to align with input length to avoid NaNs at start/end.
+            pass
 
         else:
             # Tabular or NO windowing
@@ -161,11 +140,11 @@ class FeatureInferenceStep(BasePipelineStep):
             inference_func = getattr(model, method_name)
             features = inference_func(x)
 
-        print(f"  Output shape: {features.shape}")
-
         # Store in context
         context[self.output_key] = features
-        print(f"[{self.step_id}] Stored features in '{self.output_key}'")
+        print(
+            f"[{self.step_id}] Stored features in '{self.output_key}' (shape: {features.shape})"
+        )
 
         return context
 
@@ -180,12 +159,12 @@ class FeatureInferenceStep(BasePipelineStep):
         # Logic matching BaseDataModule._create_windows
         for end_idx in range(input_chunk, n - output_chunk + 1, stride):
             start_idx = end_idx - input_chunk
-            # Flatten window
-            win = x[start_idx:end_idx].reshape(-1)
+            # Do NOT flatten window -> keep (Time, Feat)
+            win = x[start_idx:end_idx]
             windows.append(win)
 
         if not windows:
-            return np.empty((0, input_chunk * x.shape[1]))
+            return np.empty((0, input_chunk, x.shape[1]))
 
         return np.stack(windows)
 

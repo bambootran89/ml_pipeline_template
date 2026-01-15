@@ -65,5 +65,5 @@ class TrainerFactory(DynamicFactoryBase):
         trainer_class = cls._get_class_from_config(entry)
         return cast(
             BaseTrainer,
-            trainer_class(wrapper=wrapper, save_dir=save_dir),
+            trainer_class(wrapper=wrapper, save_dir=save_dir, model_type=model_type),
         )
