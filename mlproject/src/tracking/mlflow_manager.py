@@ -385,11 +385,11 @@ class MLflowManager:
         client = self._client or MlflowClient(self.tracking_uri)
         try:
             mv = client.get_model_version_by_alias(name, "latest")
-            version = mv.version
+            _ = mv.version
         except Exception:
             try:
                 reg = mlflow.register_model(f"runs:/{run.info.run_id}/{name}", name)
-                version = reg.version
+                _ = reg.version
             except Exception as reg_exc:
                 print(
                     f"[MLflowManager] Warning: Registry registration \
@@ -537,22 +537,24 @@ class MLflowManager:
 
         alias = alias.lower()
 
-        # Special handling for 'latest' since it is a reserved keyword in some MLflow versions
-        # and cannot be set as an alias.
+        # Special handling for 'latest' since it is a reserved keyword in some
+        # MLflow versions and cannot be set as an alias.
         if alias == "latest":
             client = self._client or MlflowClient(self.tracking_uri)
             try:
                 # Get latest version (any stage)
                 latest_versions = client.get_latest_versions(name, stages=None)
                 if latest_versions:
-                    # Sort by version just in case, though get_latest_versions usually returns latest
+                    # Sort by version just in case, though get_latest_versions usually
+                    # returns latest
                     latest_version = sorted(
                         latest_versions, key=lambda x: int(x.version), reverse=True
                     )[0]
                     version = latest_version.version
                     model_uri = f"models:/{name}/{version}"
                     print(
-                        f"[MLflowManager] Resolved 'latest' for '{name}' to version {version}."
+                        f"[MLflowManager] Resolved 'latest' for '{name}' to "
+                        f"version {version}."
                     )
 
                     loaded = mlflow.pyfunc.load_model(model_uri)

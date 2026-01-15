@@ -226,14 +226,17 @@ class EvaluatorStep(PipelineStep):
         # Restore feature names if lost (e.g. from numpy)
         # This is critical for DataModule which expects specific column names
         expected_features = data_cfg.get("features", [])
-        # Only rename if we have features only (no targets concatenated yet or we handle targets separately)
+        # Only rename if we have features only (no targets concatenated yet
+        # or we handle targets separately)
         # In this logic, input_df might contain targets.
         # But for 'timeseries' path above, input_df = features_df.
-        # And targets are handled inside DataModule via target_columns lookup on input_df?
+        # And targets are handled inside DataModule via target_columns lookup
+        # on input_df?
         # BaseDataModule splits x/y from 'df' using features and target_columns.
         # So 'df' must contain both.
 
-        # If input_df has fewer columns than features + targets, we might be missing targets.
+        # If input_df has fewer columns than features + targets, we might be
+        # missing targets.
         # But if input_df has same num columns as features, and we are missing targets,
         # BaseDataModule will fail to find targets.
 
@@ -241,7 +244,8 @@ class EvaluatorStep(PipelineStep):
         # And DataModule might need them?
         # BaseDataModule.__init__:
         # raises error if df empty.
-        # self.target_columns loops cfg.get("target_columns") and checks if in df.columns.
+        # self.target_columns loops cfg.get("target_columns") and checks if in
+        # df.columns.
 
         # So if targets are missing from df, self.target_columns will be empty.
         # Then _prepare_data calls _create_windows.

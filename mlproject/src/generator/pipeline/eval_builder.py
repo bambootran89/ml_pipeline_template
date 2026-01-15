@@ -303,10 +303,11 @@ class EvalBuilder:
             step.base_features_key = "preprocessed_data"
 
             # Get output key from feature pipeline
-            for feat in feature_pipeline.engineered:
-                if feat.source_step_id == step["id"]:
-                    step.output_key = feat.output_key
-                    break
+            if feature_pipeline:
+                for feat in feature_pipeline.engineered:
+                    if feat.source_step_id == step["id"]:
+                        step.output_key = feat.output_key
+                        break
 
     def _process_special_steps(
         self, alias: str, feature_pipeline: Optional[FeaturePipeline]

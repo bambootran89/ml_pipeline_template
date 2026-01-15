@@ -47,12 +47,11 @@ class FeatureComposer:
         base_df = FeatureComposer._to_dataframe(base_features, "base")
         n_samples = len(base_df)
 
-        if not additional_features:
-            metadata = {"base": (0, base_df.shape[1])}
-            return base_df, metadata
-
         # Track feature positions
         metadata: Dict[str, Tuple[int, int]] = {"base": (0, base_df.shape[1])}
+
+        if not additional_features:
+            return base_df, metadata
         current_idx = base_df.shape[1]
 
         # Compose additional features

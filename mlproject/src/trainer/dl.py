@@ -28,8 +28,7 @@ class DeepLearningTrainer(BaseTrainer):
         save_dir: str = "mlproject/artifacts/models",
         model_type: str = "dl",
     ) -> None:
-        super().__init__(wrapper, save_dir)
-        self.model_type = model_type
+        super().__init__(wrapper, save_dir, model_type)
         self.device: torch.device = torch.device(
             device if torch.cuda.is_available() else "cpu"
         )

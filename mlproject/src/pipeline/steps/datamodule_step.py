@@ -154,7 +154,8 @@ class DataModuleStep(BasePipelineStep):
             additional = self._align_samples(additional, n_samples, key)
 
             # Force index alignment if lengths match
-            # This handles cases where additional features lost their index (e.g. from numpy)
+            # This handles cases where additional features lost their index (e.g. from
+            # numpy)
             if len(additional) == len(composed):
                 additional.index = composed.index
 

@@ -55,11 +55,8 @@ class FeatureInferenceStep(BasePipelineStep):
         else:
             self.effective_cfg = OmegaConf.merge(cfg, experiment_config)
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute feature generation."""
-        self.validate_dependencies(context)
-
-        # Get model
+    def _get_model_and_input(self, context: Dict[str, Any]) -> tuple[Any, np.ndarray]:
+        """Get model and prepared input from context."""
         model = context.get(self.source_model_key)
         if model is None:
             raise KeyError(
@@ -67,7 +64,6 @@ class FeatureInferenceStep(BasePipelineStep):
                 f"'{self.source_model_key}' not found in context"
             )
 
-        # Get base features
         base_features = context.get(self.base_features_key)
         if base_features is None:
             raise KeyError(
@@ -75,20 +71,48 @@ class FeatureInferenceStep(BasePipelineStep):
                 f"'{self.base_features_key}' not found in context"
             )
 
-        # Check data type
+        return model, self._prepare_input(base_features)
+
+    def _run_windowed_inference(
+        self, model: Any, x: np.ndarray, method_name: str
+    ) -> np.ndarray:
+        """Run inference with windowing."""
+        hyperparams = self.effective_cfg.get("experiment", {}).get("hyperparams", {})
+        input_chunk = hyperparams.get("input_chunk_length", 1)
+        output_chunk = hyperparams.get("output_chunk_length", 1)
+
+        x_windows = self._create_windows(x, input_chunk, output_chunk)
+        print(f"  Windowed shape: {x_windows.shape}")
+
+        model_type_value = getattr(model, "model_type", None)
+        is_dl_model = model_type_value in ["dl", "timeseries", "multivariate"]
+
+        if not is_dl_model and x_windows.ndim == 3:
+            x_windows = x_windows.reshape(x_windows.shape[0], -1)
+
+        inference_func = getattr(model, method_name)
+        features = inference_func(x_windows)
+
+        if features.ndim == 3:
+            features = features.reshape(features.shape[0], -1)
+
+        return features
+
+    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute feature generation."""
+        self.validate_dependencies(context)
+
+        model, x = self._get_model_and_input(context)
+
         data_cfg = self.effective_cfg.get("data", {})
         data_type = str(data_cfg.get("type", "tabular")).lower()
 
-        # Prepare input
-        x = self._prepare_input(base_features)
-
-        # Determine inference method
         method_name = self.inference_method
         if not hasattr(model, method_name):
-            # Auto-detect fallback for common transformers
             if method_name == "predict" and hasattr(model, "transform"):
                 print(
-                    f"[{self.step_id}] Model missing 'predict', falling back to 'transform'"
+                    f"[{self.step_id}] Model missing 'predict', "
+                    "falling back to 'transform'"
                 )
                 method_name = "transform"
             else:
@@ -98,52 +122,22 @@ class FeatureInferenceStep(BasePipelineStep):
                 )
 
         print(
-            f"[{self.step_id}] Generating features from '{self.source_model_key}' using '{method_name}'"
+            f"[{self.step_id}] Generating features from "
+            f"'{self.source_model_key}' using '{method_name}'"
         )
         print(f"  Input shape: {x.shape}")
 
         if data_type == "timeseries" and self.apply_windowing:
-            # Apply windowing
-            hyperparams = self.effective_cfg.get("experiment", {}).get(
-                "hyperparams", {}
-            )
-            input_chunk = hyperparams.get("input_chunk_length", 1)
-            output_chunk = hyperparams.get("output_chunk_length", 1)
-
-            x_windows = self._create_windows(x, input_chunk, output_chunk)
-            print(f"  Windowed shape: {x_windows.shape}")
-
-            # Detect model type: DL models keep 3D, sklearn models need 2D flattened
-            # Check model_type value: 'dl' for deep learning, others (ml/regression/None) for sklearn
-            model_type_value = getattr(model, "model_type", None)
-            is_dl_model = model_type_value in ["dl", "timeseries", "multivariate"]
-
-            if not is_dl_model and x_windows.ndim == 3:
-                # Flatten for sklearn models (KMeans, XGBoost, raw sklearn, etc.)
-                x_windows = x_windows.reshape(x_windows.shape[0], -1)
-
-            # Predict/Transform
-            inference_func = getattr(model, method_name)
-            features = inference_func(x_windows)
-
-            # Flatten 3D output (N, T, F) -> (N, T*F)
-            if features.ndim == 3:
-                features = features.reshape(features.shape[0], -1)
-
-            # Resulting 'features' are already the valid model predictions.
-            # We skip padding to align with input length to avoid NaNs at start/end.
-            pass
-
+            features = self._run_windowed_inference(model, x, method_name)
         else:
-            # Tabular or NO windowing
-            # For no windowing, process raw rows directly (e.g. imputer)
             inference_func = getattr(model, method_name)
             features = inference_func(x)
 
         # Store in context
         context[self.output_key] = features
         print(
-            f"[{self.step_id}] Stored features in '{self.output_key}' (shape: {features.shape})"
+            f"[{self.step_id}] Stored features in '{self.output_key}' "
+            f"(shape: {features.shape})"
         )
 
         return context
