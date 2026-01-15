@@ -1,4 +1,4 @@
-"""Evaluation pipeline builder."""
+"""Eval builder with feature pipeline support."""
 
 from __future__ import annotations
 
@@ -8,19 +8,22 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from omegaconf import DictConfig, OmegaConf
 
 from .dependency_builder import DependencyBuilder
+from .feature_pipeline_parser import EngineeredFeature, FeaturePipeline
 from .loader_builder import LoaderBuilder
 from .step_analyzer import StepAnalyzer, StepExtractor
 from .step_transformer import StepTransformer
 
 
 class EvalBuilder:
-    """Builds evaluation pipeline from training pipeline."""
+    """Build evaluation pipeline with feature support."""
 
     def __init__(self, train_steps: List[Any]) -> None:
-        """Initialize eval pipeline builder.
+        """Initialize eval builder.
 
-        Args:
-            train_steps: Original training pipeline steps.
+        Parameters
+        ----------
+        train_steps : List[Any]
+            Original training steps.
         """
         self.train_steps = train_steps
         self.analyzer = StepAnalyzer()
@@ -34,41 +37,69 @@ class EvalBuilder:
         alias: str,
         init_id: str,
         preprocessor_step: Optional[Any],
+        feature_pipeline: Optional[FeaturePipeline] = None,
     ) -> List[Any]:
-        """Build complete evaluation pipeline.
+        """Build evaluation pipeline.
 
-        Args:
-            alias: Model alias for loading.
-            init_id: Initialization step ID.
-            preprocessor_step: Legacy preprocessor step if exists.
+        Parameters
+        ----------
+        alias : str
+            Model alias for loading.
+        init_id : str
+            Init step ID.
+        preprocessor_step : Optional[Any]
+            Legacy preprocessor.
+        feature_pipeline : Optional[FeaturePipeline]
+            Feature pipeline config.
 
-        Returns:
-            List of eval pipeline steps.
+        Returns
+        -------
+        List[Any]
+            Eval pipeline steps.
         """
         steps: List[Any] = []
 
+        # Data loader
         data_loader = next(
             (s for s in self.train_steps if s.type == "data_loader"), None
         )
         if data_loader:
             steps.append(data_loader)
 
+        # Extract components
         preprocessors = self.extractor.extract_preprocessors(self.train_steps)
         producers = self.extractor.extract_model_producers(self.train_steps)
 
+        # MLflow loader
         self.loader_builder.add_mlflow_loader(
-            steps, init_id, alias, preprocessors, producers, preprocessor_step
+            steps,
+            init_id,
+            alias,
+            preprocessors,
+            producers,
+            preprocessor_step,
+            feature_pipeline,
         )
 
+        # Legacy preprocessor
         self._add_legacy_preprocessor(
             steps, preprocessor_step, init_id, preprocessors, data_loader
         )
 
+        # Regular preprocessors
         self._add_preprocessors(steps, alias, init_id, data_loader)
 
-        special, special_ids, branch_ids = self._process_special_steps(alias)
+        # Feature inference steps (NEW)
+        if feature_pipeline:
+            self._add_feature_inference_steps(steps, feature_pipeline, init_id)
+
+        # Sub-pipelines and branches
+        special, special_ids, branch_ids = self._process_special_steps(
+            alias, feature_pipeline
+        )
         steps.extend(special)
 
+        # Evaluators
         evaluator_ids = self._add_evaluators(
             steps,
             producers,
@@ -93,10 +124,213 @@ class EvalBuilder:
             ]
         )
 
+        # Auxiliary steps
         self._add_auxiliary_steps(steps, evaluator_ids)
 
         return steps
 
+    def _add_feature_inference_steps(
+        self,
+        steps: List[Any],
+        feature_pipeline: FeaturePipeline,
+        init_id: str,
+    ) -> None:
+        """Add feature inference steps for engineered features.
+
+        Parameters
+        ----------
+        steps : List[Any]
+            Pipeline steps to append to.
+        feature_pipeline : FeaturePipeline
+            Feature pipeline config.
+        init_id : str
+            Init artifacts step ID.
+        """
+        for feat in feature_pipeline.engineered:
+            # Skip if inside sub-pipeline (handled separately)
+            if feat.parent_pipeline:
+                continue
+
+            step = self._create_feature_inference_step(feat, init_id)
+            steps.append(step)
+
+            print(
+                f"[EvalBuilder] Added feature inference: "
+                f"{step['id']} -> {feat.output_key}"
+            )
+
+    def _create_feature_inference_step(
+        self, feat: EngineeredFeature, init_id: str
+    ) -> DictConfig:
+        """Create feature inference step config.
+
+        Parameters
+        ----------
+        feat : EngineeredFeature
+            Feature to generate.
+        init_id : str
+            Init artifacts step ID.
+
+        Returns
+        -------
+        DictConfig
+            Feature inference step.
+        """
+        step_id = f"{feat.source_step_id}_inference"
+        model_key = f"fitted_{feat.source_step_id}"
+
+        return OmegaConf.create(
+            {
+                "id": step_id,
+                "type": "feature_inference",
+                "enabled": True,
+                "depends_on": [init_id],
+                "source_model_key": model_key,
+                "base_features_key": "preprocessed_data",
+                "output_key": feat.output_key,
+            }
+        )
+
+    def _transform_sub_pipeline(
+        self, step: Any, alias: str, feature_pipeline: Optional[FeaturePipeline]
+    ) -> Any:
+        """Transform sub-pipeline for eval mode.
+
+        Parameters
+        ----------
+        step : Any
+            Sub-pipeline step.
+        alias : str
+            Model alias.
+        feature_pipeline : Optional[FeaturePipeline]
+            Feature pipeline config.
+
+        Returns
+        -------
+        Any
+            Transformed step.
+        """
+        producer_ids = self.extractor.collect_producer_ids(
+            self.extractor.extract_model_producers(self.train_steps)
+        )
+
+        resolved_deps = self.dependency_builder.resolve_dependencies(step, producer_ids)
+
+        if hasattr(step, "depends_on"):
+            step.depends_on = resolved_deps
+
+        transformed = copy.deepcopy(step)
+
+        if not hasattr(transformed, "pipeline"):
+            return transformed
+
+        if not hasattr(transformed.pipeline, "steps"):
+            return transformed
+
+        # Transform nested steps
+        for sub_step in transformed.pipeline.steps:
+            if sub_step.type == "preprocessor":
+                self.transformer.transform_preprocessor(sub_step, alias)
+
+            elif sub_step.type == "dynamic_adapter":
+                self._transform_dynamic_adapter_in_sub(
+                    sub_step, alias, feature_pipeline
+                )
+
+            elif sub_step.type in ["clustering", "model"]:
+                self._transform_model_in_sub(sub_step, alias, feature_pipeline)
+
+        return transformed
+
+    def _transform_dynamic_adapter_in_sub(
+        self,
+        step: Any,
+        alias: str,
+        feature_pipeline: Optional[FeaturePipeline],
+    ) -> None:
+        """Transform dynamic adapter in sub-pipeline."""
+        if not step.get("log_artifact", False):
+            return
+        _ = alias
+        # Check if it's a feature producer
+        is_feature = False
+        if feature_pipeline:
+            is_feature = any(
+                f.source_step_id == step["id"] for f in feature_pipeline.engineered
+            )
+
+        if is_feature:
+            # Convert to feature inference mode
+            step.is_train = False
+            step.instance_key = f"fitted_{step['id']}"
+            self.transformer.remove_training_configs(step)
+
+            # Change run_method to transform
+            if step.get("run_method") == "fit_transform":
+                step.run_method = "transform"
+
+    def _transform_model_in_sub(
+        self,
+        step: Any,
+        alias: str,
+        feature_pipeline: Optional[FeaturePipeline],
+    ) -> None:
+        """Transform model/clustering in sub-pipeline."""
+        # Check if it's a feature producer
+        is_feature = False
+        _ = alias
+        if feature_pipeline:
+            is_feature = any(
+                f.source_step_id == step["id"] for f in feature_pipeline.engineered
+            )
+
+        if is_feature:
+            # Convert to inference mode
+            step.type = "feature_inference"
+            step.source_model_key = f"fitted_{step['id']}"
+            step.base_features_key = "preprocessed_data"
+
+            # Get output key from feature pipeline
+            for feat in feature_pipeline.engineered:
+                if feat.source_step_id == step["id"]:
+                    step.output_key = feat.output_key
+                    break
+
+    def _process_special_steps(
+        self, alias: str, feature_pipeline: Optional[FeaturePipeline]
+    ) -> Tuple[List[Any], List[str], Set[str]]:
+        """Process sub-pipelines and branches."""
+        special = []
+        special_ids = []
+        branch_ids: Set[str] = set()
+
+        for step in self.train_steps:
+            if step.type == "sub_pipeline":
+                transformed = self._transform_sub_pipeline(
+                    step, alias, feature_pipeline
+                )
+                special.append(transformed)
+                special_ids.append(step.id)
+
+            elif step.type == "branch":
+                transformed = self._transform_branch(step)
+                special.append(transformed)
+                special_ids.append(step.id)
+
+                for branch_name in ["if_true", "if_false"]:
+                    if not hasattr(step, branch_name):
+                        continue
+
+                    branch = getattr(step, branch_name)
+                    if hasattr(branch, "id"):
+                        branch_ids.add(branch.id)
+
+            elif step.type == "parallel":
+                special_ids.append(step.id)
+
+        return special, special_ids, branch_ids
+
+    # Keep existing methods from original EvalBuilder
     def _add_legacy_preprocessor(
         self,
         steps: List[Any],
@@ -105,7 +339,7 @@ class EvalBuilder:
         all_preprocessors: List[Any],
         data_loader: Optional[Any],
     ) -> None:
-        """Add legacy top-level preprocessor if needed."""
+        """Add legacy preprocessor if needed."""
         if not preprocessor_step:
             return
 
@@ -130,7 +364,7 @@ class EvalBuilder:
         init_id: str,
         data_loader: Optional[Any],
     ) -> None:
-        """Add preprocessors and adapters to pipeline."""
+        """Add preprocessors to pipeline."""
         for step in self.train_steps:
             if step.type == "preprocessor":
                 prep = copy.deepcopy(step)
@@ -160,7 +394,7 @@ class EvalBuilder:
                 steps.append(adapter)
 
     def _should_add_adapter(self, step: Any) -> bool:
-        """Check if dynamic adapter should be added."""
+        """Check if adapter should be added."""
         if not hasattr(step, "log_artifact") or not step.log_artifact:
             return False
 
@@ -169,67 +403,8 @@ class EvalBuilder:
 
         return step.artifact_type == "preprocess"
 
-    def _process_special_steps(
-        self, alias: str
-    ) -> Tuple[List[Any], List[str], Set[str]]:
-        """Process sub-pipelines and branches."""
-        special = []
-        special_ids = []
-        branch_ids: Set[str] = set()
-
-        for step in self.train_steps:
-            if step.type == "sub_pipeline":
-                transformed = self._transform_sub_pipeline(step, alias)
-                special.append(transformed)
-                special_ids.append(step.id)
-
-            elif step.type == "branch":
-                transformed = self._transform_branch(step)
-                special.append(transformed)
-                special_ids.append(step.id)
-
-                for branch_name in ["if_true", "if_false"]:
-                    if not hasattr(step, branch_name):
-                        continue
-
-                    branch = getattr(step, branch_name)
-                    if hasattr(branch, "id"):
-                        branch_ids.add(branch.id)
-
-            elif step.type == "parallel":
-                special_ids.append(step.id)
-
-        return special, special_ids, branch_ids
-
-    def _transform_sub_pipeline(self, step: Any, alias: str) -> Any:
-        """Transform sub-pipeline for eval mode."""
-        producer_ids = self.extractor.collect_producer_ids(
-            self.extractor.extract_model_producers(self.train_steps)
-        )
-
-        resolved_deps = self.dependency_builder.resolve_dependencies(step, producer_ids)
-
-        if hasattr(step, "depends_on"):
-            step.depends_on = resolved_deps
-
-        transformed = copy.deepcopy(step)
-
-        if not hasattr(transformed, "pipeline"):
-            return transformed
-
-        if not hasattr(transformed.pipeline, "steps"):
-            return transformed
-
-        for sub_step in transformed.pipeline.steps:
-            if sub_step.type == "preprocessor":
-                self.transformer.transform_preprocessor(sub_step, alias)
-            elif sub_step.type in ["clustering", "model"]:
-                self.transformer.transform_model_step(sub_step)
-
-        return transformed
-
     def _transform_branch(self, step: Any) -> Any:
-        """Transform branch step for eval mode."""
+        """Transform branch for eval."""
         producer_ids = self.extractor.collect_producer_ids(
             self.extractor.extract_model_producers(self.train_steps)
         )
@@ -254,7 +429,7 @@ class EvalBuilder:
         return transformed
 
     def _branch_to_evaluator(self, branch: Any) -> Optional[DictConfig]:
-        """Convert branch to evaluator step."""
+        """Convert branch to evaluator."""
         if not self.analyzer.is_model_producer(branch):
             return None
 
@@ -288,7 +463,7 @@ class EvalBuilder:
     def _create_evaluator_wiring(
         self, model_id: str, model_type: str, outputs: Optional[Any]
     ) -> Dict[str, Any]:
-        """Create wiring for evaluator step."""
+        """Create evaluator wiring."""
         wiring = {
             "inputs": {
                 "model": f"fitted_{model_id}",
@@ -317,7 +492,7 @@ class EvalBuilder:
         preprocess_id: Optional[str],
         sub_pipeline_ids: List[str],
     ) -> List[str]:
-        """Add evaluator steps to pipeline."""
+        """Add evaluators."""
         evaluator_ids = []
 
         for producer in producers:
@@ -341,7 +516,7 @@ class EvalBuilder:
         return evaluator_ids
 
     def _is_clustering_adapter(self, step: Any) -> bool:
-        """Check if step is clustering dynamic adapter."""
+        """Check if clustering adapter."""
         if step.type != "dynamic_adapter":
             return False
 
@@ -358,7 +533,7 @@ class EvalBuilder:
         preprocessor_id: Optional[str],
         all_producers: List[Any],
     ) -> DictConfig:
-        """Create evaluator config for model producer."""
+        """Create evaluator config."""
         base_name = self.transformer.extract_base_name(producer.id)
         eval_id = f"{base_name}_evaluate"
 
@@ -394,7 +569,7 @@ class EvalBuilder:
     def _build_evaluator_inputs(
         self, mp_id: str, features: str, is_clustering: bool
     ) -> Dict[str, Any]:
-        """Build evaluator input wiring."""
+        """Build evaluator inputs."""
         inputs: Dict[str, Any] = {
             "features": features,
             "model": f"fitted_{mp_id}",
@@ -406,7 +581,7 @@ class EvalBuilder:
         return inputs
 
     def _add_auxiliary_steps(self, steps: List[Any], evaluator_ids: List[str]) -> None:
-        """Add logger and profiling steps."""
+        """Add logger and profiling."""
         for step in self.train_steps:
             if step.type not in ["logger", "profiling"]:
                 continue

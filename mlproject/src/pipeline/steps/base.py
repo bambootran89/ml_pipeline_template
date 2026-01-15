@@ -13,7 +13,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import pandas as pd
 from omegaconf import DictConfig
+
+from mlproject.src.pipeline.steps.feature_composer import (
+    FeatureComposer,
+    FeatureExtractor,
+)
 
 
 class BasePipelineStep(ABC):
@@ -324,3 +330,201 @@ class BasePipelineStep(ABC):
             Current pipeline context.
         """
         # Dependencies are satisfied by DAG execution order
+
+
+class PipelineStep(BasePipelineStep):
+    """Enhanced base step supporting multi-source feature composition.
+
+    This extends BasePipelineStep with utilities for composing features
+    from multiple pipeline sources with automatic shape alignment.
+
+    New Attributes
+    --------------
+    additional_feature_keys : List[str]
+        Keys for additional feature sources beyond base features.
+    feature_align_method : str
+        How to align feature shapes ('auto', 'broadcast', 'repeat').
+    """
+
+    def __init__(
+        self,
+        step_id: str,
+        cfg: Any,
+        enabled: bool = True,
+        depends_on: Optional[List[str]] = None,
+        wiring: Optional[Dict[str, Any]] = None,
+        additional_feature_keys: Optional[List[str]] = None,
+        feature_align_method: str = "auto",
+        **kwargs: Any,
+    ) -> None:
+        """Initialize enhanced step with feature composition support.
+
+        Parameters
+        ----------
+        step_id : str
+            Unique step identifier.
+        cfg : Any
+            Configuration object.
+        enabled : bool
+            Whether step should execute.
+        depends_on : Optional[List[str]]
+            Prerequisite steps.
+        wiring : Optional[Dict[str, Any]]
+            Input/output wiring config.
+        additional_feature_keys : Optional[List[str]]
+            Keys for additional feature sources in context.
+        feature_align_method : str
+            Method for aligning feature shapes.
+        **kwargs
+            Additional parameters.
+        """
+        super().__init__(step_id, cfg, enabled, depends_on, wiring=wiring, **kwargs)
+
+        self.additional_feature_keys = additional_feature_keys or []
+        self.feature_align_method = feature_align_method
+
+    def get_composed_features(
+        self,
+        context: Dict[str, Any],
+        base_key: str = "features",
+        required: bool = True,
+    ) -> Tuple[pd.DataFrame, Dict[str, Tuple[int, int]]]:
+        """Get features composed from base + additional sources.
+
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Pipeline context.
+        base_key : str
+            Key for base features.
+        required : bool
+            Whether base features are required.
+
+        Returns
+        -------
+        Tuple[pd.DataFrame, Dict[str, Tuple[int, int]]]
+            - Composed features DataFrame
+            - Metadata mapping source -> column indices
+
+        Raises
+        ------
+        KeyError
+            If required features missing.
+        """
+        # Get base features
+        base_features = self.get_input(context, base_key, required=required)
+
+        if base_features is None:
+            if required:
+                raise KeyError(
+                    f"Step '{self.step_id}': Required base features "
+                    f"'{base_key}' not found"
+                )
+            return pd.DataFrame(), {}
+
+        # Get additional features if configured
+        additional = None
+        if self.additional_feature_keys:
+            additional = FeatureExtractor.extract_from_context(
+                context, self.additional_feature_keys, required=False
+            )
+
+        # Compose features
+        composed_df, metadata = FeatureComposer.compose_features(
+            base_features,
+            additional,
+            self.feature_align_method,
+        )
+
+        self._log_feature_composition(composed_df, metadata)
+
+        return composed_df, metadata
+
+    def get_feature_with_fallback(
+        self,
+        context: Dict[str, Any],
+        primary_key: str,
+        fallback_keys: Optional[List[str]] = None,
+        compose_if_multiple: bool = True,
+    ) -> Any:
+        """Get features with fallback chain and optional composition.
+
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Pipeline context.
+        primary_key : str
+            Primary feature key to try first.
+        fallback_keys : Optional[List[str]]
+            Fallback keys to try in order.
+        compose_if_multiple : bool
+            If True and multiple sources found, compose them.
+
+        Returns
+        -------
+        Any
+            Found features or composed features.
+
+        Raises
+        ------
+        KeyError
+            If no features found in any key.
+        """
+        fallback_keys = fallback_keys or []
+
+        # Try primary key
+        features = context.get(primary_key)
+        if features is not None:
+            return features
+
+        # Try fallbacks
+        found_sources: Dict[str, Any] = {}
+        for key in fallback_keys:
+            value = context.get(key)
+            if value is not None:
+                if not compose_if_multiple:
+                    return value
+                found_sources[key] = value
+
+        if not found_sources:
+            available = list(context.keys())
+            raise KeyError(
+                f"Step '{self.step_id}': No features found. "
+                f"Tried: {[primary_key] + fallback_keys}. "
+                f"Available: {available}"
+            )
+
+        # Compose multiple sources
+        if len(found_sources) == 1:
+            return list(found_sources.values())[0]
+
+        base = list(found_sources.values())[0]
+        additional = {k: v for k, v in found_sources.items() if v is not base}
+
+        composed, _ = FeatureComposer.compose_features(
+            base, additional, self.feature_align_method
+        )
+
+        return composed
+
+    def _log_feature_composition(
+        self,
+        composed_df: pd.DataFrame,
+        metadata: Dict[str, Tuple[int, int]],
+    ) -> None:
+        """Log feature composition details.
+
+        Parameters
+        ----------
+        composed_df : pd.DataFrame
+            Composed features.
+        metadata : Dict[str, Tuple[int, int]]
+            Feature source metadata.
+        """
+        print(f"[{self.step_id}] Feature composition:")
+        print(f"  Total shape: {composed_df.shape}")
+        print("  Sources:")
+
+        for source, (start, end) in metadata.items():
+            n_cols = end - start
+            print(f"    - {source}: {n_cols} features [cols {start}:{end}]")

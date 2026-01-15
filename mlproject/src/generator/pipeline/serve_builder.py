@@ -34,6 +34,7 @@ class ServeBuilder:
         alias: str,
         init_id: str,
         preprocessor_step: Optional[Any],
+        feature_pipeline: Optional[Any] = None,
     ) -> List[Any]:
         """Build complete serving pipeline.
 
@@ -41,6 +42,7 @@ class ServeBuilder:
             alias: Model alias for loading.
             init_id: Initialization step ID.
             preprocessor_step: Legacy preprocessor step if exists.
+            feature_pipeline: Feature pipeline config.
 
         Returns:
             List of serve pipeline steps.
@@ -51,7 +53,13 @@ class ServeBuilder:
         producers = self.extractor.extract_model_producers(self.train_steps)
 
         self.loader_builder.add_mlflow_loader(
-            steps, init_id, alias, preprocessors, producers, preprocessor_step
+            steps,
+            init_id,
+            alias,
+            preprocessors,
+            producers,
+            preprocessor_step,
+            feature_pipeline,
         )
 
         last_id = self._add_preprocessors(steps, alias, init_id)

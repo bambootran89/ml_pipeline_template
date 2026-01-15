@@ -1,3 +1,5 @@
+"""Pipeline configuration generator for eval/serve/tune modes."""
+
 from __future__ import annotations
 
 import copy
@@ -7,6 +9,7 @@ from typing import Any, Dict, Optional
 from omegaconf import DictConfig, OmegaConf
 
 from .pipeline.eval_builder import EvalBuilder
+from .pipeline.feature_pipeline_parser import FeaturePipelineParser
 from .pipeline.serve_builder import ServeBuilder
 from .pipeline.tune_builder import TuneBuilder
 
@@ -34,6 +37,19 @@ class ConfigGenerator:
         self.experiment_name: str = Path(train_config_path).stem
 
         train_steps = self.train_cfg.pipeline.steps
+
+        # Parse feature pipeline from steps
+        self.feature_pipeline = FeaturePipelineParser.parse_from_steps(train_steps)
+
+        if self.feature_pipeline:
+            print("[ConfigGenerator] Detected feature pipeline:")
+            print(f"  Base: {self.feature_pipeline.base_source}")
+            print(f"  Engineered features: {len(self.feature_pipeline.engineered)}")
+            for feat in self.feature_pipeline.engineered:
+                parent_info = (
+                    f" (in {feat.parent_pipeline})" if feat.parent_pipeline else ""
+                )
+                print(f"    - {feat.source_step_id} -> {feat.output_key}{parent_info}")
 
         self._eval_builder = EvalBuilder(train_steps)
         self._serve_builder = ServeBuilder(train_steps)
@@ -146,9 +162,13 @@ class ConfigGenerator:
             init_id = "init_artifacts"
 
             if mode == "eval":
-                new_steps = self._eval_builder.build(alias, init_id, preprocessor_step)
+                new_steps = self._eval_builder.build(
+                    alias, init_id, preprocessor_step, self.feature_pipeline
+                )
             elif mode == "serve":
-                new_steps = self._serve_builder.build(alias, init_id, preprocessor_step)
+                new_steps = self._serve_builder.build(
+                    alias, init_id, preprocessor_step, self.feature_pipeline
+                )
             else:
                 raise ValueError(
                     f"Unknown mode: {mode}. Must be 'eval', 'serve', or 'tune'"

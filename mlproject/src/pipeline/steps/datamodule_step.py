@@ -1,8 +1,4 @@
-"""
-DataModule pipeline step for constructing a reusable DataModule instance,
-optionally generating model-based features, and wiring results back into
-the shared pipeline execution context.
-"""
+"""Enhanced DataModule step with multi-source feature support."""
 
 from __future__ import annotations
 
@@ -17,24 +13,21 @@ from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
 class DataModuleStep(BasePipelineStep):
-    """
-    Build a DataModule from the pipeline context and optionally generate
-    features using a fitted model.
-    Expected Context Inputs
-    ----------------------
-    data : pd.DataFrame or array-like, optional
-        Input dataset for building the DataModule. If not explicitly wired,
-        the step falls back to the key `preprocessed_data` from context.
-    model : Any, optional
-        A fitted model instance capable of producing predictions via `predict()`.
+    """Build DataModule with optional multi-source feature composition.
+
+    Context Inputs
+    --------------
+    features : pd.DataFrame
+        Base features from preprocessing.
+    targets : pd.DataFrame
+        Target labels.
+    additional_feature_keys : List[str], optional
+        Additional feature sources to compose.
 
     Context Outputs
     ---------------
     datamodule : Any
-        The constructed or restored DataModule instance.
-    features : np.ndarray, optional
-        Engineered features generated from model predictions if
-        `output_as_feature` is enabled.
+        Constructed DataModule instance.
     """
 
     def __init__(
@@ -44,164 +37,241 @@ class DataModuleStep(BasePipelineStep):
         enabled: bool = True,
         depends_on: Optional[List[str]] = None,
         output_as_feature: bool = False,
+        additional_feature_keys: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> None:
-        """
-        Initialize the DataModuleStep.
+        """Initialize DataModule step.
 
         Parameters
         ----------
         step_id : str
-            Unique pipeline step identifier.
-        cfg : DictConfig or compatible config object
-            Configuration containing data and evaluation settings.
-        enabled : bool, default=True
-            Whether this step should execute in the pipeline.
-        depends_on : Optional[List[str]], default=None
-            List of prerequisite step IDs that must complete before execution.
-        output_as_feature : bool, default=False
-            Whether model predictions should be stored as engineered features.
-        **kwargs : Any
-            Additional arguments passed to the BasePipelineStep.
+            Unique step identifier.
+        cfg : Any
+            Configuration object.
+        enabled : bool
+            Whether step should execute.
+        depends_on : Optional[List[str]]
+            Prerequisite steps.
+        output_as_feature : bool
+            Whether to generate features from model predictions.
+        additional_feature_keys : Optional[List[str]]
+            Keys for additional feature sources to compose.
+        **kwargs
+            Additional parameters.
         """
         super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
         self.output_as_feature = output_as_feature
+        self.additional_feature_keys = additional_feature_keys or []
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute the DataModule construction and optional feature generation.
+        """Execute DataModule construction with feature composition.
 
         Parameters
         ----------
         context : Dict[str, Any]
-            Shared pipeline execution context.
+            Pipeline context.
 
         Returns
         -------
         Dict[str, Any]
-            Updated pipeline context containing DataModule and optional features.
-
-        Raises
-        ------
-        ValueError
-            If required data is missing from context.
+            Updated context with DataModule.
         """
         self.validate_dependencies(context)
 
-        # Resolve input dataset
-        df_features: pd.DataFrame = self.get_input(context, "features")
-        df_targets: pd.DataFrame = self.get_input(context, "targets")
+        # Get base features and targets
+        df_features = self.get_input(context, "features")
+        df_targets = self.get_input(context, "targets", required=False)
+
+        # Compose with additional features if specified
+        if self.additional_feature_keys:
+            df_features = self._compose_features(context, df_features)
+
+        # Build input DataFrame
         data_cfg: Dict[str, Any] = self.cfg.get("data", {})
         data_type: str = str(data_cfg.get("type", "tabular")).lower()
 
         if data_type == "timeseries":
             input_df = df_features.copy()
-        else:
+        elif df_targets is not None:
             input_df = pd.concat([df_features, df_targets], axis=1)
-        df = self._resolve_dataframe(context, input_df)
+        else:
+            input_df = df_features.copy()
 
         # Build DataModule
-        datamodule = self._build_datamodule(context, df)
+        print(f"[{self.step_id}] Building DataModule with shape {input_df.shape}")
+        dm = DataModuleFactory.build(self.cfg, input_df)
+        dm.setup()
 
-        # Optional feature engineering from model predictions
+        self.set_output(context, "datamodule", dm)
+
+        # Optional: Generate features from model
         if self.output_as_feature:
-            model = context.get("model")
-            if model is not None:
-                features = self._generate_features(datamodule, model)
-                context[f"{self.step_id}_features"] = features
+            self._generate_model_features(context, dm)
 
         return context
 
-    def _resolve_dataframe(
+    def _compose_features(
         self,
         context: Dict[str, Any],
-        input_df: Optional[Any],
+        base_features: pd.DataFrame,
     ) -> pd.DataFrame:
-        """
-        Normalize the input dataset into a pandas DataFrame.
+        """Compose base features with additional sources.
 
         Parameters
         ----------
         context : Dict[str, Any]
-            Shared pipeline execution context.
-        input_df : Optional[Any]
-            Wired dataframe or array-like input.
+            Pipeline context.
+        base_features : pd.DataFrame
+            Base feature DataFrame.
 
         Returns
         -------
         pd.DataFrame
-            Normalized dataframe.
+            Composed features.
+        """
+        if not isinstance(base_features, pd.DataFrame):
+            base_features = pd.DataFrame(base_features)
+
+        composed = base_features.copy()
+        n_samples = len(composed)
+
+        print(f"[{self.step_id}] Composing features:")
+        print(f"  Base: {composed.shape}")
+
+        for key in self.additional_feature_keys:
+            additional = context.get(key)
+            if additional is None:
+                print(f"  Warning: Feature key '{key}' not found, skipping")
+                continue
+
+            # Convert to DataFrame
+            if isinstance(additional, np.ndarray):
+                additional = self._ndarray_to_df(additional, key)
+            elif not isinstance(additional, pd.DataFrame):
+                additional = pd.DataFrame(additional)
+
+            # Align samples
+            additional = self._align_samples(additional, n_samples, key)
+
+            # Concatenate
+            composed = pd.concat([composed, additional], axis=1)
+            print(f"  + {key}: {additional.shape} -> Total: {composed.shape}")
+
+        # Reset column names to avoid duplicates
+        composed.columns = [f"feat_{i}" for i in range(composed.shape[1])]
+
+        return composed
+
+    def _ndarray_to_df(self, arr: np.ndarray, prefix: str) -> pd.DataFrame:
+        """Convert numpy array to DataFrame.
+
+        Parameters
+        ----------
+        arr : np.ndarray
+            Input array.
+        prefix : str
+            Column name prefix.
+
+        Returns
+        -------
+        pd.DataFrame
+            Converted DataFrame.
+        """
+        if arr.ndim == 1:
+            return pd.DataFrame({f"{prefix}_0": arr})
+
+        if arr.ndim == 2:
+            cols = [f"{prefix}_{i}" for i in range(arr.shape[1])]
+            return pd.DataFrame(arr, columns=cols)
+
+        raise ValueError(
+            f"Cannot convert {arr.ndim}D array to DataFrame. " "Supported: 1D, 2D"
+        )
+
+    def _align_samples(
+        self,
+        df: pd.DataFrame,
+        target_samples: int,
+        key: str,
+    ) -> pd.DataFrame:
+        """Align DataFrame to target number of samples.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input DataFrame.
+        target_samples : int
+            Target number of samples.
+        key : str
+            Feature key (for error messages).
+
+        Returns
+        -------
+        pd.DataFrame
+            Aligned DataFrame.
 
         Raises
         ------
         ValueError
-            If no valid input data is found in context.
+            If shapes cannot be aligned.
         """
-        if isinstance(input_df, pd.DataFrame):
-            return input_df
+        current = len(df)
 
-        fallback_df = context.get("preprocessed_data")
-        if isinstance(fallback_df, pd.DataFrame):
-            return fallback_df
+        if current == target_samples:
+            return df
 
-        if fallback_df is not None:
-            return pd.DataFrame(fallback_df)
+        # Broadcast: single sample to multiple
+        if current == 1:
+            return pd.concat([df] * target_samples, ignore_index=True)
 
-        raise ValueError(f"Step '{self.step_id}': no input data found for DataModule.")
+        # Repeat: tile to match
+        if current < target_samples and target_samples % current == 0:
+            n_repeats = target_samples // current
+            return pd.concat([df] * n_repeats, ignore_index=True)
 
-    def _build_datamodule(
+        # Truncate: cut to size
+        if current > target_samples:
+            return df.iloc[:target_samples]
+
+        raise ValueError(
+            f"Cannot align feature '{key}' with {current} samples "
+            f"to {target_samples} samples. Shapes incompatible."
+        )
+
+    def _generate_model_features(
         self,
         context: Dict[str, Any],
-        df: pd.DataFrame,
-    ) -> Any:
-        """
-        Build and register a DataModule instance.
+        datamodule: Any,
+    ) -> None:
+        """Generate features from model predictions.
 
         Parameters
         ----------
         context : Dict[str, Any]
-            Shared pipeline execution context.
-        df : pd.DataFrame
-            Input dataframe for DataModule construction.
-
-        Returns
-        -------
-        Any
-            Constructed DataModule instance.
-        """
-        print(f"[{self.step_id}] Building DataModule")
-        dm = DataModuleFactory.build(self.cfg, df)
-        dm.setup()
-        self.set_output(context, "datamodule", dm)
-        return dm
-
-    def _generate_features(
-        self,
-        datamodule: Any,
-        model: Any,
-    ) -> np.ndarray:
-        """
-        Generate model predictions and expose them as numpy features.
-
-        Parameters
-        ----------
+            Pipeline context.
         datamodule : Any
-            DataModule instance containing test data.
-        model : Any
-            Fitted model capable of producing predictions.
-
-        Returns
-        -------
-        np.ndarray
-            Prediction outputs formatted as feature vectors.
+            DataModule instance.
         """
+        model = context.get("model")
+        if model is None:
+            print(
+                f"[{self.step_id}] Warning: output_as_feature=True "
+                "but no model found"
+            )
+            return
+
+        # Get data for prediction
         if hasattr(datamodule, "get_test_windows"):
             x_data, _ = datamodule.get_test_windows()
         else:
             x_data = datamodule.get_data()[-2]
 
+        # Generate predictions
         preds = model.predict(x_data)
-        return np.asarray(preds, dtype=float)
+        features = np.asarray(preds, dtype=float)
+
+        self.set_output(context, "features", features)
+        print(f"[{self.step_id}] Generated features from model: " f"{features.shape}")
 
 
 StepFactory.register("datamodule", DataModuleStep)
