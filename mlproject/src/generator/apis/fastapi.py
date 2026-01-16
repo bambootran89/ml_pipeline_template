@@ -98,6 +98,7 @@ from pydantic import BaseModel, Field
 
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
+from mlproject.src.features.facade import FeatureStoreFacade
 
 app = FastAPI(
     title="{ctx.pipeline_name} API",
@@ -107,6 +108,11 @@ app = FastAPI(
 
 
 # Request/Response Schemas
+
+class FeastPredictRequest(BaseModel):
+    entities: List[Union[int, str]] = Field(..., description="List of entity IDs")
+    entity_key: Optional[str] = Field(None, description="Key to join entities")
+    time_point: str = Field(default="now", description="Time point for retrieval")
 
 class PredictRequest(BaseModel):
     data: Dict[str, List[Any]] = Field(...,
@@ -159,6 +165,7 @@ class ServeService:
         self.mlflow_manager = MLflowManager(self.cfg)
         self.preprocessor = None
         self.models = {{}}
+        self.feature_store = None
 
         if self.mlflow_manager.enabled:
             experiment_name = self.cfg.experiment.get("name", "{ctx.pipeline_name}")
@@ -167,6 +174,18 @@ class ServeService:
     def _gen_service_init(self, ctx: GenerationContext) -> str:
         """Generate service initialization code."""
         parts = []
+
+        if ctx.data_config.is_feast:
+            parts.append(
+                """
+            print(f"[ModelService] Initializing Feast Facade...")
+            try:
+                self.feature_store = FeatureStoreFacade(self.cfg, mode="online")
+            except Exception as e:
+                print(f"[WARNING] Feast initialization failed: {e}")
+                self.feature_store = None
+"""
+            )
 
         preprocessor_artifact = self._get_preprocessor_artifact_name(
             ctx.preprocessor, ctx.load_map
@@ -214,6 +233,20 @@ class ServeService:
         if isinstance(features, pd.DataFrame):
             return features.values
         return np.atleast_2d(np.array(features))
+
+    def get_online_dataset(self,
+                           entities: List[Union[int, str]],
+                           time_point: str = "now") -> pd.DataFrame:
+        if self.feature_store is None:
+            raise RuntimeError("Feast not initialized")
+
+        # Use Facade to load features (handles windowing and prefixes)
+        print(f"[ModelService] Fetching features for entities: {entities}")
+        df = self.feature_store.load_features(
+            time_point=time_point,
+            entity_ids=entities
+        )
+        return df
 
     def _prepare_input_timeseries(self, features: Any, model_type: str) -> np.ndarray:
         if isinstance(features, pd.DataFrame):
@@ -366,6 +399,22 @@ def predict(request: PredictRequest) -> MultiPredictResponse:
         return MultiPredictResponse(predictions=predictions)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+@app.post("/predict/feast", response_model=MultiPredictResponse)
+def predict_feast(request: FeastPredictRequest) -> MultiPredictResponse:
+    try:
+        df = service.get_online_dataset(request.entities)
+        preprocessed_data = service.preprocess(df)
+        context = {{"preprocessed_data": preprocessed_data}}
+        predictions = service.run_inference_pipeline(context)
+        return MultiPredictResponse(predictions=predictions)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/predict/feast/batch", response_model=MultiPredictResponse)
+def predict_feast_batch(request: FeastPredictRequest) -> MultiPredictResponse:
+    return predict_feast(request)
 
 """
 

@@ -5,8 +5,8 @@ experiment:
   model_type: "dl"
   hyperparams:
     input_chunk_length: 24
-    n_features: 3
-    n_targets: 3
+    n_features: 9
+    n_targets: 2
     output_chunk_length: 6
     n_epochs: 20
     batch_size: 16

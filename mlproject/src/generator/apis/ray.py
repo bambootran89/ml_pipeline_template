@@ -93,7 +93,9 @@ from ray.serve.handle import DeploymentHandle
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from mlproject.src.tracking.mlflow_manager import MLflowManager
+from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
+from mlproject.src.features.facade import FeatureStoreFacade
 
 app = FastAPI(title="ML Pipeline API (Ray Serve)")
 """
@@ -105,6 +107,11 @@ app = FastAPI(title="ML Pipeline API (Ray Serve)")
 class HealthResponse(BaseModel):
     status: str
     components: Dict[str, str]
+
+class FeastPredictRequest(BaseModel):
+    entities: List[Union[int, str]] = Field(..., description="List of entity IDs")
+    entity_key: Optional[str] = Field(None, description="Key to join entities")
+    time_point: str = Field(default="now", description="Time point for retrieval")
 
 class PredictRequest(BaseModel):
     data: Dict[str, List[Any]] = Field(
@@ -141,7 +148,7 @@ if __name__ == "__main__":
 
     def _gen_model_service(self, ctx: GenerationContext) -> str:
         """Generate ModelService methods."""
-        model_loads = "\\n".join(
+        model_loads = "\n".join(
             [
                 f"""        print(f"[ModelService] Loading model: {key} "
                  f"(alias: {ctx.alias})...")
@@ -155,7 +162,7 @@ if __name__ == "__main__":
             ]
         )
 
-        tabular_inference = "\\n".join(
+        tabular_inference = "\n".join(
             [
                 f"""        model = self.models.get("{s['model_key']}")
         if model is not None:
@@ -176,7 +183,7 @@ if __name__ == "__main__":
             ]
         )
 
-        ts_inference = "\\n".join(
+        ts_inference = "\n".join(
             [
                 f"""        model = self.models.get("{s['model_key']}")
         if model is not None:
@@ -228,7 +235,30 @@ class ModelService:
         self.mlflow_manager = MLflowManager(self.cfg)
         self.models = {{}}
         self.ready = False
+        self.feature_store = None
+        self._check_feast()
         self._load_models()
+
+    def _check_feast(self) -> None:
+        if "{ctx.data_config.path}".startswith("feast://"):
+            print(f"[ModelService] Initializing Feast Facade...")
+            try:
+                self.feature_store = FeatureStoreFacade(self.cfg, mode="online")
+            except Exception as e:
+                print(f"[WARNING] Feast initialization failed: {{e}}")
+                self.feature_store = None
+
+    def get_online_dataset(
+        self, entities: List[Union[int, str]], time_point: str = "now"
+    ) -> pd.DataFrame:
+        if self.feature_store is None:
+            raise RuntimeError("Feast feature store not initialized")
+
+        # Retrieve using Facade
+        data = self.feature_store.load_features(
+            time_point=time_point, entity_ids=entities
+        )
+        return pd.DataFrame(data)
 
     def _load_models(self) -> None:
         if not self.mlflow_manager.enabled:
@@ -286,7 +316,11 @@ class ModelService:
     async def run_inference_pipeline(
         self, context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        # Simple default that runs all models in tabular mode
+        # Run appropriate inference based on data type
+        if "{ctx.data_config.data_type}" == "timeseries":
+            return self.predict_timeseries_multistep(
+                context, self.OUTPUT_CHUNK_LENGTH
+            )["predictions"]
         return self.predict_tabular_batch(context)["predictions"]
 """
 
@@ -299,13 +333,13 @@ class ModelService:
         if preprocessor_artifact:
             prep_load = (
                 f"""        print(f"[PreprocessService] Loading preprocessor: "
-                 f"{preprocessor_artifact} (alias: {ctx.alias})...")\\n"""
-                f"""        component = self.mlflow_manager.load_component(\\n"""
-                f"""            name=f"{{experiment_name}}_"\\n"""
-                f"""                 f"{{preprocessor_artifact}}",\\n"""
-                f"""            alias="{ctx.alias}",\\n"""
-                f"""        )\\n"""
-                f"""        if component is not None:\\n"""
+                 f"{preprocessor_artifact} (alias: {ctx.alias})...")\n"""
+                f"""        component = self.mlflow_manager.load_component(\n"""
+                f"""            name=f"{{experiment_name}}_"\n"""
+                f"""                 f"{preprocessor_artifact}",\n"""
+                f"""            alias="{ctx.alias}",\n"""
+                f"""        )\n"""
+                f"""        if component is not None:\n"""
                 f"""            self.preprocessor = component"""
             )
 
@@ -417,6 +451,31 @@ class ServeAPI:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 {specific_endpoint}
+    @app.post("/predict/feast", response_model=MultiPredictResponse)
+    async def predict_feast(self, request: FeastPredictRequest) -> MultiPredictResponse:
+        try:
+            df = await self.model_handle.get_online_dataset.remote(
+                request.entities, request.time_point
+            )
+            preprocessed_data = (
+                await self.preprocess_handle.preprocess.remote(df)
+            )
+            context = {{"preprocessed_data": preprocessed_data}}
+            predictions = (
+                await self.model_handle.run_inference_pipeline.remote(
+                    context
+                )
+            )
+            return MultiPredictResponse(predictions=predictions)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/predict/feast/batch", response_model=MultiPredictResponse)
+    async def predict_feast_batch(
+        self, request: FeastPredictRequest
+    ) -> MultiPredictResponse:
+        return await self.predict_feast(request)
+
     @app.get("/health", response_model=HealthResponse)
     async def health(self) -> HealthResponse:
         try:

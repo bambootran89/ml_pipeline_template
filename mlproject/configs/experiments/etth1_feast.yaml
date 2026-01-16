@@ -17,6 +17,7 @@ preprocessing:
   artifacts_dir: "mlproject/artifacts/preprocessing"
 
 data:
+  # Assumes `mlproject/feature_repo` exists and has `feature_service` defined
   path: "feast://feature_repo_etth1?entity=location_id&id=1"
   type: timeseries
   featureview: "etth1_features"
@@ -26,15 +27,15 @@ data:
   index_col: "event_timestamp"
   target_columns: ["HUFL", "MUFL"]
   features:
-    - "HUFL"
-    - "MUFL"
-    - "mobility_inflow"
-    - "HUFL_lag24"
-    - "MUFL_lag24"
-    - "HUFL_roll12_mean"
-    - "MUFL_roll12_mean"
-    - "hour_sin"
-    - "hour_cos"
+  - "HUFL"
+  - "MUFL"
+  - "mobility_inflow"
+  - "HUFL_lag24"
+  - "MUFL_lag24"
+  - "HUFL_roll12_mean"
+  - "MUFL_roll12_mean"
+  - "hour_sin"
+  - "hour_cos"
 
 experiment:
   name: "feast_multivariate_tft"
