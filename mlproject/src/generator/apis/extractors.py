@@ -38,6 +38,9 @@ class ApiGeneratorExtractorsMixin:
             "clustering": self._get_training_inference,
             "inference": self._get_inference_info,
             "feature_inference": self._get_inference_info,
+            "branch": self._get_branch_inference,
+            "sub_pipeline": self._get_nested_inference,
+            "parallel": self._get_nested_inference,
         }
 
         for step in steps:
@@ -122,6 +125,31 @@ class ApiGeneratorExtractorsMixin:
             }
         ]
 
+    def _get_branch_inference(self, step: Any) -> List[Dict[str, Any]]:
+        """Recursively extract inference info from branch steps."""
+        results = []
+        if_true = step.get("if_true")
+        if_false = step.get("if_false")
+
+        if if_true:
+            results.extend(self._extract_inference_steps([if_true]))
+        if if_false:
+            results.extend(self._extract_inference_steps([if_false]))
+        return results
+
+    def _get_nested_inference(self, step: Any) -> List[Dict[str, Any]]:
+        """Recursively extract inference info from sub_pipeline or parallel steps."""
+        pipeline = step.get("pipeline")
+        if pipeline and "steps" in pipeline:
+            return self._extract_inference_steps(pipeline.steps)
+
+        # Handle parallel directly if it's a list of steps
+        steps = step.get("steps")
+        if steps:
+            return self._extract_inference_steps(steps)
+
+        return []
+
     def _extract_load_map(self, steps: List[Any]) -> Dict[str, str]:
         """Extract mapping of model keys to MLflow artifact names."""
         load_map = {}
@@ -136,75 +164,85 @@ class ApiGeneratorExtractorsMixin:
                 )
 
                 if items:
-                    # In OmegaConf, iterate over ListConfig or DictConfig works
-                    # No need to check isinstance(items, list) strictly as ListConfig is iterable
                     for item in items:
-                        # Check if it has get (DictConfig and dict have it)
                         if hasattr(item, "get"):
                             key = item.get("context_key") or item.get("step_id")
                             val = item.get("step_id")
                             if key and val:
                                 load_map[key] = val
                         elif isinstance(items, dict):
-                            # items itself is a dict (old format)
                             for k, v in items.items():
                                 if any(
                                     x in k.lower()
                                     for x in ["model", "preprocess", "scaler"]
                                 ):
                                     load_map[k] = v
-                            break  # Exiting for loop after processing dict
+                            break
+
+            # Recursively explore nested steps for load_map (unlikely but possible)
+            elif step_type == "branch":
+                load_map.update(
+                    self._extract_load_map([step.get("if_true"), step.get("if_false")])
+                )
+            elif step_type in ["sub_pipeline", "parallel"]:
+                nested_steps = step.get("steps") or (
+                    step.get("pipeline", {}).get("steps")
+                )
+                if nested_steps:
+                    load_map.update(self._extract_load_map(nested_steps))
 
         return load_map
 
     def _extract_preprocessor_info(self, steps: List[Any]) -> Optional[Dict[str, Any]]:
         """Extract preprocessor configuration if present."""
-        preprocessor_step = next(
-            (
-                s
-                for s in steps
-                if (getattr(s, "type", None) or s.get("type")) == "preprocessor"
-            ),
-            None,
-        )
-        if preprocessor_step:
-            return {
-                "id": getattr(preprocessor_step, "id", None)
-                or preprocessor_step.get("id"),
-                "instance_key": preprocessor_step.get("instance_key"),
-                "args": getattr(preprocessor_step, "args", None) or preprocessor_step,
-            }
+        for step in steps:
+            if not step:
+                continue
+            step_type = getattr(step, "type", None) or step.get("type")
 
-        # Check for preprocessor in init_artifacts / mlflow_loader
-        init_step = next(
-            (
-                s
-                for s in steps
-                if (getattr(s, "type", None) or s.get("type"))
-                in ["init_artifacts", "mlflow_loader"]
-            ),
-            None,
-        )
-        if init_step:
-            items = (
-                init_step.get("load_map")
-                or init_step.get("artifacts")
-                or init_step.get("args", {}).get("artifacts", {})
-            )
-            if items:
-                for item in items:
-                    if hasattr(item, "get"):
-                        key = item.get("context_key") or item.get("step_id")
-                        val = item.get("step_id")
-                        if key and (
-                            "preprocess" in key.lower() or "scaler" in key.lower()
-                        ):
-                            return {"id": key, "artifact_name": val}
-                    elif isinstance(items, dict):
-                        for k, v in items.items():
-                            if "preprocess" in k.lower() or "scaler" in k.lower():
-                                return {"id": k, "artifact_name": v}
-                        break
+            if step_type == "preprocessor":
+                return {
+                    "id": getattr(step, "id", None) or step.get("id"),
+                    "instance_key": step.get("instance_key"),
+                    "args": getattr(step, "args", None) or step,
+                }
+
+            if step_type in ["init_artifacts", "mlflow_loader"]:
+                items = (
+                    step.get("load_map")
+                    or step.get("artifacts")
+                    or step.get("args", {}).get("artifacts", {})
+                )
+                if items:
+                    for item in items:
+                        if hasattr(item, "get"):
+                            key = item.get("context_key") or item.get("step_id")
+                            val = item.get("step_id")
+                            if key and (
+                                "preprocess" in key.lower() or "scaler" in key.lower()
+                            ):
+                                return {"id": key, "artifact_name": val}
+                        elif isinstance(items, dict):
+                            for k, v in items.items():
+                                if "preprocess" in k.lower() or "scaler" in k.lower():
+                                    return {"id": k, "artifact_name": v}
+                            break
+
+            # Recursive search
+            if step_type == "branch":
+                info = self._extract_preprocessor_info(
+                    [step.get("if_true"), step.get("if_false")]
+                )
+                if info:
+                    return info
+            elif step_type in ["sub_pipeline", "parallel"]:
+                nested_steps = step.get("steps") or (
+                    step.get("pipeline", {}).get("steps")
+                )
+                if nested_steps:
+                    info = self._extract_preprocessor_info(nested_steps)
+                    if info:
+                        return info
 
         return None
 
@@ -254,19 +292,7 @@ class ApiGeneratorExtractorsMixin:
         # Search through all steps for datamodule args
         pipeline = getattr(cfg, "pipeline", None) or cfg.get("pipeline")
         if pipeline and "steps" in pipeline:
-            for step in pipeline.steps:
-                dm_args = None
-                args = getattr(step, "args", None) or step.get("args")
-                if args and "datamodule" in args:
-                    dm_args = args.datamodule
-                elif "datamodule" in step:
-                    dm_args = step.datamodule
-
-                if dm_args:
-                    if "input_chunk_length" in dm_args:
-                        data_cfg["input_chunk_length"] = dm_args.input_chunk_length
-                    if "output_chunk_length" in dm_args:
-                        data_cfg["output_chunk_length"] = dm_args.output_chunk_length
+            data_cfg.update(self._extract_datamodule_recursive(pipeline.steps))
 
         # Defaults
         data_cfg.setdefault("data_type", "timeseries")
@@ -274,4 +300,42 @@ class ApiGeneratorExtractorsMixin:
         data_cfg.setdefault("input_chunk_length", 24)
         data_cfg.setdefault("output_chunk_length", 6)
 
+        return data_cfg
+
+    def _extract_datamodule_recursive(self, steps: List[Any]) -> Dict[str, Any]:
+        """Recursively search for datamodule configuration in steps."""
+        data_cfg = {}
+        for step in steps:
+            if not step:
+                continue
+            dm_args = None
+            args = getattr(step, "args", None) or step.get("args")
+            if args and "datamodule" in args:
+                dm_args = args.datamodule
+            elif "datamodule" in step:
+                dm_args = step.datamodule
+
+            if dm_args:
+                if "input_chunk_length" in dm_args:
+                    data_cfg["input_chunk_length"] = dm_args.input_chunk_length
+                if "output_chunk_length" in dm_args:
+                    data_cfg["output_chunk_length"] = dm_args.output_chunk_length
+                return data_cfg  # Found, stop searching
+
+            # Recursive search
+            step_type = getattr(step, "type", None) or step.get("type")
+            if step_type == "branch":
+                res = self._extract_datamodule_recursive(
+                    [step.get("if_true"), step.get("if_false")]
+                )
+                if res:
+                    return res
+            elif step_type in ["sub_pipeline", "parallel"]:
+                nested_steps = step.get("steps") or (
+                    step.get("pipeline", {}).get("steps")
+                )
+                if nested_steps:
+                    res = self._extract_datamodule_recursive(nested_steps)
+                    if res:
+                        return res
         return data_cfg

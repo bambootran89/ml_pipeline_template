@@ -138,10 +138,12 @@ if __name__ == "__main__":
         model_loads = "\n".join(
             [
                 f"""        print(f"[ModelService] Loading model: {key} (alias: {ctx.alias})...")
-        self.models["{key}"] = self.mlflow_manager.load_component(
+        component = self.mlflow_manager.load_component(
             name=f"{{experiment_name}}_{ctx.load_map.get(key, 'model')}",
             alias="{ctx.alias}",
-        )"""
+        )
+        if component is not None:
+            self.models["{key}"] = component"""
                 for key in set(ctx.model_keys)
             ]
         )
@@ -287,10 +289,12 @@ class ModelService:
         if preprocessor_artifact:
             prep_load = (
                 f"""        print(f"[PreprocessService] Loading preprocessor: {preprocessor_artifact} (alias: {ctx.alias})...")\n"""
-                f"""        self.preprocessor = self.mlflow_manager.load_component(\n"""
+                f"""        component = self.mlflow_manager.load_component(\n"""
                 f"""            name=f"{{experiment_name}}_{preprocessor_artifact}",\n"""
                 f"""            alias="{ctx.alias}",\n"""
-                f"""        )"""
+                f"""        )\n"""
+                f"""        if component is not None:\n"""
+                f"""            self.preprocessor = component"""
             )
 
         return f"""@serve.deployment(

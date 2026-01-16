@@ -175,10 +175,12 @@ class ServeService:
             parts.append(
                 f"""
             print(f"[ModelService] Loading preprocessor: {preprocessor_artifact} (alias: {ctx.alias})...")
-            self.preprocessor = self.mlflow_manager.load_component(
+            component = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{preprocessor_artifact}",
                 alias="{ctx.alias}",
             )
+            if component is not None:
+                self.preprocessor = component
 """
             )
 
@@ -187,10 +189,12 @@ class ServeService:
             parts.append(
                 f"""
             print(f"[ModelService] Loading model: {model_key} from {step_id} (alias: {ctx.alias})...")
-            self.models["{model_key}"] = self.mlflow_manager.load_component(
+            component = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{step_id}",
                 alias="{ctx.alias}",
             )
+            if component is not None:
+                self.models["{model_key}"] = component
 """
             )
 

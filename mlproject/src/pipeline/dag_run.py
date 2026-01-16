@@ -10,6 +10,7 @@ import argparse
 import inspect
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -90,10 +91,10 @@ def run_training(
     pipeline_path : str, optional
         Path to pipeline structure YAML.
     """
-    _print_separator("Starting TRAINING pipeline")
+    print(f"[RUN] mode='train'")
 
     merged_cfg = ConfigMerger.merge(experiment_path, pipeline_path, mode="train")
-    temp_config = ".temp_merged_train.yaml"
+    temp_config = f".temp_merged_train_{uuid.uuid4().hex}.yaml"
     ConfigMerger.save(merged_cfg, temp_config)
 
     try:
@@ -136,7 +137,7 @@ def run_eval(
             step.alias = alias
             print(f"[CONFIG] Override: preprocessor alias='{alias}'")
 
-    temp_config = ".temp_merged_eval.yaml"
+    temp_config = f".temp_merged_eval_{uuid.uuid4().hex}.yaml"
     ConfigMerger.save(merged_cfg, temp_config)
 
     try:
