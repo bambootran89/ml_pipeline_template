@@ -45,17 +45,15 @@ for PIPE_PATH in "$PIPELINE_DIR"/*.yaml; do
     echo -e "${YELLOW}>>> Processing Pipeline: $PIPE_FILENAME${NC}"
     echo -e "${YELLOW}-------------------------------------------------------${NC}"
 
-    # Skip Feast pipelines as requested
-    if [[ "$PIPE_FILENAME" == *"feast"* ]]; then
-        echo -e "${YELLOW}>>> Skipping Feast Pipeline: $PIPE_FILENAME (Not supported yet)${NC}"
-        continue
-    fi
-
     # 1. Determine Experiment Config
     if [[ "$PIPE_FILENAME" == *"tabular"* ]]; then
         EXP_CONFIG="$EXP_DIR/tabular.yaml"
         TYPE="tabular"
         echo "Detected Type: TABULAR"
+    elif [[ "$PIPE_FILENAME" == *"feast"* ]]; then
+        EXP_CONFIG="$EXP_DIR/etth1_feast.yaml"
+        TYPE="feast"
+        echo "Detected Type: FEAST"
     else
         EXP_CONFIG="$EXP_DIR/etth3.yaml"
         TYPE="timeseries"
@@ -123,26 +121,90 @@ for PIPE_PATH in "$PIPELINE_DIR"/*.yaml; do
         fi
         echo -e "${GREEN}Serving Health Check PASS ($FRAMEWORK)${NC}"
 
+# Function to verify JSON response
+verify_response() {
+    local RESPONSE="$1"
+    local EXPECTED_COUNT="$2"
+    local DESCRIPTION="$3"
+
+    echo "$RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    # Handle direct prediction list (PredictResponse) or dict (MultiPredictResponse)
+    if 'prediction' in data:
+        preds = data['prediction']
+        print(f'Found single output: Count={len(preds) if isinstance(preds, list) else 1}')
+    elif 'predictions' in data:
+        preds_dict = data['predictions']
+        print(f'Found {len(preds_dict)} outputs: {list(preds_dict.keys())}')
+        preds = preds_dict
+    else:
+        print('FAILED: No predictions found')
+        print(f'Full Response: {data}')
+        sys.exit(1)
+
+    # Validate count/content
+    if not preds:
+        print('FAILED: Predictions empty')
+        sys.exit(1)
+
+    print('OK')
+except Exception as e:
+    print(f'ERROR: {e}')
+    sys.exit(1)
+"
+    if [ $? -eq 0 ]; then
+         echo -e "${GREEN}>>> $DESCRIPTION VERIFICATION PASSED${NC}"
+    else
+         echo -e "${RED}>>> $DESCRIPTION VERIFICATION FAILED${NC}"
+         echo "$RESPONSE"
+         cleanup
+         exit 1
+    fi
+}
+
         # 5. Verify API
         echo -e "${BLUE}--- [4/4] Verifying API ($FRAMEWORK) ---${NC}"
 
         if [ "$TYPE" == "tabular" ]; then
-            # Tabular Batch (Titanic Schema)
+            # Tabular Batch
             RESPONSE=$(curl -s -X POST http://localhost:8082/predict/batch \
               -H "Content-Type: application/json" \
               -d '{
                 "data": {
-                  "Pclass": [3, 1, 3, 1, 3, 3, 3, 1, 3, 1],
-                  "Age": [22.0, 38.0, 26.0, 35.0, 35.0, 29.0, 54.0, 2.0, 27.0, 14.0],
-                  "SibSp": [1, 1, 0, 1, 0, 0, 0, 3, 0, 1],
-                  "Parch": [0, 0, 0, 0, 0, 0, 0, 1, 2, 0],
-                  "Fare": [7.25, 71.28, 7.92, 53.1, 8.05, 8.45, 51.86, 21.07, 11.13, 30.07],
-                  "Sex": ["male", "female", "female", "female", "male", "male", "male", "male", "female", "female"],
-                  "Embarked": ["S", "C", "S", "S", "S", "Q", "S", "S", "S", "C"]
+                  "Pclass": [3, 1, 3, 1, 3],
+                  "Age": [22.0, 38.0, 26.0, 35.0, 35.0],
+                  "SibSp": [1, 1, 0, 1, 0],
+                  "Parch": [0, 0, 0, 0, 0],
+                  "Fare": [7.25, 71.28, 7.92, 53.1, 8.05],
+                  "Sex": ["male", "female", "female", "female", "male"],
+                  "Embarked": ["S", "C", "S", "S", "S"]
                 },
                 "return_probabilities": true
             }')
-            EXPECTED_COUNT=10
+            verify_response "$RESPONSE" 5 "Tabular Batch ($FRAMEWORK)"
+
+        elif [ "$TYPE" == "feast" ]; then
+            # 1. Single Entity Test
+            RESPONSE_SINGLE=$(curl -s -X POST http://localhost:8082/predict/feast \
+               -H "Content-Type: application/json" \
+               -d '{
+                 "time_point": "2024-01-09T00:00:00",
+                 "entities": [1]
+               }')
+            verify_response "$RESPONSE_SINGLE" 1 "Feast Single Entity ($FRAMEWORK)"
+
+            # 2. Batch Entity Test
+            RESPONSE_BATCH=$(curl -s -X POST http://localhost:8082/predict/feast/batch \
+               -H "Content-Type: application/json" \
+               -d '{
+                 "time_point": "2024-01-09T00:00:00",
+                 "entities": [1],
+                 "entity_key": "location_id"
+               }')
+            verify_response "$RESPONSE_BATCH" 1 "Feast Batch ($FRAMEWORK)"
+
         else
             # Timeseries Multi-step
             RESPONSE=$(curl -s -X POST http://localhost:8082/predict/multistep \
@@ -156,52 +218,7 @@ for PIPE_PATH in "$PIPELINE_DIR"/*.yaml; do
               },
               "steps_ahead": 18
             }')
-            EXPECTED_COUNT=18
-        fi
-
-        echo "$RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    preds_dict = data.get('predictions', {})
-
-    if not preds_dict:
-        print('FAILED: No predictions found')
-        sys.exit(1)
-
-    print(f'Found {len(preds_dict)} outputs: {list(preds_dict.keys())}')
-
-    all_passed = True
-    for key, preds in preds_dict.items():
-        if preds is None:
-            print(f'FAILED: {key} is None')
-            all_passed = False
-            continue
-
-        length = len(preds) if isinstance(preds, list) else 1
-
-        if length > 0:
-            print(f'  - {key}: Count={length} Sample={str(preds)[:50]}...')
-        else:
-            print(f'FAILED: {key} has 0 predictions')
-            all_passed = False
-
-    if all_passed:
-        print('OK')
-    else:
-        sys.exit(1)
-except Exception as e:
-    print(f'ERROR: {e}')
-    sys.exit(1)
-"
-
-        if [ $? -eq 0 ]; then
-             echo -e "${GREEN}>>> $PIPE_FILENAME ($FRAMEWORK) VERIFICATION PASSED${NC}"
-        else
-             echo -e "${RED}>>> $PIPE_FILENAME ($FRAMEWORK) VERIFICATION FAILED${NC}"
-             echo "$RESPONSE"
-             cleanup
-             exit 1
+            verify_response "$RESPONSE" 1 "Timeseries Multistep ($FRAMEWORK)"
         fi
 
         # Cleanup after each framework

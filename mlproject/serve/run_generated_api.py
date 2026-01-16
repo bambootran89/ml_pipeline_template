@@ -62,7 +62,7 @@ def _configure_server_settings(
     elif framework == "ray":
         code = code.replace(
             "serve.run(app_builder({}))",
-            f'serve.run(app_builder({{}}), host="{host}", port={port})',
+            f'serve.start(http_options={{"host": "{host}", "port": {port}}})\n    serve.run(app_builder({{}}))',
         )
 
     with open(api_path, "w", encoding="utf-8") as f:

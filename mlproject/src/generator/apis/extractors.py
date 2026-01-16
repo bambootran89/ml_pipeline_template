@@ -303,6 +303,8 @@ class ApiGeneratorExtractorsMixin:
         if data:
             data_cfg["data_type"] = data.get("type", "timeseries")
             data_cfg["features"] = list(data.get("features", []))
+            data_cfg["path"] = data.get("path", "")
+            data_cfg["entity_key"] = data.get("entity_key", "")
 
         # 2. Try to get from experiment section (overrides data)
         experiment = getattr(cfg, "experiment", None) or cfg.get("experiment")

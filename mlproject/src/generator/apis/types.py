@@ -14,6 +14,8 @@ class DataConfig:
     features: List[str]
     input_chunk_length: int
     output_chunk_length: int
+    path: str
+    entity_key: str
 
     @classmethod
     def from_dict(cls, config: Optional[Dict[str, Any]]) -> DataConfig:
@@ -25,7 +27,22 @@ class DataConfig:
             features=config.get("features", []),
             input_chunk_length=config.get("input_chunk_length", 24),
             output_chunk_length=config.get("output_chunk_length", 6),
+            path=config.get("path", ""),
+            entity_key=config.get("entity_key", ""),
         )
+
+    @property
+    def is_feast(self) -> bool:
+        """Check if data source is Feast."""
+        return self.path.startswith("feast://")
+
+    @property
+    def feast_repo_path(self) -> str:
+        """Extract Feast repository path from URI."""
+        if not self.is_feast:
+            return ""
+        # Format: feast://path/to/repo?query
+        return self.path.split("feast://")[1].split("?")[0]
 
 
 @dataclass(frozen=True)

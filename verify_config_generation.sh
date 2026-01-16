@@ -37,12 +37,6 @@ for PIPE_PATH in "$PIPELINE_DIR"/*.yaml; do
     echo -e "${YELLOW}>>> Processing Pipeline: $PIPE_FILENAME${NC}"
     echo -e "${YELLOW}-------------------------------------------------------${NC}"
 
-    # Skip Feast pipelines
-    if [[ "$PIPE_FILENAME" == *"feast"* ]]; then
-        echo -e "${YELLOW}>>> Skipping Feast Pipeline: $PIPE_FILENAME (Not supported yet)${NC}"
-        continue
-    fi
-
     # Determine Experiments to Run
     EXPERIMENTS=()
     TYPE=""
@@ -52,6 +46,11 @@ for PIPE_PATH in "$PIPELINE_DIR"/*.yaml; do
         TYPE="tabular"
         DATA_INPUT="mlproject/data/titanic.csv"
         echo "Detected Type: TABULAR"
+    elif [[ "$PIPE_FILENAME" == *"feast"* ]]; then
+        EXPERIMENTS+=("etth1_feast.yaml")
+        TYPE="feast"
+        DATA_INPUT="mlproject/data/ETTh1.csv"
+        echo "Detected Type: FEAST"
     else
         EXPERIMENTS+=("etth3.yaml" "etth1.yaml")
         TYPE="timeseries"
