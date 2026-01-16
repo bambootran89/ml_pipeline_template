@@ -59,6 +59,11 @@ def _configure_server_settings(
             'uvicorn.run(app, host="0.0.0.0", port=8000)',
             f'uvicorn.run(app, host="{host}", port={port})',
         )
+    elif framework == "ray":
+        code = code.replace(
+            "serve.run(app_builder({}))",
+            f'serve.start(http_options={{"host": "{host}", "port": {port}}})\n    serve.run(app_builder({{}}))',
+        )
 
     with open(api_path, "w", encoding="utf-8") as f:
         f.write(code)

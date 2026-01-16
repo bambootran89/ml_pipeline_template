@@ -243,6 +243,16 @@ class ServeBuilder:
 
         return transformed
 
+    def _resolve_base_features_key(self, step: Any) -> str:
+        """Resolve base features key from step wiring."""
+        if hasattr(step, "wiring") and hasattr(step.wiring, "inputs"):
+            inputs = step.wiring.inputs
+            # Prioritize standard keys
+            for key in ["X", "features", "data", "input"]:
+                if key in inputs:
+                    return inputs[key]
+        return "preprocessed_data"
+
     def _branch_to_inference(self, branch: Any) -> Optional[DictConfig]:
         """Convert branch to inference step."""
         if not self.analyzer.is_model_producer(branch):
@@ -256,7 +266,7 @@ class ServeBuilder:
             "enabled": True,
             "depends_on": ["preprocess"],
             "source_model_key": f"fitted_{branch.id}",
-            "base_features_key": "preprocessed_data",
+            "base_features_key": self._resolve_base_features_key(branch),
             "output_key": f"{branch.id}_predictions",
             "apply_windowing": self._should_apply_windowing(branch.id),
         }
@@ -330,7 +340,7 @@ class ServeBuilder:
                     "enabled": True,
                     "depends_on": [init_id, last_id],
                     "source_model_key": f"fitted_{producer.id}",
-                    "base_features_key": "preprocessed_data",
+                    "base_features_key": self._resolve_base_features_key(producer),
                     "output_key": f"{producer.id}_predictions",
                     "apply_windowing": self._should_apply_windowing(producer.id),
                 }

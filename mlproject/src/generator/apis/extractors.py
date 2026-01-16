@@ -98,6 +98,14 @@ class ApiGeneratorExtractorsMixin:
             model_key = args.get("model_key")
 
         if model_key is None:
+            # Check wiring for model input if not explicitly set
+            wiring = step.get("wiring")
+            if wiring:
+                inputs = wiring.get("inputs")
+                if inputs:
+                    model_key = inputs.get("model")
+
+        if model_key is None:
             model_key = (
                 step.get("source_model_key")
                 or step.get("model_key")
@@ -107,11 +115,21 @@ class ApiGeneratorExtractorsMixin:
         model_type = self._infer_model_type(model_key)
 
         # Handle different field names for features/output
-        features_key = (
-            step.get("features_key")
-            or step.get("base_features_key")
-            or "preprocessed_data"
-        )
+        features_key = step.get("features_key") or step.get("base_features_key")
+
+        if not features_key:
+            wiring = step.get("wiring")
+            if wiring and wiring.get("inputs"):
+                inputs = wiring.get("inputs")
+                # heuristic to find input data key
+                for key in ["features", "X", "data", "input"]:
+                    if key in inputs:
+                        features_key = inputs[key]
+                        break
+
+        if not features_key:
+            features_key = "preprocessed_data"
+
         output_key = step.get("output_key") or f"{model_key}_predictions"
 
         return [
@@ -286,7 +304,15 @@ class ApiGeneratorExtractorsMixin:
         # 2. Try to get from experiment section (overrides data)
         experiment = getattr(cfg, "experiment", None) or cfg.get("experiment")
         if experiment:
-            data_cfg["data_type"] = experiment.get("type", data_cfg.get("data_type"))
+            exp_type = experiment.get("type")
+            if exp_type in ["classification", "regression"]:
+                data_cfg["data_type"] = "tabular"
+            elif exp_type in ["multivariate", "univariate"]:
+                data_cfg["data_type"] = "timeseries"
+            elif exp_type:
+                # Use experiment type if data type not yet set
+                if "data_type" not in data_cfg:
+                    data_cfg["data_type"] = exp_type
 
         # 3. Look for timeseries specific windowing
         # Search through all steps for datamodule args

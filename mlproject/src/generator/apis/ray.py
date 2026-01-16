@@ -94,7 +94,7 @@ from ray.serve.handle import DeploymentHandle
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from mlproject.src.tracking.mlflow_manager import MLflowManager
-from mlproject.src.utils.config_loader import ConfigLoader
+from mlproject.src.utils.config_class import ConfigLoader
 
 app = FastAPI(title="ML Pipeline API (Ray Serve)")
 """
