@@ -19,6 +19,7 @@ FRAMEWORK="fastapi"
 PORT=8000
 HOST="0.0.0.0"
 EXPERIMENT_CONFIG=""
+ALIAS="production"
 
 # Parse arguments
 SERVE_CONFIG=""
@@ -31,14 +32,12 @@ show_help() {
     echo "  -f, --framework FRAMEWORK   Framework: fastapi or ray (default: fastapi)"
     echo "  -p, --port PORT            Port number (default: 8000)"
     echo "  -h, --host HOST            Host address (default: 0.0.0.0)"
+    echo "  -a, --alias ALIAS          MLflow alias (default: production)"
     echo "  --help                     Show this help message"
     echo ""
     echo "Examples:"
-    echo "  # FastAPI on port 8000"
-    echo "  ./serve_api.sh -e mlproject/configs/experiments/etth1.yaml mlproject/configs/generated/standard_train_serve.yaml"
-    echo ""
-    echo "  # Ray Serve on port 9000"
-    echo "  ./serve_api.sh -e mlproject/configs/experiments/etth1.yaml -f ray -p 9000 mlproject/configs/generated/standard_train_serve.yaml"
+    echo "  # FastAPI on port 8000 with latest alias"
+    echo "  ./serve_api.sh -e mlproject/configs/experiments/etth1.yaml -a latest mlproject/configs/generated/standard_train_serve.yaml"
     echo ""
     exit 0
 }
@@ -62,7 +61,15 @@ while [[ $# -gt 0 ]]; do
             HOST="$2"
             shift 2
             ;;
+        -a|--alias)
+            ALIAS="$2"
+            shift 2
+            ;;
         --help)
+            show_help
+            ;;
+        -*)
+            echo "Error: Unknown option $1"
             show_help
             ;;
         *)
@@ -104,6 +111,7 @@ echo "  Serve config: $SERVE_CONFIG"
 echo "  Framework: $FRAMEWORK"
 echo "  Host: $HOST"
 echo "  Port: $PORT"
+echo "  Alias: $ALIAS"
 echo ""
 
 # Run the Python command
@@ -115,4 +123,5 @@ python -m mlproject.serve.run_generated_api \
     --experiment-config "$EXPERIMENT_CONFIG" \
     --framework "$FRAMEWORK" \
     --host "$HOST" \
-    --port "$PORT"
+    --port "$PORT" \
+    --alias "$ALIAS"

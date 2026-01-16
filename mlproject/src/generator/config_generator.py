@@ -8,9 +8,11 @@ from typing import Any, Dict, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
+from .api_generator import ApiGenerator
 from .pipeline.eval_builder import EvalBuilder
 from .pipeline.feature_pipeline_parser import FeaturePipelineParser
 from .pipeline.serve_builder import ServeBuilder
+from .pipeline.step_analyzer import StepAnalyzer
 from .pipeline.tune_builder import TuneBuilder
 
 
@@ -22,11 +24,16 @@ class ConfigGenerator:
     training logic or saved MLflow artifacts.
     """
 
-    def __init__(self, train_config_path: str) -> None:
+    def __init__(
+        self,
+        train_config_path: str,
+        experiment_config_path: Optional[str] = None,
+    ) -> None:
         """Initialize config generator.
 
         Args:
             train_config_path: Path to training config YAML file.
+            experiment_config_path: Optional experiment config path.
         """
         loaded = OmegaConf.load(train_config_path)
 
@@ -34,12 +41,33 @@ class ConfigGenerator:
             raise TypeError(f"Expected DictConfig but got {type(loaded).__name__}")
 
         self.train_cfg: DictConfig = loaded
+
+        # If experiment config provided, extract its type and metadata
+        self.exp_cfg: Optional[DictConfig] = None
+        if experiment_config_path:
+            self.exp_cfg = OmegaConf.load(experiment_config_path)
+            assert isinstance(self.exp_cfg, DictConfig)
+
         self.experiment_name: str = Path(train_config_path).stem
 
         train_steps = self.train_cfg.pipeline.steps
 
         # Parse feature pipeline from steps
         self.feature_pipeline = FeaturePipelineParser.parse_from_steps(train_steps)
+
+        # Detect experiment type
+        self.experiment_type = self.train_cfg.get("experiment", {}).get(
+            "type", self.train_cfg.get("data", {}).get("type")
+        )
+
+        if not self.experiment_type and self.exp_cfg:
+            self.experiment_type = self.exp_cfg.get("experiment", {}).get(
+                "type", self.exp_cfg.get("data", {}).get("type")
+            )
+
+        if not self.experiment_type:
+            self.experiment_type = StepAnalyzer.infer_experiment_type(train_steps)
+            print(f"[ConfigGenerator] Inferred experiment type: {self.experiment_type}")
 
         if self.feature_pipeline:
             print("[ConfigGenerator] Detected feature pipeline:")
@@ -51,9 +79,34 @@ class ConfigGenerator:
                 )
                 print(f"    - {feat.source_step_id} -> {feat.output_key}{parent_info}")
 
-        self._eval_builder = EvalBuilder(train_steps)
-        self._serve_builder = ServeBuilder(train_steps)
+        self._eval_builder = EvalBuilder(
+            train_steps, experiment_type=self.experiment_type
+        )
+        self._serve_builder = ServeBuilder(
+            train_steps, experiment_type=self.experiment_type
+        )
         self._tune_builder = TuneBuilder(train_steps)
+        self._api_generator = ApiGenerator()
+
+    def generate_api(
+        self,
+        serve_config_path: str,
+        output_dir: str,
+        framework: str = "fastapi",
+        experiment_config_path: str = "",
+        alias: str = "production",
+    ) -> str:
+        """Generate API code from serve configuration.
+
+        Delegates to ApiGenerator.
+        """
+        return self._api_generator.generate_api(
+            serve_config_path,
+            output_dir,
+            framework,
+            experiment_config_path,
+            alias=alias,
+        )
 
     def generate_all(
         self,

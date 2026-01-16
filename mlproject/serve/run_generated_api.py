@@ -5,19 +5,20 @@ This script automatically generates API code from serve configuration
 and runs it immediately. No manual steps needed!
 
 Usage:
-    python -m mlproject.serve.run_generated_api \\
-        --serve-config mlproject/configs/generated/standard_train_serve.yaml \\
-        --experiment-config mlproject/configs/experiments/etth1.yaml \\
-        --framework fastapi \\
+    python -m mlproject.serve.run_generated_api \
+        --serve-config mlproject/configs/generated/standard_train_serve.yaml \
+        --experiment-config mlproject/configs/experiments/etth1.yaml \
+        --framework fastapi \
         --port 8000
 
     # Or with all options:
-    python -m mlproject.serve.run_generated_api \\
-        --serve-config mlproject/configs/generated/standard_train_serve.yaml \\
-        --experiment-config mlproject/configs/experiments/etth1.yaml \\
-        --framework ray \\
-        --port 8000 \\
-        --host 0.0.0.0
+    python -m mlproject.serve.run_generated_api \
+        --serve-config mlproject/configs/generated/standard_train_serve.yaml \
+        --experiment-config mlproject/configs/experiments/etth1.yaml \
+        --framework ray \
+        --port 8000 \
+        --host 0.0.0.0 \
+        --alias latest
 """
 
 import argparse
@@ -107,6 +108,7 @@ def generate_and_run(
     framework: str = "fastapi",
     host: str = "0.0.0.0",
     port: int = 8000,
+    alias: str = "production",
 ) -> None:
     """Generate API code and run it immediately.
 
@@ -116,6 +118,7 @@ def generate_and_run(
         framework: 'fastapi' or 'ray'.
         host: Host to bind to.
         port: Port to bind to.
+        alias: MLflow model alias.
     """
     print("=" * 60)
     print(f"Auto-Generate & Run {framework.upper()} API")
@@ -124,10 +127,11 @@ def generate_and_run(
     print(f"Serve config: {serve_config_path}")
     print(f"Framework: {framework}")
     print(f"Address: {host}:{port}")
+    print(f"Alias: {alias}")
     print("=" * 60)
 
     # Step 1: Generate API code
-    print("\n[1/2] Generating API code...")
+    print("\n[1/3] Generating API code...")
     generator = ApiGenerator()
 
     try:
@@ -136,6 +140,7 @@ def generate_and_run(
             output_dir="mlproject/serve/generated",
             framework=framework,
             experiment_config_path=experiment_config_path,
+            alias=alias,
         )
         print(f"Generated: {api_path}")
     except Exception as e:
@@ -206,6 +211,11 @@ Examples:
         default=8000,
         help="Port to bind to (default: 8000)",
     )
+    parser.add_argument(
+        "--alias",
+        default="production",
+        help="MLflow model alias to load (default: production)",
+    )
 
     args = parser.parse_args()
 
@@ -221,6 +231,7 @@ Examples:
         framework=args.framework,
         host=args.host,
         port=args.port,
+        alias=args.alias,
     )
 
 

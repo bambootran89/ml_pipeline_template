@@ -39,3 +39,4 @@ class GenerationContext:
     experiment_config_path: str
     data_config: DataConfig
     model_keys: List[str]
+    alias: str = "production"

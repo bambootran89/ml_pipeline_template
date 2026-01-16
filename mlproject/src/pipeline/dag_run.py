@@ -403,6 +403,7 @@ def run_generate_configs(
     output_dir: str = "mlproject/configs/generated",
     alias: str = "latest",
     config_type: str = "all",
+    experiment_config: Optional[str] = None,
 ) -> None:
     """Generate eval/serve configs from training config.
 
@@ -416,12 +417,16 @@ def run_generate_configs(
         MLflow model alias.
     config_type : str
         Type of config to generate (eval/serve/all).
+    experiment_config : str, optional
+        Path to experiment config to infer data type.
     """
     _print_separator("GENERATING CONFIGS")
     print(f"[RUN] Source: {train_config}")
+    if experiment_config:
+        print(f"[RUN] Experiment info: {experiment_config}")
     print(f"[RUN] Output: {output_dir}")
 
-    generator = ConfigGenerator(train_config)
+    generator = ConfigGenerator(train_config, experiment_config_path=experiment_config)
     base_name = Path(train_config).stem
 
     if config_type == "all":
@@ -488,6 +493,9 @@ def _setup_generate_parser(subparsers: Any) -> None:
         "--train-config", "-t", required=True, help="Training config YAML"
     )
     parser.add_argument(
+        "--experiment", "-e", help="Experiment config to infer data type"
+    )
+    parser.add_argument(
         "--output-dir",
         "-o",
         default="mlproject/configs/generated",
@@ -540,6 +548,7 @@ def main() -> None:
                 args.output_dir,
                 args.alias,
                 args.type,
+                experiment_config=args.experiment,
             )
         else:
             parser.print_help()

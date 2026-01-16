@@ -16,13 +16,17 @@ from .step_transformer import StepTransformer
 class ServeBuilder:
     """Builds serving pipeline from training pipeline."""
 
-    def __init__(self, train_steps: List[Any]) -> None:
+    def __init__(
+        self, train_steps: List[Any], experiment_type: str = "tabular"
+    ) -> None:
         """Initialize serve pipeline builder.
 
         Args:
             train_steps: Original training pipeline steps.
+            experiment_type: Type of experiment (timeseries, tabular).
         """
         self.train_steps = train_steps
+        self.experiment_type = experiment_type
         self.analyzer = StepAnalyzer()
         self.extractor = StepExtractor()
         self.dependency_builder = DependencyBuilder(train_steps)
@@ -339,11 +343,33 @@ class ServeBuilder:
 
     def _should_apply_windowing(self, step_id: str) -> bool:
         """Check if windowing should be applied based on step ID."""
-        step_lower = step_id.lower()
-        if any(
-            x in step_lower for x in ["impute", "cluster", "kmeans", "pca", "scaler"]
-        ):
+        if self.experiment_type != "timeseries":
             return False
+
+        # Find the original training step to check its configuration
+        train_step = self.extractor.find_step_by_id(self.train_steps, step_id)
+        if not train_step:
+            return True
+
+        step_type = train_step.get("type", "")
+
+        # Standard trainers and clustering steps in timeseries expect windowed data
+        if step_type in ["trainer", "clustering", "framework_model"]:
+            return True
+
+        # For dynamic adapters, check if they received a datamodule in training
+        if step_type == "dynamic_adapter":
+            if "wiring" in train_step and "inputs" in train_step.wiring:
+                inputs = train_step.wiring.inputs
+                if "datamodule" in inputs:
+                    return True
+            return False
+
+        # Fallback for other steps in timeseries
+        step_lower = step_id.lower()
+        if any(x in step_lower for x in ["impute", "pca", "scaler"]):
+            return False
+
         return True
 
     def _add_final_profiling(self, steps: List[Any], last_id: str) -> None:

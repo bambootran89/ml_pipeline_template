@@ -33,11 +33,16 @@ class ApiGenerator:
         output_dir: str,
         framework: str = "fastapi",
         experiment_config_path: str = "",
+        alias: str = "production",
     ) -> str:
         """Generate API code from serve configuration.
 
         Delegates to ApiGeneratorMixin.
         """
         return self._api_generator.generate_api(
-            serve_config_path, output_dir, framework, experiment_config_path
+            serve_config_path,
+            output_dir,
+            framework,
+            experiment_config_path,
+            alias=alias,
         )
