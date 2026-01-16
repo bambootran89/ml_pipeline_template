@@ -18,6 +18,7 @@ class LoaderBuilder:
         preprocessors: List[Any],
         producers: List[Any],
         legacy_preprocessor: Optional[Any],
+        feature_pipeline: Optional[Any] = None,
     ) -> None:
         """Add MLflow loader step to pipeline.
 
@@ -30,7 +31,7 @@ class LoaderBuilder:
             legacy_preprocessor: Legacy preprocessor if exists.
         """
         load_map = self._build_load_map(producers, preprocessors, legacy_preprocessor)
-
+        _ = feature_pipeline
         steps.append(
             OmegaConf.create(
                 {

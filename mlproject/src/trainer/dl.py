@@ -26,8 +26,9 @@ class DeepLearningTrainer(BaseTrainer):
         wrapper: Any,
         device: str = "cpu",
         save_dir: str = "mlproject/artifacts/models",
+        model_type: str = "dl",
     ) -> None:
-        super().__init__(wrapper, save_dir)
+        super().__init__(wrapper, save_dir, model_type)
         self.device: torch.device = torch.device(
             device if torch.cuda.is_available() else "cpu"
         )
@@ -76,7 +77,7 @@ class DeepLearningTrainer(BaseTrainer):
         train_loader, val_loader, _, _ = datamodule.get_loaders()
         # Build model if needed
         if self.wrapper.model is None:
-            self.wrapper.build(model_type="timeseries")
+            self.wrapper.build(model_type=self.model_type)
 
         # Move model to device
         if self.wrapper.model is not None:

@@ -112,7 +112,7 @@ evaluation:
 
 tuning:
   n_trials: 30
-  metric: f1_mean
+  optimize_metric: f1_mean
   direction: maximize
   storage: sqlite:///mlflow.db
 

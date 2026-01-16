@@ -316,17 +316,33 @@ class FrameworkModelStep(BasePipelineStep):
         if f is None:
             raise ValueError(f"Step '{self.step_id}': features is None.")
 
+        # Auto-restore column names if input is numpy array (e.g. from sklearn)
+        data_cfg_eff = self.effective_cfg.get("data", {})
+        feature_names = list(data_cfg_eff.get("features", []))
+        target_names = list(data_cfg_eff.get("target_columns", []))
+
+        if isinstance(f, np.ndarray):
+            f = pd.DataFrame(f)
+            if feature_names and len(feature_names) == f.shape[1]:
+                f.columns = feature_names
+
+        if tg is not None and isinstance(tg, np.ndarray):
+            tg = pd.DataFrame(tg)
+            if target_names and len(target_names) == tg.shape[1]:
+                tg.columns = target_names
+
         data_cfg: Dict[str, Any] = self.cfg.get("data", {})
         data_type: str = str(data_cfg.get("type", "tabular")).lower()
 
         if data_type == "timeseries":
-            return f.copy()
+            return _ensure_df(f).copy()
 
         if tg is not None:
             tg = _ensure_df(tg)
+            f = _ensure_df(f)
             return pd.concat([f, tg], axis=1)
 
-        return f.copy()
+        return _ensure_df(f).copy()
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -396,20 +412,70 @@ class FrameworkModelStep(BasePipelineStep):
         print(f"[{self.step_id}] Model step completed")
         return context
 
-    def _generate_features(self, wrapper: Any, datamodule: Any) -> np.ndarray:
-        """Generate features from trained model."""
-        if hasattr(datamodule, "get_data"):
+    def _generate_timeseries_features(
+        self, wrapper: Any, datamodule: Any, df: pd.DataFrame
+    ) -> np.ndarray:
+        """Handle timeseries feature generation with windowing."""
+        if not hasattr(datamodule, "_create_windows"):
             x_train, _, _, _, _, _ = datamodule.get_data()
-        elif hasattr(datamodule, "get_test_windows"):
-            x_train, _ = datamodule.get_test_windows()
-        else:
-            raise AttributeError("DataModule does not support data extraction")
+            return wrapper.predict(x_train)
 
-        predictions = wrapper.predict(x_train)
+        input_chunk = getattr(datamodule, "input_chunk", 1)
+        output_chunk = getattr(datamodule, "output_chunk", 1)
+        # pylint: disable=protected-access
+        x_all, _ = datamodule._create_windows(df, input_chunk, output_chunk)
+        predictions = wrapper.predict(x_all)
+
+        n = len(df)
+        if len(predictions) < n:
+            start_align = input_chunk - 1
+            expected_len = len(predictions)
+
+            if start_align + expected_len <= n:
+                full_preds = np.full((n, 1), np.nan)
+                if predictions.ndim > 1:
+                    full_preds = np.full((n, predictions.shape[1]), np.nan)
+
+                full_preds[
+                    start_align : start_align + expected_len
+                ] = predictions.reshape(expected_len, -1)
+                predictions = full_preds
+                print(f"[{self.step_id}] Padded features from {expected_len} to {n}")
+
+        return predictions
+
+    def _generate_features(
+        self, wrapper: Any, datamodule: Any
+    ) -> pd.DataFrame | np.ndarray:
+        """Generate features from trained model."""
+        if not hasattr(datamodule, "df") or not hasattr(datamodule, "features"):
+            if hasattr(datamodule, "get_data"):
+                x_train, _, _, _, _, _ = datamodule.get_data()
+                predictions = wrapper.predict(x_train)
+            elif hasattr(datamodule, "get_test_windows"):
+                x_train, _ = datamodule.get_test_windows()
+                predictions = wrapper.predict(x_train)
+            else:
+                raise AttributeError("DataModule does not support data extraction")
+
+            if predictions.ndim == 1:
+                predictions = predictions.reshape(-1, 1)
+            return predictions
+
+        df = datamodule.df
+        if getattr(datamodule, "data_type", "tabular") == "timeseries":
+            predictions = self._generate_timeseries_features(wrapper, datamodule, df)
+        else:
+            x_all = df[datamodule.features].values
+            predictions = wrapper.predict(x_all)
+
+        if len(predictions) == len(df):
+            if predictions.ndim == 1:
+                predictions = predictions.reshape(-1, 1)
+            return pd.DataFrame(predictions, index=df.index)
 
         if predictions.ndim == 1:
             predictions = predictions.reshape(-1, 1)
-
         return predictions
 
 

@@ -385,30 +385,17 @@ class MLflowManager:
         client = self._client or MlflowClient(self.tracking_uri)
         try:
             mv = client.get_model_version_by_alias(name, "latest")
-            version = mv.version
+            _ = mv.version
         except Exception:
             try:
                 reg = mlflow.register_model(f"runs:/{run.info.run_id}/{name}", name)
-                version = reg.version
+                _ = reg.version
             except Exception as reg_exc:
                 print(
                     f"[MLflowManager] Warning: Registry registration \
                       failed for '{name}' → {reg_exc}"
                 )
                 return f"runs:/{run.info.run_id}/{name}"
-
-        # Set alias 'latest'
-        try:
-            client.set_registered_model_alias(
-                name=name, alias="latest", version=version
-            )
-            print(
-                f"[MLflowManager] Registered '{name}' (v{version}) with alias 'latest'"
-            )
-        except Exception as alias_exc:
-            print(
-                f"[MLflowManager] Warning: Failed to set alias 'latest' → {alias_exc}"
-            )
 
         return f"models:/{name}@latest"
 
@@ -534,8 +521,8 @@ class MLflowManager:
 
         Fallback strategy:
         1. Try specified alias (e.g., "production")
-        2. If failed and alias != "latest", try alias "latest"
-        3. If still failed, fallback to latest run artifact
+        2. If alias == "latest", resolve latest version dynamically
+        3. If failed, fallback to latest run artifact
 
         Args:
             name: Registry model name.
@@ -549,29 +536,51 @@ class MLflowManager:
             return None
 
         alias = alias.lower()
-        model_uri = f"models:/{name}@{alias}"
-        print(f"[MLflowManager] Attempting to load '{name}' using alias '{alias}'.")
 
-        # Try with specified alias
-        try:
-            loaded = mlflow.pyfunc.load_model(model_uri)
-            print(f"[MLflowManager] Loaded '{name}' via alias '{alias}'.")
-            return self._unwrap(loaded, name)
-        except Exception as exc:
-            print(f"[MLflowManager] Alias '{alias}' not found for '{name}'.")
-            print(f"[MLflowManager] Root error: {exc}")
-
-        # If alias was not "latest", try with "latest" alias
-        if alias != "latest":
-            print(f"[MLflowManager] Trying alias 'latest' for '{name}'...")
+        # Special handling for 'latest' since it is a reserved keyword in some
+        # MLflow versions and cannot be set as an alias.
+        if alias == "latest":
+            client = self._client or MlflowClient(self.tracking_uri)
             try:
-                latest_uri = f"models:/{name}@latest"
-                loaded = mlflow.pyfunc.load_model(latest_uri)
-                print(f"[MLflowManager] Loaded '{name}' via alias 'latest'.")
+                # Get latest version (any stage)
+                latest_versions = client.get_latest_versions(name, stages=None)
+                if latest_versions:
+                    # Sort by version just in case, though get_latest_versions usually
+                    # returns latest
+                    latest_version = sorted(
+                        latest_versions, key=lambda x: int(x.version), reverse=True
+                    )[0]
+                    version = latest_version.version
+                    model_uri = f"models:/{name}/{version}"
+                    print(
+                        f"[MLflowManager] Resolved 'latest' for '{name}' to "
+                        f"version {version}."
+                    )
+
+                    loaded = mlflow.pyfunc.load_model(model_uri)
+                    print(f"[MLflowManager] Loaded '{name}' (v{version}).")
+                    return self._unwrap(loaded, name)
+                else:
+                    print(
+                        f"[MLflowManager] No versions found for '{name}' in registry."
+                    )
+            except Exception as exc:
+                print(
+                    f"[MLflowManager] Failed to resolve 'latest' version for '{name}'."
+                )
+                print(f"[MLflowManager] Error: {exc}")
+
+        else:
+            # Try with specified alias
+            model_uri = f"models:/{name}@{alias}"
+            print(f"[MLflowManager] Attempting to load '{name}' using alias '{alias}'.")
+            try:
+                loaded = mlflow.pyfunc.load_model(model_uri)
+                print(f"[MLflowManager] Loaded '{name}' via alias '{alias}'.")
                 return self._unwrap(loaded, name)
-            except Exception as latest_exc:
-                print(f"[MLflowManager] Alias 'latest' also not found for '{name}'.")
-                print(f"[MLflowManager] Error: {latest_exc}")
+            except Exception as exc:
+                print(f"[MLflowManager] Alias '{alias}' not found for '{name}'.")
+                print(f"[MLflowManager] Root error: {exc}")
 
         # Final fallback: try to load from latest run
         print(f"[MLflowManager] Falling back to latest run for '{name}'...")

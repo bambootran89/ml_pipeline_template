@@ -109,8 +109,8 @@ class DLModelWrapperBase(BaseModelWrapper):
             raise RuntimeError(f"Model file not found: {path}")
 
         state = torch.load(path, map_location="cpu")
-        self.model_type = state["model_state"]
-        assert len(self.model_type) > 0
+        self.model_type = state["model_type"]
+        assert isinstance(self.model_type, str) and len(self.model_type) > 0
         self.build(self.model_type)
         assert self.model is not None
         self.model.load_state_dict(state["model_state"])

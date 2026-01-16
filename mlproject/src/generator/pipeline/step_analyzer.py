@@ -70,6 +70,40 @@ class StepAnalyzer:
         return False
 
     @classmethod
+    def infer_experiment_type(cls, steps: List[Any]) -> str:
+        """Infer experiment type (timeseries/tabular) from steps.
+
+        Args:
+            steps: Pipeline steps.
+
+        Returns:
+            Inferred experiment type.
+        """
+        for step in steps:
+            # Check datamodule for timeseries markers
+            if step.get("type") == "datamodule":
+                if "input_chunk_length" in step or "output_chunk_length" in step:
+                    return "timeseries"
+                if "wiring" in step and "inputs" in step.wiring:
+                    # Some datamodules might have these in wiring or nested in cfg
+                    pass
+
+            # Check trainer for timeseries markers in hyperparams
+            if step.get("type") == "trainer" and "hyperparams" in step:
+                hp = step.hyperparams
+                if "input_chunk_length" in hp or "output_chunk_length" in hp:
+                    return "timeseries"
+
+            # Check nested sub-pipelines
+            if step.get("type") == "sub_pipeline" and hasattr(step, "pipeline"):
+                if hasattr(step.pipeline, "steps"):
+                    nested_type = cls.infer_experiment_type(step.pipeline.steps)
+                    if nested_type == "timeseries":
+                        return "timeseries"
+
+        return "tabular"
+
+    @classmethod
     def extract_features_input(cls, step: Any) -> str:
         """Extract features input key from step wiring.
 

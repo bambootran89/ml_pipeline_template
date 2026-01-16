@@ -35,6 +35,7 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         output_dir: str,
         framework: str = "fastapi",
         experiment_config_path: str = "",
+        alias: str = "production",
     ) -> str:
         """Generate API code from serve configuration."""
         cfg = OmegaConf.load(serve_config_path)
@@ -59,6 +60,7 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
                 self._extract_inference_steps(steps),
                 experiment_config_path,
                 data_config,
+                alias=alias,
             )
             filename = f"{pipeline_name}_fastapi.py"
         elif framework == "ray":
@@ -69,6 +71,7 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
                 self._extract_inference_steps(steps),
                 experiment_config_path,
                 data_config,
+                alias=alias,
             )
             filename = f"{pipeline_name}_ray.py"
         else:

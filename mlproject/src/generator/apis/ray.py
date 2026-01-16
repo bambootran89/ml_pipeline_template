@@ -1,13 +1,25 @@
+"""Ray Serve API generation mixin.
+
+Generated Ray Serve applications are structured with:
+1. PreprocessService: Handles data transformation
+2. ModelService: Handles model inference
+3. ServeAPI: FastAPI ingress that orchestrates both services
+
+This allows scaling preprocessing and inference independently.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 from .extractors import ApiGeneratorExtractorsMixin
-from .types import DataConfig, GenerationContext
+from .types import GenerationContext
 
 
 class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
-    """Ray Serve code generation mixin."""
+    """Mixin for generating Ray Serve API code."""
 
     def _generate_ray_serve_code(
         self,
@@ -17,8 +29,8 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
         inference_steps: List[Dict[str, Any]],
         experiment_config_path: str,
         data_config: Optional[Dict[str, Any]] = None,
+        alias: str = "production",
     ) -> str:
-        """Generate Ray Serve code."""
         ctx = self._create_ray_context(
             pipeline_name,
             load_map,
@@ -26,6 +38,7 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
             inference_steps,
             experiment_config_path,
             data_config,
+            alias,
         )
         return self._build_ray_code(ctx)
 
@@ -37,8 +50,10 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
         inference_steps: List[Dict[str, Any]],
         experiment_config_path: str,
         data_config: Optional[Dict[str, Any]],
+        alias: str = "production",
     ) -> GenerationContext:
-        """Create generation context for Ray Serve."""
+        from .types import DataConfig
+
         return GenerationContext(
             pipeline_name=pipeline_name,
             load_map=load_map,
@@ -47,117 +62,88 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
             experiment_config_path=experiment_config_path,
             data_config=DataConfig.from_dict(data_config),
             model_keys=[inf["model_key"] for inf in inference_steps],
+            alias=alias,
         )
 
     def _build_ray_code(self, ctx: GenerationContext) -> str:
-        """Build complete Ray Serve code."""
-        return "".join(
-            [
-                self._gen_ray_header(ctx),
-                self._gen_model_service(ctx),
-                self._gen_preprocess_service(ctx),
-                self._gen_serve_api(ctx),
-                self._gen_ray_main(ctx),
-            ]
-        )
+        """Build full Ray Serve code string."""
+        sections = [
+            self._gen_ray_imports(),
+            self._gen_pydantic_models(ctx),
+            self._gen_preprocess_service(ctx),
+            self._gen_model_service(ctx),
+            self._gen_serve_api(ctx),
+            self._gen_ray_entrypoint(ctx),
+        ]
+        return "\n".join(sections)
 
-    def _gen_ray_header(self, ctx: GenerationContext) -> str:
-        """Generate Ray Serve header."""
-        if ctx.data_config.data_type == "tabular":
-            desc = "Tabular batch prediction"
-        else:
-            desc = "Timeseries multi-step prediction"
-        return f"""# Auto-generated Ray Serve deployment for {ctx.pipeline_name}
-# Generated from serve configuration.
-# Supports: {desc}
-
-import os
-import platform
-
-if platform.system() == "Darwin":
-    os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
-    os.environ["OMP_NUM_THREADS"] = "1"
-
+    def _gen_ray_imports(self) -> str:
+        """Generate Ray Serve imports."""
+        return """import os
+import sys
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
-import ray
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from ray import serve
+from ray.serve.handle import DeploymentHandle
+
+# Fix for potential OpenMP conflict on macOS
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 
-app = FastAPI(
-    title="{ctx.pipeline_name} Ray Serve API",
-    version="1.0.0",
-    description="Auto-generated Ray Serve API for {ctx.data_config.data_type} data",
-)
+app = FastAPI(title="ML Pipeline API (Ray Serve)")
+"""
 
-
-# Request/Response Schemas
+    def _gen_pydantic_models(self, ctx: GenerationContext) -> str:
+        """Generate Ray Serve Pydantic models."""
+        return f"""
+class HealthResponse(BaseModel):
+    status: str
+    components: Dict[str, str]
 
 class PredictRequest(BaseModel):
-    data: Dict[str, List[Any]]
-
+    data: Dict[str, List[Any]] = Field(..., description="Input data as dict of columns to values")
 
 class BatchPredictRequest(BaseModel):
-    data: Dict[str, List[Any]]
-    return_probabilities: bool = False
-
-
-class MultiStepPredictRequest(BaseModel):
-    data: Dict[str, List[Any]]
-    steps_ahead: int = {ctx.data_config.output_chunk_length}
-
-
-class PredictResponse(BaseModel):
-    predictions: Dict[str, List[float]]
-    metadata: Optional[Dict[str, Any]] = None
+    data: Dict[str, List[Any]] = Field(..., description="Input data with multiple rows")
+    return_probabilities: bool = Field(default=False)
 
 class MultiPredictResponse(BaseModel):
     predictions: Dict[str, Union[List[List[float]], List[float]]]
     metadata: Optional[Dict[str, Any]] = None
+"""
 
-class HealthResponse(BaseModel):
-    status: str
-    model_loaded: bool
-    data_type: str = "{ctx.data_config.data_type}"
+    def _gen_ray_entrypoint(self, ctx: GenerationContext) -> str:
+        """Generate Ray Serve entrypoint."""
+        return f"""
+def app_builder(args: Dict[str, str]) -> Any:
+    config_path = args.get("config", "{ctx.experiment_config_path}")
 
+    preprocess_deployment = PreprocessService.bind(config_path)
+    model_deployment = ModelService.bind(config_path)
 
-# Ray Serve Deployments
+    return ServeAPI.bind(preprocess_deployment, model_deployment)
 
-@serve.deployment(num_replicas=2, ray_actor_options={{"num_cpus": 0.5}})
-class ModelService:
-    DATA_TYPE = "{ctx.data_config.data_type}"
-    INPUT_CHUNK_LENGTH = {ctx.data_config.input_chunk_length}
-    OUTPUT_CHUNK_LENGTH = {ctx.data_config.output_chunk_length}
-    FEATURES = {repr(ctx.data_config.features)}
-
-    def __init__(self, config_path: str) -> None:
-        print("[ModelService] Initializing...")
-        self.cfg = ConfigLoader.load(config_path)
-        self.mlflow_manager = MLflowManager(self.cfg)
-        self.models: Dict[str, Any] = {{}}
-        self.ready = False
-        self._load_models()
-
-    def _load_models(self) -> None:
-        if not self.mlflow_manager.enabled:
-            return
-        experiment_name = self.cfg.experiment.get("name", "{ctx.pipeline_name}")
+if __name__ == "__main__":
+    serve.run(app_builder({{}}))
 """
 
     def _gen_model_service(self, ctx: GenerationContext) -> str:
         """Generate ModelService methods."""
         model_loads = "\n".join(
             [
-                f"""        self.models["{key}"] = self.mlflow_manager.load_component(
+                f"""        print(f"[ModelService] Loading model: {key} (alias: {ctx.alias})...")
+        component = self.mlflow_manager.load_component(
             name=f"{{experiment_name}}_{ctx.load_map.get(key, 'model')}",
-            alias="production",
-        )"""
+            alias="{ctx.alias}",
+        )
+        if component is not None:
+            self.models["{key}"] = component"""
                 for key in set(ctx.model_keys)
             ]
         )
@@ -220,6 +206,26 @@ class ModelService:
         )
 
         return f"""
+@serve.deployment(
+    num_replicas=1,
+    ray_actor_options={{"num_cpus": 1}}
+)
+class ModelService:
+    INPUT_CHUNK_LENGTH = {ctx.data_config.input_chunk_length}
+    OUTPUT_CHUNK_LENGTH = {ctx.data_config.output_chunk_length}
+
+    def __init__(self, config_path: str) -> None:
+        print("[ModelService] Initializing...")
+        self.cfg = ConfigLoader.load(config_path)
+        self.mlflow_manager = MLflowManager(self.cfg)
+        self.models = {{}}
+        self.ready = False
+        self._load_models()
+
+    def _load_models(self) -> None:
+        if not self.mlflow_manager.enabled:
+            return
+        experiment_name = self.cfg.experiment.get("name", "{ctx.pipeline_name}")
 {model_loads}
         self.ready = True
         print("[ModelService] Ready")
@@ -244,22 +250,21 @@ class ModelService:
             return x_input[:self.INPUT_CHUNK_LENGTH, :].reshape(1, -1)
         return x_input[:self.INPUT_CHUNK_LENGTH, :][np.newaxis, :]
 
-    async def predict_tabular_batch(
+    def predict_tabular_batch(
         self, context: Dict[str, Any], return_probabilities: bool = False
     ) -> Dict[str, Any]:
+        self.check_health()
         results = {{}}
         metadata = {{"n_samples": 0, "model_type": "tabular"}}
 {tabular_inference}
         return {{"predictions": results, "metadata": metadata}}
 
-    async def predict_timeseries_multistep(
+    def predict_timeseries_multistep(
         self, context: Dict[str, Any], steps_ahead: int
     ) -> Dict[str, Any]:
+        self.check_health()
         results = {{}}
-        n_blocks = (
-            (steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1) //
-            self.OUTPUT_CHUNK_LENGTH
-        )
+        n_blocks = (steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1) // self.OUTPUT_CHUNK_LENGTH
         metadata = {{
             "output_chunk_length": self.OUTPUT_CHUNK_LENGTH,
             "n_blocks": n_blocks,
@@ -270,19 +275,9 @@ class ModelService:
 
     async def run_inference_pipeline(
         self, context: Dict[str, Any]
-    ) -> Dict[str, List[float]]:
-        if self.DATA_TYPE == "tabular":
-            result = await self.predict_tabular_batch(context)
-        else:
-            result = await self.predict_timeseries_multistep(
-                context, steps_ahead=self.OUTPUT_CHUNK_LENGTH
-            )
-        return result.get("predictions", {{}})
-
-    def is_loaded(self) -> bool:
-        return self.ready
-
-
+    ) -> Dict[str, Any]:
+        # Simple default that runs all models in tabular mode
+        return self.predict_tabular_batch(context)["predictions"]
 """
 
     def _gen_preprocess_service(self, ctx: GenerationContext) -> str:
@@ -293,11 +288,13 @@ class ModelService:
         prep_load = ""
         if preprocessor_artifact:
             prep_load = (
-                f"""        self.preprocessor = """
-                f"""self.mlflow_manager.load_component(
-            name=f"{{experiment_name}}_{preprocessor_artifact}",
-            alias="production",
-        )"""
+                f"""        print(f"[PreprocessService] Loading preprocessor: {preprocessor_artifact} (alias: {ctx.alias})...")\n"""
+                f"""        component = self.mlflow_manager.load_component(\n"""
+                f"""            name=f"{{experiment_name}}_{preprocessor_artifact}",\n"""
+                f"""            alias="{ctx.alias}",\n"""
+                f"""        )\n"""
+                f"""        if component is not None:\n"""
+                f"""            self.preprocessor = component"""
             )
 
         return f"""@serve.deployment(
@@ -310,30 +307,22 @@ class PreprocessService:
         self.cfg = ConfigLoader.load(config_path)
         self.mlflow_manager = MLflowManager(self.cfg)
         self.preprocessor = None
-        self.ready = False
         self._load_preprocessor()
 
     def _load_preprocessor(self) -> None:
         if not self.mlflow_manager.enabled:
-            self.ready = True
             return
-        experiment_name = self.cfg.experiment.get(
-            "name", "{ctx.pipeline_name}"
-        )
+        experiment_name = self.cfg.experiment.get("name", "{ctx.pipeline_name}")
 {prep_load}
-        self.ready = True
-        print("[PreprocessService] Ready")
 
-    def check_health(self) -> None:
-        if not self.ready:
-            raise RuntimeError("PreprocessService not ready")
+    def preprocess(self, data: pd.DataFrame) -> pd.DataFrame:
+        if self.preprocessor is not None:
+            return self.preprocessor.transform(data)
+        return data
 
-    async def preprocess(self, data: pd.DataFrame) -> pd.DataFrame:
-        if self.preprocessor is None:
-            return data
-        return self.preprocessor.transform(data)
-
-
+    def check_health(self) -> str:
+        status = "healthy" if self.preprocessor is not None or not self.mlflow_manager.enabled else "initializing"
+        return status
 """
 
     def _gen_serve_api(self, ctx: GenerationContext) -> str:
@@ -361,27 +350,19 @@ class PreprocessService:
             raise HTTPException(status_code=500, detail=str(e)) from e
 """
         else:
-            specific_endpoint = """
+            specific_endpoint = f"""
     @app.post("/predict/multistep", response_model=MultiPredictResponse)
     async def predict_multistep(
-        self, request: MultiStepPredictRequest
+        self, request: BatchPredictRequest, steps_ahead: int = {ctx.data_config.output_chunk_length}
     ) -> MultiPredictResponse:
         try:
             df = pd.DataFrame(request.data)
-            if len(df) < self.INPUT_CHUNK_LENGTH:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Input must have at least "
-                           f"{self.INPUT_CHUNK_LENGTH} timesteps"
-                )
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            context = {"preprocessed_data": preprocessed_data}
-            result = (
-                await self.model_handle.predict_timeseries_multistep.remote(
-                    context, request.steps_ahead
-                )
+            context = {{"preprocessed_data": preprocessed_data}}
+            result = await self.model_handle.predict_timeseries_multistep.remote(
+                context, steps_ahead
             )
             return MultiPredictResponse(
                 predictions=result["predictions"],
@@ -424,39 +405,17 @@ class ServeAPI:
     @app.get("/health", response_model=HealthResponse)
     async def health(self) -> HealthResponse:
         try:
-            model_loaded = await self.model_handle.is_loaded.remote()
-        except Exception:
-            model_loaded = False
-        status = "healthy" if model_loaded else "unhealthy"
-        return HealthResponse(
-            status=status,
-            model_loaded=model_loaded,
-            data_type=self.DATA_TYPE
-        )
-
-
-"""
-
-    def _gen_ray_main(self, ctx: GenerationContext) -> str:
-        """Generate main function."""
-        return f"""def main() -> None:
-    ray.init(ignore_reinit_error=True, dashboard_host="0.0.0.0")
-    serve.start(detached=True)
-    config_path = "{ctx.experiment_config_path}"
-    model_service = ModelService.bind(config_path)  # type: ignore
-    preprocess_service = PreprocessService.bind(
-        config_path
-    )  # type: ignore
-    serve.run(
-        ServeAPI.bind(preprocess_service, model_service),  # type: ignore
-        route_prefix="/"
-    )
-    print("[Ray Serve] API ready at http://localhost:8000")
-    print("[Ray Serve] Press Ctrl+C to stop")
-    import signal
-    signal.pause()
-
-
-if __name__ == "__main__":
-    main()
+            prep_status = await self.preprocess_handle.check_health.remote()
+            return HealthResponse(
+                status="healthy",
+                components={{
+                    "preprocess": prep_status,
+                    "model": "ready"
+                }}
+            )
+        except Exception as e:
+            return HealthResponse(
+                status="unhealthy",
+                components={{"error": str(e)}}
+            )
 """

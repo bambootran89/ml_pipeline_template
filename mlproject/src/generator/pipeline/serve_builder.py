@@ -16,13 +16,17 @@ from .step_transformer import StepTransformer
 class ServeBuilder:
     """Builds serving pipeline from training pipeline."""
 
-    def __init__(self, train_steps: List[Any]) -> None:
+    def __init__(
+        self, train_steps: List[Any], experiment_type: str = "tabular"
+    ) -> None:
         """Initialize serve pipeline builder.
 
         Args:
             train_steps: Original training pipeline steps.
+            experiment_type: Type of experiment (timeseries, tabular).
         """
         self.train_steps = train_steps
+        self.experiment_type = experiment_type
         self.analyzer = StepAnalyzer()
         self.extractor = StepExtractor()
         self.dependency_builder = DependencyBuilder(train_steps)
@@ -34,6 +38,7 @@ class ServeBuilder:
         alias: str,
         init_id: str,
         preprocessor_step: Optional[Any],
+        feature_pipeline: Optional[Any] = None,
     ) -> List[Any]:
         """Build complete serving pipeline.
 
@@ -41,6 +46,7 @@ class ServeBuilder:
             alias: Model alias for loading.
             init_id: Initialization step ID.
             preprocessor_step: Legacy preprocessor step if exists.
+            feature_pipeline: Feature pipeline config.
 
         Returns:
             List of serve pipeline steps.
@@ -51,7 +57,13 @@ class ServeBuilder:
         producers = self.extractor.extract_model_producers(self.train_steps)
 
         self.loader_builder.add_mlflow_loader(
-            steps, init_id, alias, preprocessors, producers, preprocessor_step
+            steps,
+            init_id,
+            alias,
+            preprocessors,
+            producers,
+            preprocessor_step,
+            feature_pipeline,
         )
 
         last_id = self._add_preprocessors(steps, alias, init_id)
@@ -231,21 +243,32 @@ class ServeBuilder:
 
         return transformed
 
+    def _resolve_base_features_key(self, step: Any) -> str:
+        """Resolve base features key from step wiring."""
+        if hasattr(step, "wiring") and hasattr(step.wiring, "inputs"):
+            inputs = step.wiring.inputs
+            # Prioritize standard keys
+            for key in ["X", "features", "data", "input"]:
+                if key in inputs:
+                    return inputs[key]
+        return "preprocessed_data"
+
     def _branch_to_inference(self, branch: Any) -> Optional[DictConfig]:
         """Convert branch to inference step."""
         if not self.analyzer.is_model_producer(branch):
             return None
 
         inf_id = f"{branch.id}_inference"
-        wiring = self._create_inference_wiring(branch.id)
 
         config = {
             "id": inf_id,
-            "type": "inference",
+            "type": "feature_inference",
             "enabled": True,
             "depends_on": ["preprocess"],
-            "output_as_feature": getattr(branch, "output_as_feature", False),
-            "wiring": wiring,
+            "source_model_key": f"fitted_{branch.id}",
+            "base_features_key": self._resolve_base_features_key(branch),
+            "output_key": f"{branch.id}_predictions",
+            "apply_windowing": self._should_apply_windowing(branch.id),
         }
 
         return OmegaConf.create(config)
@@ -313,17 +336,13 @@ class ServeBuilder:
             inf_step = OmegaConf.create(
                 {
                     "id": inf_id,
-                    "type": "inference",
+                    "type": "feature_inference",
                     "enabled": True,
                     "depends_on": [init_id, last_id],
-                    "output_as_feature": getattr(producer, "output_as_feature", False),
-                    "wiring": {
-                        "inputs": {
-                            "model": f"fitted_{producer.id}",
-                            "features": "preprocessed_data",
-                        },
-                        "outputs": {"predictions": f"{producer.id}_predictions"},
-                    },
+                    "source_model_key": f"fitted_{producer.id}",
+                    "base_features_key": self._resolve_base_features_key(producer),
+                    "output_key": f"{producer.id}_predictions",
+                    "apply_windowing": self._should_apply_windowing(producer.id),
                 }
             )
 
@@ -331,6 +350,37 @@ class ServeBuilder:
             last_id = inf_id
 
         return last_id
+
+    def _should_apply_windowing(self, step_id: str) -> bool:
+        """Check if windowing should be applied based on step ID."""
+        if self.experiment_type != "timeseries":
+            return False
+
+        # Find the original training step to check its configuration
+        train_step = self.extractor.find_step_by_id(self.train_steps, step_id)
+        if not train_step:
+            return True
+
+        step_type = train_step.get("type", "")
+
+        # Standard trainers and clustering steps in timeseries expect windowed data
+        if step_type in ["trainer", "clustering", "framework_model"]:
+            return True
+
+        # For dynamic adapters, check if they received a datamodule in training
+        if step_type == "dynamic_adapter":
+            if "wiring" in train_step and "inputs" in train_step.wiring:
+                inputs = train_step.wiring.inputs
+                if "datamodule" in inputs:
+                    return True
+            return False
+
+        # Fallback for other steps in timeseries
+        step_lower = step_id.lower()
+        if any(x in step_lower for x in ["impute", "pca", "scaler"]):
+            return False
+
+        return True
 
     def _add_final_profiling(self, steps: List[Any], last_id: str) -> None:
         """Add final profiling step."""

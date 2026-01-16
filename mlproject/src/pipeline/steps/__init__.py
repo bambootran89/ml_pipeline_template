@@ -27,6 +27,7 @@ from mlproject.src.pipeline.steps.evaluator_step import EvaluatorStep
 
 # Factory (defines empty registry)
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.feature_inference_step import FeatureInferenceStep
 from mlproject.src.pipeline.steps.framework_model_step import (
     ClusteringModelStep,
     FrameworkModelStep,
@@ -63,4 +64,5 @@ __all__ = [
     "DynamicAdapterStep",
     "MLflowLoaderStep",
     "DataModuleStep",
+    "FeatureInferenceStep",
 ]

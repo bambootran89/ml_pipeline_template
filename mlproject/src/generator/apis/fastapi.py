@@ -17,6 +17,7 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
         inference_steps: List[Dict[str, Any]],
         experiment_config_path: str,
         data_config: Optional[Dict[str, Any]] = None,
+        alias: str = "production",
     ) -> str:
         """Generate FastAPI code."""
         ctx = self._create_generation_context(
@@ -26,6 +27,7 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
             inference_steps,
             experiment_config_path,
             data_config,
+            alias,
         )
         return self._build_fastapi_code(ctx)
 
@@ -37,6 +39,7 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
         inference_steps: List[Dict[str, Any]],
         experiment_config_path: str,
         data_config: Optional[Dict[str, Any]],
+        alias: str = "production",
     ) -> GenerationContext:
         """Create generation context from parameters."""
         return GenerationContext(
@@ -47,6 +50,7 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
             experiment_config_path=experiment_config_path,
             data_config=DataConfig.from_dict(data_config),
             model_keys=[inf["model_key"] for inf in inference_steps],
+            alias=alias,
         )
 
     def _build_fastapi_code(self, ctx: GenerationContext) -> str:
@@ -170,10 +174,13 @@ class ServeService:
         if preprocessor_artifact:
             parts.append(
                 f"""
-            self.preprocessor = self.mlflow_manager.load_component(
+            print(f"[ModelService] Loading preprocessor: {preprocessor_artifact} (alias: {ctx.alias})...")
+            component = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{preprocessor_artifact}",
-                alias="production",
+                alias="{ctx.alias}",
             )
+            if component is not None:
+                self.preprocessor = component
 """
             )
 
@@ -181,10 +188,13 @@ class ServeService:
             step_id = ctx.load_map.get(model_key, "model")
             parts.append(
                 f"""
-            self.models["{model_key}"] = self.mlflow_manager.load_component(
+            print(f"[ModelService] Loading model: {model_key} from {step_id} (alias: {ctx.alias})...")
+            component = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{step_id}",
-                alias="production",
+                alias="{ctx.alias}",
             )
+            if component is not None:
+                self.models["{model_key}"] = component
 """
             )
 

@@ -1,8 +1,4 @@
-"""Inference step with data wiring support.
-
-This module provides a step that generates predictions without
-evaluation metrics, useful for production inference.
-"""
+"""Enhanced inference step with multi-source feature support."""
 
 from __future__ import annotations
 
@@ -11,18 +7,30 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.base import PipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
-class InferenceStep(BasePipelineStep):
-    """Generate predictions without computing evaluation metrics.
+class InferenceStep(PipelineStep):
+    """Generate predictions with multi-source feature composition.
 
-    This step runs inference using a loaded model and optionally
-    saves predictions to disk. Supports data wiring.
+    This step composes features from multiple sources before inference,
+    enabling models trained on engineered features to make predictions.
+
+    Context Inputs (configurable via wiring)
+    -----------------------------------------
+    features : pd.DataFrame or array-like
+        Primary feature source.
+    additional_feature_keys : List[str], optional
+        Additional feature source keys to compose.
+    model : Any
+        Trained model for inference.
+
+    Context Outputs
+    ---------------
+    predictions : np.ndarray
+        Model predictions.
     """
-
-    DEFAULT_INPUTS = {"data": "preprocessed_data"}
 
     def __init__(
         self,
@@ -32,35 +40,47 @@ class InferenceStep(BasePipelineStep):
         depends_on: Optional[List[str]] = None,
         save_path: Optional[str] = None,
         include_inputs: bool = False,
+        additional_feature_keys: Optional[List[str]] = None,
+        feature_align_method: str = "auto",
         **kwargs: Any,
     ) -> None:
-        """Initialize inference step.
+        """Initialize enhanced inference step.
 
         Parameters
         ----------
         step_id : str
             Unique step identifier.
-        cfg : DictConfig
+        cfg : Any
             Configuration object.
-        enabled : bool, default=True
-            Whether step is active.
-        depends_on : Optional[List[str]], default=None
+        enabled : bool
+            Whether step should execute.
+        depends_on : Optional[List[str]]
             Prerequisite steps.
-        save_path : str, optional
-            Path to save predictions CSV.
-        include_inputs : bool, default=False
+        save_path : Optional[str]
+            Path to save predictions.
+        include_inputs : bool
             Whether to save input features with predictions.
+        additional_feature_keys : Optional[List[str]]
+            Keys for additional feature sources.
+        feature_align_method : str
+            Method for aligning feature shapes.
         **kwargs
-            Additional parameters including wiring config.
+            Additional parameters.
         """
-        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
+        super().__init__(
+            step_id,
+            cfg,
+            enabled,
+            depends_on,
+            additional_feature_keys=additional_feature_keys,
+            feature_align_method=feature_align_method,
+            **kwargs,
+        )
         self.save_path = save_path
         self.include_inputs = include_inputs
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Run inference and optionally save predictions.
-
-        Uses wiring configuration for input/output key mapping.
+        """Run inference with feature composition.
 
         Parameters
         ----------
@@ -73,84 +93,141 @@ class InferenceStep(BasePipelineStep):
             Context with predictions added.
         """
         self.validate_dependencies(context)
-        # Get data using wiring
-        df: pd.DataFrame = self.get_input(context, "features")
 
+        # Compose features from multiple sources
+        features_df, _ = self.get_composed_features(context, "features", required=True)
+
+        # Get model
         model = self.get_input(context, "model")
 
-        # Handle timeseries vs tabular
-        data_type: str = self.cfg.data.get("type", "timeseries")
+        # Prepare input
+        x = self._prepare_model_input(features_df)
 
-        if data_type == "timeseries":
-            entity_key: str = self.cfg.data.get("entity_key", "location_id")
-            win: int = int(
-                self.cfg.experiment.get("hyperparams", {}).get("input_chunk_length", 24)
+        # Run inference
+        print(f"[{self.step_id}] Running inference on shape {x.shape}")
+        predictions = model.predict(x)
+
+        # Store output
+        self.set_output(context, "predictions", predictions)
+
+        # Optional: Save predictions
+        if self.save_path:
+            self._save_predictions(
+                predictions, features_df if self.include_inputs else None
             )
-            wout: int = int(
-                self.cfg.experiment.get("hyperparams", {}).get("out_chunk_length", 6)
-            )
 
-            if entity_key in df.columns:
-                arr_list: List[np.ndarray] = [
-                    self._prepare_input_window(
-                        g.drop(columns=[entity_key], errors="ignore"), win, wout
-                    )
-                    for _, g in df.groupby(entity_key)
-                ]
-                print(f"[{self.step_id}] Building input window of length {win}")
-                x = np.vstack(arr_list).astype(np.float32)
-                print(f"[{self.step_id}] Input window shape: {x.shape}")
-            else:
-                x = self._prepare_input_window(df, win, wout).astype(np.float32)
-        else:
-            print(f"[{self.step_id}] Tabular input, using full DataFrame")
-            x = df.values.astype(np.float32)
-            print(f"[{self.step_id}] Input array shape: {x.shape}")
+        print(
+            f"[{self.step_id}] Inference complete. "
+            f"Output shape: {predictions.shape}"
+        )
 
-        print(f"[{self.step_id}] Running model.predict()")
-        y: np.ndarray = model.predict(x)
-        print(f"[{self.step_id}] Output shape: {y.shape}")
-
-        # Store output using wiring
-        self.set_output(context, "predictions", y)
-
-        print(f"[{self.step_id}] Inference completed")
         return context
 
-    def _prepare_input_window(
-        self, df: pd.DataFrame, input_chunk_length: int, out_chunk_length: int
+    def _prepare_model_input(self, features_df: pd.DataFrame) -> np.ndarray:
+        """Prepare input array for model.
+
+        Parameters
+        ----------
+        features_df : pd.DataFrame
+            Composed features.
+
+        Returns
+        -------
+        np.ndarray
+            Model input array.
+        """
+        data_type = self.cfg.data.get("type", "timeseries")
+
+        if data_type == "timeseries":
+            return self._prepare_timeseries_input(features_df)
+
+        # Tabular data: use as-is
+        return features_df.values.astype(np.float32)
+
+    def _prepare_timeseries_input(
+        self,
+        df: pd.DataFrame,
     ) -> np.ndarray:
-        """Build model input window for prediction.
+        """Prepare timeseries windowed input.
 
         Parameters
         ----------
         df : pd.DataFrame
-            Preprocessed DataFrame.
-        input_chunk_length : int
-            Sequence length required by model.
-        out_chunk_length : int
-            Sequence output required by model.
+            Input DataFrame.
+
         Returns
         -------
         np.ndarray
-            Model input array with shape [1, seq_len, n_features].
-
-        Raises
-        ------
-        ValueError
-            If input has fewer rows than input_chunk_length.
+            Windowed input array.
         """
-        seq_len = input_chunk_length
-        step = out_chunk_length
+        entity_key = self.cfg.data.get("entity_key", "location_id")
+        hyperparams = self.cfg.experiment.get("hyperparams", {})
+        win_in = int(hyperparams.get("input_chunk_length", 24))
+        win_out = int(hyperparams.get("out_chunk_length", 6))
+
+        if entity_key in df.columns:
+            windows = []
+            for _, group in df.groupby(entity_key):
+                group_clean = group.drop(columns=[entity_key], errors="ignore")
+                windows.append(self._build_windows(group_clean, win_in, win_out))
+            return np.vstack(windows).astype(np.float32)
+
+        return self._build_windows(df, win_in, win_out).astype(np.float32)
+
+    def _build_windows(
+        self,
+        df: pd.DataFrame,
+        input_length: int,
+        output_length: int,
+    ) -> np.ndarray:
+        """Build sliding windows from DataFrame.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input DataFrame.
+        input_length : int
+            Window input length.
+        output_length : int
+            Window output length (stride).
+
+        Returns
+        -------
+        np.ndarray
+            Windowed array [n_windows, input_length, n_features].
+        """
         n_rows = len(df)
-        if n_rows < seq_len:
-            raise ValueError(f"Input data has {n_rows} rows, need at least {seq_len}")
+        if n_rows < input_length:
+            raise ValueError(f"Need at least {input_length} rows, got {n_rows}")
+
         windows = []
-        for start in range(0, n_rows - seq_len + 1, step):
-            window = df.iloc[start : start + seq_len].values
+        for start in range(0, n_rows - input_length + 1, output_length):
+            window = df.iloc[start : start + input_length].values
             windows.append(window)
+
         return np.array(windows, dtype=np.float32)
 
+    def _save_predictions(
+        self,
+        predictions: np.ndarray,
+        inputs: Optional[pd.DataFrame],
+    ) -> None:
+        """Save predictions to file.
 
-# Register step type
+        Parameters
+        ----------
+        predictions : np.ndarray
+            Model predictions.
+        inputs : Optional[pd.DataFrame]
+            Input features if include_inputs=True.
+        """
+        df = pd.DataFrame(predictions, columns=["prediction"])
+
+        if inputs is not None:
+            df = pd.concat([inputs.reset_index(drop=True), df], axis=1)
+
+        df.to_csv(self.save_path, index=False)
+        print(f"[{self.step_id}] Saved predictions to {self.save_path}")
+
+
 StepFactory.register("inference", InferenceStep)

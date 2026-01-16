@@ -10,9 +10,11 @@ import argparse
 import inspect
 import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
@@ -89,10 +91,10 @@ def run_training(
     pipeline_path : str, optional
         Path to pipeline structure YAML.
     """
-    _print_separator("Starting TRAINING pipeline")
+    print(f"[RUN] mode='train'")
 
     merged_cfg = ConfigMerger.merge(experiment_path, pipeline_path, mode="train")
-    temp_config = ".temp_merged_train.yaml"
+    temp_config = f".temp_merged_train_{uuid.uuid4().hex}.yaml"
     ConfigMerger.save(merged_cfg, temp_config)
 
     try:
@@ -135,7 +137,7 @@ def run_eval(
             step.alias = alias
             print(f"[CONFIG] Override: preprocessor alias='{alias}'")
 
-    temp_config = ".temp_merged_eval.yaml"
+    temp_config = f".temp_merged_eval_{uuid.uuid4().hex}.yaml"
     ConfigMerger.save(merged_cfg, temp_config)
 
     try:
@@ -207,6 +209,58 @@ def _run_pipeline_with_context(
     )
 
 
+def _preview_predictions(
+    predictions: Any,
+    main_key: str,
+    pred_keys: list[str],
+) -> None:
+    """Preview model predictions.
+
+    Parameters
+    ----------
+    predictions : Any
+        Prediction data.
+    main_key : str
+        Primary prediction key.
+    pred_keys : list[str]
+        All available prediction keys.
+    """
+    print(f"[RUN] Generated {len(predictions)} predictions [Key: {main_key}]")
+    if len(pred_keys) > 1:
+        print(f"[RUN] Other available predictions: {pred_keys[1:]}")
+
+    if hasattr(predictions, "shape"):
+        print(f"[RUN] Prediction shape: {predictions.shape}")
+
+    # Prediction preview
+    try:
+        data = np.asarray(predictions)
+
+        # Simple preview: show count and first/last few samples
+        print(f"[RUN] Total predictions: {len(data)} [Key: {main_key}]")
+        if len(pred_keys) > 1:
+            print(f"[RUN] Other available predictions: {pred_keys[1:]}")
+
+        if hasattr(predictions, "shape"):
+            print(f"[RUN] Prediction shape: {predictions.shape}")
+
+        preview_len = min(5, len(data))
+        if preview_len > 0:
+            print(f"[RUN] First {preview_len} values:")
+            print(f"{data[:preview_len]}")
+
+            if len(data) > preview_len:
+                print("[RUN] Last 5 values:")
+                print(f"{data[-5:]}")
+        else:
+            print("[RUN] WARNING: Prediction array is empty!")
+
+    except Exception as e:
+        print(f"[DEBUG] Preview logic failed: {e}")
+        preview_len = min(10, len(predictions))
+        print(f"[RUN] First {preview_len}: {predictions[:preview_len]}")
+
+
 def run_serve(
     experiment_path: str,
     pipeline_path: str,
@@ -275,15 +329,11 @@ def run_serve(
         if not pred_keys:
             raise RuntimeError("No predictions found in pipeline context")
 
-        predictions = context[pred_keys[0]]
-        print(f"[RUN] Generated {len(predictions)} predictions")
+        # Use the first key for preview, but inform the user if others exist
+        main_key = pred_keys[0]
+        predictions = context[main_key]
 
-        if hasattr(predictions, "shape"):
-            print(f"[RUN] Prediction shape: {predictions.shape}")
-
-        if hasattr(predictions, "flatten") and len(predictions) > 0:
-            preview_len = min(10, len(predictions))
-            print(f"[RUN] First {preview_len}: {predictions[:preview_len]}")
+        _preview_predictions(predictions, main_key, pred_keys)
 
         return predictions
 
@@ -354,6 +404,7 @@ def run_generate_configs(
     output_dir: str = "mlproject/configs/generated",
     alias: str = "latest",
     config_type: str = "all",
+    experiment_config: Optional[str] = None,
 ) -> None:
     """Generate eval/serve configs from training config.
 
@@ -367,12 +418,16 @@ def run_generate_configs(
         MLflow model alias.
     config_type : str
         Type of config to generate (eval/serve/all).
+    experiment_config : str, optional
+        Path to experiment config to infer data type.
     """
     _print_separator("GENERATING CONFIGS")
     print(f"[RUN] Source: {train_config}")
+    if experiment_config:
+        print(f"[RUN] Experiment info: {experiment_config}")
     print(f"[RUN] Output: {output_dir}")
 
-    generator = ConfigGenerator(train_config)
+    generator = ConfigGenerator(train_config, experiment_config_path=experiment_config)
     base_name = Path(train_config).stem
 
     if config_type == "all":
@@ -439,6 +494,9 @@ def _setup_generate_parser(subparsers: Any) -> None:
         "--train-config", "-t", required=True, help="Training config YAML"
     )
     parser.add_argument(
+        "--experiment", "-e", help="Experiment config to infer data type"
+    )
+    parser.add_argument(
         "--output-dir",
         "-o",
         default="mlproject/configs/generated",
@@ -491,6 +549,7 @@ def main() -> None:
                 args.output_dir,
                 args.alias,
                 args.type,
+                experiment_config=args.experiment,
             )
         else:
             parser.print_help()

@@ -281,13 +281,27 @@ class ProfilingStep(BasePipelineStep):
         def _stats(arr: np.ndarray) -> Dict[str, Any]:
             return {
                 "n_samples": arr.size,
-                "mean": round(float(arr.mean()), 6),
-                "std": round(float(arr.std()), 6),
-                "min": round(float(arr.min()), 6),
-                "max": round(float(arr.max()), 6),
-                "median": round(float(np.median(arr)), 6),
-                "q25": round(float(np.percentile(arr, 25)), 6),
-                "q75": round(float(np.percentile(arr, 75)), 6),
+                "mean": round(float(np.nanmean(arr)), 6)
+                if not np.all(np.isnan(arr))
+                else float("nan"),
+                "std": round(float(np.nanstd(arr)), 6)
+                if not np.all(np.isnan(arr))
+                else float("nan"),
+                "min": round(float(np.nanmin(arr)), 6)
+                if not np.all(np.isnan(arr))
+                else float("nan"),
+                "max": round(float(np.nanmax(arr)), 6)
+                if not np.all(np.isnan(arr))
+                else float("nan"),
+                "median": round(float(np.nanmedian(arr)), 6)
+                if not np.all(np.isnan(arr))
+                else float("nan"),
+                "q25": round(float(np.nanpercentile(arr, 25)), 6)
+                if not np.all(np.isnan(arr))
+                else float("nan"),
+                "q75": round(float(np.nanpercentile(arr, 75)), 6)
+                if not np.all(np.isnan(arr))
+                else float("nan"),
             }
 
         if preds.ndim == 1:
