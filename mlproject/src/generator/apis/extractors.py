@@ -1,4 +1,6 @@
 """Mixins for extracting API logic from pipeline configurations."""
+# flake8: noqa: C901
+# pylint: disable=R1702, R0912
 
 from __future__ import annotations
 
@@ -91,7 +93,8 @@ class ApiGeneratorExtractorsMixin:
         step_id = getattr(step, "id", None) or step.get("id")
         inputs = getattr(step, "inputs", []) or step.get("inputs", [])
 
-        # Use get for args if it exists, otherwise check for model_key/source_model_key in step directly
+        # Use get for args if it exists, otherwise check for
+        # model_key/source_model_key in step directly
         model_key = None
         args = getattr(step, "args", None) or step.get("args")
         if args:

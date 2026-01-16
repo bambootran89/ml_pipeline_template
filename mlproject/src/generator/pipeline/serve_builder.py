@@ -1,4 +1,5 @@
 """Serving pipeline builder."""
+# pylint: disable=R0911
 
 from __future__ import annotations
 

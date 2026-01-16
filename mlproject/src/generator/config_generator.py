@@ -45,8 +45,12 @@ class ConfigGenerator:
         # If experiment config provided, extract its type and metadata
         self.exp_cfg: Optional[DictConfig] = None
         if experiment_config_path:
-            self.exp_cfg = OmegaConf.load(experiment_config_path)
-            assert isinstance(self.exp_cfg, DictConfig)
+            exp_loaded = OmegaConf.load(experiment_config_path)
+            if not isinstance(exp_loaded, DictConfig):
+                raise TypeError(
+                    f"Expected DictConfig but got {type(exp_loaded).__name__}"
+                )
+            self.exp_cfg = exp_loaded
 
         self.experiment_name: str = Path(train_config_path).stem
 

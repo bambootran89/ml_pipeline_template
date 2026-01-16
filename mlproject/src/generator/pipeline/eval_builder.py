@@ -15,8 +15,9 @@ from .step_transformer import StepTransformer
 
 
 class EvalBuilder:
-    """Build evaluation pipeline with feature support."""
+    """Evaluation pipeline builder."""
 
+    # pylint: disable=R0911
     def __init__(
         self, train_steps: List[Any], experiment_type: str = "tabular"
     ) -> None:
