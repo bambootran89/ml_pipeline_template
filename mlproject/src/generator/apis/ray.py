@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-import numpy as np
-
 from .extractors import ApiGeneratorExtractorsMixin
 from .types import GenerationContext
 
@@ -52,6 +50,7 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
         data_config: Optional[Dict[str, Any]],
         alias: str = "production",
     ) -> GenerationContext:
+        # pylint: disable=C0415
         from .types import DataConfig
 
         return GenerationContext(
@@ -101,16 +100,23 @@ app = FastAPI(title="ML Pipeline API (Ray Serve)")
 
     def _gen_pydantic_models(self, ctx: GenerationContext) -> str:
         """Generate Ray Serve Pydantic models."""
-        return f"""
+        # pylint: disable=W0613
+        return """
 class HealthResponse(BaseModel):
     status: str
     components: Dict[str, str]
 
 class PredictRequest(BaseModel):
-    data: Dict[str, List[Any]] = Field(..., description="Input data as dict of columns to values")
+    data: Dict[str, List[Any]] = Field(
+        ...,
+        description="Input data as dict of columns to values"
+    )
 
 class BatchPredictRequest(BaseModel):
-    data: Dict[str, List[Any]] = Field(..., description="Input data with multiple rows")
+    data: Dict[str, List[Any]] = Field(
+        ...,
+        description="Input data with multiple rows"
+    )
     return_probabilities: bool = Field(default=False)
 
 class MultiPredictResponse(BaseModel):
@@ -135,9 +141,10 @@ if __name__ == "__main__":
 
     def _gen_model_service(self, ctx: GenerationContext) -> str:
         """Generate ModelService methods."""
-        model_loads = "\n".join(
+        model_loads = "\\n".join(
             [
-                f"""        print(f"[ModelService] Loading model: {key} (alias: {ctx.alias})...")
+                f"""        print(f"[ModelService] Loading model: {key} "
+                 f"(alias: {ctx.alias})...")
         component = self.mlflow_manager.load_component(
             name=f"{{experiment_name}}_{ctx.load_map.get(key, 'model')}",
             alias="{ctx.alias}",
@@ -148,7 +155,7 @@ if __name__ == "__main__":
             ]
         )
 
-        tabular_inference = "\n".join(
+        tabular_inference = "\\n".join(
             [
                 f"""        model = self.models.get("{s['model_key']}")
         if model is not None:
@@ -161,14 +168,15 @@ if __name__ == "__main__":
                 if return_probabilities and hasattr(model, "predict_proba"):
                     try:
                         proba = model.predict_proba(x_input)
-                        results["{s['output_key']}_probabilities"] = proba.tolist()
+                        key_prob = "{s['output_key']}_probabilities"
+                        results[key_prob] = proba.tolist()
                     except Exception:
                         pass"""
                 for s in ctx.inference_steps
             ]
         )
 
-        ts_inference = "\n".join(
+        ts_inference = "\\n".join(
             [
                 f"""        model = self.models.get("{s['model_key']}")
         if model is not None:
@@ -264,7 +272,9 @@ class ModelService:
     ) -> Dict[str, Any]:
         self.check_health()
         results = {{}}
-        n_blocks = (steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1) // self.OUTPUT_CHUNK_LENGTH
+        n_blocks = (
+            steps_ahead + self.OUTPUT_CHUNK_LENGTH - 1
+        ) // self.OUTPUT_CHUNK_LENGTH
         metadata = {{
             "output_chunk_length": self.OUTPUT_CHUNK_LENGTH,
             "n_blocks": n_blocks,
@@ -288,12 +298,14 @@ class ModelService:
         prep_load = ""
         if preprocessor_artifact:
             prep_load = (
-                f"""        print(f"[PreprocessService] Loading preprocessor: {preprocessor_artifact} (alias: {ctx.alias})...")\n"""
-                f"""        component = self.mlflow_manager.load_component(\n"""
-                f"""            name=f"{{experiment_name}}_{preprocessor_artifact}",\n"""
-                f"""            alias="{ctx.alias}",\n"""
-                f"""        )\n"""
-                f"""        if component is not None:\n"""
+                f"""        print(f"[PreprocessService] Loading preprocessor: "
+                 f"{preprocessor_artifact} (alias: {ctx.alias})...")\\n"""
+                f"""        component = self.mlflow_manager.load_component(\\n"""
+                f"""            name=f"{{experiment_name}}_"\\n"""
+                f"""                 f"{{preprocessor_artifact}}",\\n"""
+                f"""            alias="{ctx.alias}",\\n"""
+                f"""        )\\n"""
+                f"""        if component is not None:\\n"""
                 f"""            self.preprocessor = component"""
             )
 
@@ -321,8 +333,9 @@ class PreprocessService:
         return data
 
     def check_health(self) -> str:
-        status = "healthy" if self.preprocessor is not None or not self.mlflow_manager.enabled else "initializing"
-        return status
+        if self.preprocessor is not None or not self.mlflow_manager.enabled:
+            return "healthy"
+        return "initializing"
 """
 
     def _gen_serve_api(self, ctx: GenerationContext) -> str:
@@ -353,7 +366,9 @@ class PreprocessService:
             specific_endpoint = f"""
     @app.post("/predict/multistep", response_model=MultiPredictResponse)
     async def predict_multistep(
-        self, request: BatchPredictRequest, steps_ahead: int = {ctx.data_config.output_chunk_length}
+        self,
+        request: BatchPredictRequest,
+        steps_ahead: int = {ctx.data_config.output_chunk_length}
     ) -> MultiPredictResponse:
         try:
             df = pd.DataFrame(request.data)

@@ -174,7 +174,8 @@ class ServeService:
         if preprocessor_artifact:
             parts.append(
                 f"""
-            print(f"[ModelService] Loading preprocessor: {preprocessor_artifact} (alias: {ctx.alias})...")
+            print(f"[ModelService] Loading preprocessor: {preprocessor_artifact} "
+                  f"(alias: {ctx.alias})...")
             component = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{preprocessor_artifact}",
                 alias="{ctx.alias}",
@@ -188,7 +189,8 @@ class ServeService:
             step_id = ctx.load_map.get(model_key, "model")
             parts.append(
                 f"""
-            print(f"[ModelService] Loading model: {model_key} from {step_id} (alias: {ctx.alias})...")
+            print(f"[ModelService] Loading model: {model_key} from {step_id} "
+                  f"(alias: {ctx.alias})...")
             component = self.mlflow_manager.load_component(
                 name=f"{{experiment_name}}_{step_id}",
                 alias="{ctx.alias}",

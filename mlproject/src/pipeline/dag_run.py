@@ -91,7 +91,7 @@ def run_training(
     pipeline_path : str, optional
         Path to pipeline structure YAML.
     """
-    print(f"[RUN] mode='train'")
+    print("[RUN] mode='train'")
 
     merged_cfg = ConfigMerger.merge(experiment_path, pipeline_path, mode="train")
     temp_config = f".temp_merged_train_{uuid.uuid4().hex}.yaml"
