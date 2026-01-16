@@ -177,12 +177,12 @@ class ServeService:
 
         if ctx.data_config.is_feast:
             parts.append(
-                f"""
+                """
             print(f"[ModelService] Initializing Feast Facade...")
             try:
                 self.feature_store = FeatureStoreFacade(self.cfg, mode="online")
             except Exception as e:
-                print(f"[WARNING] Feast initialization failed: {{e}}")
+                print(f"[WARNING] Feast initialization failed: {e}")
                 self.feature_store = None
 """
             )

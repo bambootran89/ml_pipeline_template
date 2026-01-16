@@ -255,7 +255,9 @@ class ModelService:
             raise RuntimeError("Feast feature store not initialized")
 
         # Retrieve using Facade
-        data = self.feature_store.load_features(time_point=time_point, entity_ids=entities)
+        data = self.feature_store.load_features(
+            time_point=time_point, entity_ids=entities
+        )
         return pd.DataFrame(data)
 
     def _load_models(self) -> None:
@@ -469,7 +471,9 @@ class ServeAPI:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/predict/feast/batch", response_model=MultiPredictResponse)
-    async def predict_feast_batch(self, request: FeastPredictRequest) -> MultiPredictResponse:
+    async def predict_feast_batch(
+        self, request: FeastPredictRequest
+    ) -> MultiPredictResponse:
         return await self.predict_feast(request)
 
     @app.get("/health", response_model=HealthResponse)
