@@ -428,7 +428,6 @@ class PipelineStep(BasePipelineStep):
             additional = FeatureExtractor.extract_from_context(
                 context, self.additional_feature_keys, required=False
             )
-
         # Compose features
         composed_df, metadata = FeatureComposer.compose_features(
             base_features,

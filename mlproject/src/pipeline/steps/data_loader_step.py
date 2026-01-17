@@ -28,8 +28,8 @@ class DataLoaderStep(BasePipelineStep):
         Test subset.
     is_splited_input : bool
         Whether data was pre-split.
-    data_size : int
-        Number of samples (for conditional branching).
+    feature_columns_size : int
+        Size of features (for conditional branching).
     """
 
     DEFAULT_OUTPUTS = {
@@ -68,9 +68,6 @@ class DataLoaderStep(BasePipelineStep):
         self.set_output(context, "val_df", val_df)
         self.set_output(context, "test_df", test_df)
         context["is_splited_input"] = is_splited
-
-        # Set data_size for conditional branching
-        context["data_size"] = len(df)
 
         print(f"[{self.step_id}] Loaded data: {df.shape}")
         print(f"[{self.step_id}] Train: {train_df.shape}")

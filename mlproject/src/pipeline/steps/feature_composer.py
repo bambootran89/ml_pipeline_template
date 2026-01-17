@@ -47,6 +47,11 @@ class FeatureComposer:
         base_df = FeatureComposer._to_dataframe(base_features, "base")
         n_samples = len(base_df)
 
+        # Reset index to ensure proper alignment when concatenating
+        # This handles cases where base has Timestamp index but additional
+        # features have integer index
+        base_df = base_df.reset_index(drop=True)
+
         # Track feature positions
         metadata: Dict[str, Tuple[int, int]] = {"base": (0, base_df.shape[1])}
 
@@ -62,6 +67,8 @@ class FeatureComposer:
             aligned = FeatureComposer._align_features(features, n_samples, align_method)
 
             feature_df = FeatureComposer._to_dataframe(aligned, source_name)
+            # Reset index to match base_df
+            feature_df = feature_df.reset_index(drop=True)
 
             # Track position
             n_cols = feature_df.shape[1]
@@ -71,9 +78,8 @@ class FeatureComposer:
             # Concatenate
             base_df = pd.concat([base_df, feature_df], axis=1)
 
-        # Reset column names to avoid duplicates
-        base_df.columns = [f"feat_{i}" for i in range(base_df.shape[1])]
-
+        # Keep original column names - base columns stay as-is,
+        # additional features already have prefixed names from _ndarray_to_df
         return base_df, metadata
 
     @staticmethod
@@ -191,6 +197,9 @@ class FeatureComposer:
         if method == "truncate":
             return FeatureComposer._truncate_align(arr, target_samples)
 
+        if method == "pad_start":
+            return FeatureComposer._pad_start_align(arr, target_samples)
+
         raise ValueError(f"Unknown alignment method: {method}")
 
     @staticmethod
@@ -217,6 +226,12 @@ class FeatureComposer:
 
         if current > target:
             return "truncate"
+
+        # Pad at start: for windowed features that have fewer samples
+        # (e.g., 171 windows from 200 samples due to sliding window)
+        # Padding at start because windows start from position input_chunk
+        if current < target:
+            return "pad_start"
 
         raise ValueError(
             f"Cannot auto-align {current} samples to {target}. "
@@ -285,6 +300,40 @@ class FeatureComposer:
             Truncated array.
         """
         return arr[:target]
+
+    @staticmethod
+    def _pad_start_align(arr: np.ndarray, target: int) -> np.ndarray:
+        """Pad array at start to reach target samples.
+
+        Useful for windowed features that have fewer samples due to
+        sliding window (e.g., 171 windows from 200 samples).
+        Padding at start because windows start from position input_chunk.
+
+        Parameters
+        ----------
+        arr : np.ndarray
+            Input array.
+        target : int
+            Target number of samples.
+
+        Returns
+        -------
+        np.ndarray
+            Padded array.
+        """
+        current = arr.shape[0]
+        if current >= target:
+            return arr[:target]
+
+        n_pad = target - current
+
+        if arr.ndim == 1:
+            pad_vals = np.repeat(arr[0], n_pad)
+            return np.concatenate([pad_vals, arr])
+
+        # For 2D+ arrays, pad with first row repeated
+        pad_vals = np.tile(arr[:1], (n_pad,) + (1,) * (arr.ndim - 1))
+        return np.concatenate([pad_vals, arr], axis=0)
 
 
 class FeatureExtractor:

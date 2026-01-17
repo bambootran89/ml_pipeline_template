@@ -39,11 +39,11 @@ pipeline:
       enabled: true
       depends_on: ["prepare_data"]
       condition:
-        key: "data_size"
-        operator: ">"
-        value: 100
+        key: "feature_columns_size"
+        operator: "<"
+        value: 4
 
-      # Execute if data_size > 100 → Load TFT config from external file
+      # Execute if feature_columns_size < 4 → Load TFT config from external file
       if_true:
         id: "train_tft"
         type: "framework_model"
@@ -56,7 +56,7 @@ pipeline:
           outputs:
             model: "selected_model"
 
-      # Execute if data_size <= 100 → Load XGBoost config from external file
+      # Execute if feature_columns_size >= 4 → Load XGBoost config from external file
       if_false:
         id: "train_xgb"
         type: "framework_model"

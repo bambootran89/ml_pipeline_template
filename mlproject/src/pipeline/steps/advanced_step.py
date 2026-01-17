@@ -15,12 +15,16 @@ from typing import Any, Callable, Dict, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
-from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.base import PipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
-class ParallelStep(BasePipelineStep):
-    """Execute multiple step branches in parallel."""
+class ParallelStep(PipelineStep):
+    """Execute multiple step branches in parallel.
+
+    Supports additional_feature_keys for composing features before
+    passing to branches.
+    """
 
     def __init__(
         self,
@@ -30,9 +34,19 @@ class ParallelStep(BasePipelineStep):
         depends_on: Optional[List[str]] = None,
         branches: Optional[List[Dict[str, Any]]] = None,
         max_workers: int = 4,
+        additional_feature_keys: Optional[List[str]] = None,
+        feature_align_method: str = "auto",
         **kwargs: Any,
     ) -> None:
-        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
+        super().__init__(
+            step_id,
+            cfg,
+            enabled,
+            depends_on,
+            additional_feature_keys=additional_feature_keys,
+            feature_align_method=feature_align_method,
+            **kwargs,
+        )
         self.branches = branches or []
         self.max_workers = max_workers
 
@@ -98,8 +112,12 @@ class ParallelStep(BasePipelineStep):
         return merged
 
 
-class BranchStep(BasePipelineStep):
-    """Conditional execution based on context values."""
+class BranchStep(PipelineStep):
+    """Conditional execution based on context values.
+
+    Supports additional_feature_keys for composing features before
+    condition evaluation.
+    """
 
     OPERATORS: Dict[str, Callable[[Any, Any], bool]] = {
         ">": operator.gt,
@@ -121,9 +139,19 @@ class BranchStep(BasePipelineStep):
         condition: Optional[Dict[str, Any]] = None,
         if_true: Optional[Dict[str, Any]] = None,
         if_false: Optional[Dict[str, Any]] = None,
+        additional_feature_keys: Optional[List[str]] = None,
+        feature_align_method: str = "auto",
         **kwargs: Any,
     ) -> None:
-        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
+        super().__init__(
+            step_id,
+            cfg,
+            enabled,
+            depends_on,
+            additional_feature_keys=additional_feature_keys,
+            feature_align_method=feature_align_method,
+            **kwargs,
+        )
         self.condition = condition or {}
         self.if_true = if_true
         self.if_false = if_false
@@ -168,8 +196,12 @@ class BranchStep(BasePipelineStep):
             return context
 
 
-class SubPipelineStep(BasePipelineStep):
-    """Execute a nested pipeline as a single step."""
+class SubPipelineStep(PipelineStep):
+    """Execute a nested pipeline as a single step.
+
+    Supports additional_feature_keys for composing features before
+    passing to sub-pipeline.
+    """
 
     def __init__(
         self,
@@ -180,12 +212,21 @@ class SubPipelineStep(BasePipelineStep):
         pipeline: Optional[Dict[str, Any]] = None,
         config_path: Optional[str] = None,
         isolated: bool = False,
+        additional_feature_keys: Optional[List[str]] = None,
+        feature_align_method: str = "auto",
         **kwargs: Any,
     ) -> None:
-        super().__init__(step_id, cfg, enabled, depends_on, **kwargs)
+        super().__init__(
+            step_id,
+            cfg,
+            enabled,
+            depends_on,
+            additional_feature_keys=additional_feature_keys,
+            feature_align_method=feature_align_method,
+            **kwargs,
+        )
         self.pipeline_config = pipeline
         self.config_path = config_path
-
         self.isolated = isolated
 
     def _build_sub_executor(self):

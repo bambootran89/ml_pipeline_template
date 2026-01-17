@@ -323,6 +323,63 @@ class ServeBuilder:
             if p.id not in branch_ids and any(s.id == p.id for s in self.train_steps)
         ]
 
+    def _find_datamodule_for_producer(self, producer: Any) -> Optional[Any]:
+        """Find datamodule step used by producer.
+
+        Parameters
+        ----------
+        producer : Any
+            Model producer step.
+
+        Returns
+        -------
+        Optional[Any]
+            Datamodule step if found.
+        """
+        # Check if producer has datamodule input in wiring
+        if not hasattr(producer, "wiring") or not hasattr(producer.wiring, "inputs"):
+            return None
+
+        datamodule_key = producer.wiring.inputs.get("datamodule")
+        if not datamodule_key:
+            return None
+
+        # Find step that outputs this datamodule key
+        for step in self.train_steps:
+            if step.type != "datamodule":
+                continue
+
+            if hasattr(step, "wiring") and hasattr(step.wiring, "outputs"):
+                outputs = step.wiring.outputs
+                if outputs.get("datamodule") == datamodule_key:
+                    return step
+
+        return None
+
+    def _get_additional_feature_keys(self, producer: Any) -> Optional[List[str]]:
+        """Get additional_feature_keys from datamodule used by producer.
+
+        Parameters
+        ----------
+        producer : Any
+            Model producer step.
+
+        Returns
+        -------
+        Optional[List[str]]
+            Additional feature keys if found.
+        """
+        datamodule_step = self._find_datamodule_for_producer(producer)
+        if datamodule_step is None:
+            return None
+
+        if hasattr(datamodule_step, "additional_feature_keys"):
+            keys = datamodule_step.additional_feature_keys
+            if keys:
+                return list(keys)
+
+        return None
+
     def _add_inference_steps(
         self,
         steps: List[Any],
@@ -334,18 +391,27 @@ class ServeBuilder:
         for producer in producers:
             inf_id = f"{producer.id}_inference"
 
-            inf_step = OmegaConf.create(
-                {
-                    "id": inf_id,
-                    "type": "feature_inference",
-                    "enabled": True,
-                    "depends_on": [init_id, last_id],
-                    "source_model_key": f"fitted_{producer.id}",
-                    "base_features_key": self._resolve_base_features_key(producer),
-                    "output_key": f"{producer.id}_predictions",
-                    "apply_windowing": self._should_apply_windowing(producer.id),
-                }
-            )
+            config: Dict[str, Any] = {
+                "id": inf_id,
+                "type": "feature_inference",
+                "enabled": True,
+                "depends_on": [init_id, last_id],
+                "source_model_key": f"fitted_{producer.id}",
+                "base_features_key": self._resolve_base_features_key(producer),
+                "output_key": f"{producer.id}_predictions",
+                "apply_windowing": self._should_apply_windowing(producer.id),
+            }
+
+            # Add additional_feature_keys if producer uses composed features
+            additional_keys = self._get_additional_feature_keys(producer)
+            if additional_keys:
+                config["additional_feature_keys"] = additional_keys
+                print(
+                    f"[ServeBuilder] Propagating additional_feature_keys to {inf_id}: "
+                    f"{additional_keys}"
+                )
+
+            inf_step = OmegaConf.create(config)
 
             steps.append(inf_step)
             last_id = inf_id

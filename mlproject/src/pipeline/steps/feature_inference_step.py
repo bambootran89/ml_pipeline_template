@@ -73,6 +73,69 @@ class FeatureInferenceStep(BasePipelineStep):
 
         return model, self._prepare_input(base_features)
 
+    def _get_model_expected_features(self, model: Any) -> Optional[int]:
+        """Get the number of features the model expects.
+
+        Checks common attributes used by sklearn and other models.
+        Returns None if cannot be determined.
+        """
+        # sklearn models
+        if hasattr(model, "n_features_in_"):
+            return model.n_features_in_
+
+        # Some wrappers store the inner model
+        if hasattr(model, "model"):
+            inner = model.model
+            if hasattr(inner, "n_features_in_"):
+                return inner.n_features_in_
+
+        # XGBoost specific
+        if hasattr(model, "n_features_"):
+            return model.n_features_
+
+        return None
+
+    def _should_apply_windowing_runtime(
+        self, model: Any, x: np.ndarray, data_type: str
+    ) -> bool:
+        """Determine at runtime if windowing is needed.
+
+        This provides a safety check by comparing the model's expected
+        feature count with the input feature count.
+        """
+        if data_type != "timeseries":
+            return False
+
+        # Get model's expected feature count
+        expected_features = self._get_model_expected_features(model)
+        if expected_features is None:
+            # Can't detect, fall back to config flag
+            return self.apply_windowing
+
+        input_features = x.shape[1] if x.ndim > 1 else 1
+
+        # If model expects more features than input has, windowing is needed
+        if expected_features > input_features:
+            hyperparams = self.effective_cfg.get("experiment", {}).get(
+                "hyperparams", {}
+            )
+            input_chunk = hyperparams.get("input_chunk_length", 1)
+            expected_windowed = input_features * input_chunk
+
+            if expected_features == expected_windowed:
+                print(
+                    f"  Auto-detected: model expects {expected_features} features "
+                    f"(windowed), input has {input_features}"
+                )
+                return True
+
+        # If model expects same features as input, no windowing needed
+        if expected_features == input_features:
+            return False
+
+        # Fall back to config flag
+        return self.apply_windowing
+
     def _run_windowed_inference(
         self, model: Any, x: np.ndarray, method_name: str
     ) -> np.ndarray:
@@ -126,8 +189,17 @@ class FeatureInferenceStep(BasePipelineStep):
             f"'{self.source_model_key}' using '{method_name}'"
         )
         print(f"  Input shape: {x.shape}")
+        print(
+            f"  data_type: {data_type}, config apply_windowing: {self.apply_windowing}"
+        )
 
-        if data_type == "timeseries" and self.apply_windowing:
+        # Use runtime detection to determine if windowing is needed
+        # This checks the model's expected feature count vs input feature count
+        # to handle cases where config flag might be incorrect
+        should_window = self._should_apply_windowing_runtime(model, x, data_type)
+        print(f"  runtime apply_windowing: {should_window}")
+
+        if data_type == "timeseries" and should_window:
             features = self._run_windowed_inference(model, x, method_name)
         else:
             inference_func = getattr(model, method_name)

@@ -258,7 +258,7 @@ class PreprocessorStep(BasePipelineStep):
         )
 
         # Inject metadata for downstream logic (e.g. conditional branches)
-        context["data_size"] = len(df_transformed)
+        context["feature_columns_size"] = len(feature_columns)
 
         return context
 

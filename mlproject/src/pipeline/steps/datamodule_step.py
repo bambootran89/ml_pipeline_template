@@ -240,6 +240,20 @@ class DataModuleStep(BasePipelineStep):
         if current > target_samples:
             return df.iloc[:target_samples]
 
+        # Pad at start: for windowed features that have fewer samples
+        # (e.g., 171 windows from 200 samples due to sliding window)
+        # Padding at start because windows start from position input_chunk
+        if current < target_samples:
+            n_pad = target_samples - current
+            # Pad with the first row repeated
+            pad_df = pd.concat([df.iloc[[0]]] * n_pad, ignore_index=True)
+            result = pd.concat([pad_df, df], ignore_index=True)
+            print(
+                f"  [{key}] Padded {n_pad} samples at start "
+                f"({current} -> {target_samples})"
+            )
+            return result
+
         raise ValueError(
             f"Cannot align feature '{key}' with {current} samples "
             f"to {target_samples} samples. Shapes incompatible."

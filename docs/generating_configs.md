@@ -245,11 +245,11 @@ python -m mlproject.src.pipeline.dag_run eval \
     -p mlproject/configs/generated/conditional_branch_eval.yaml \
     -a latest
 
-# python -m mlproject.src.pipeline.dag_run serve \
-#     -e mlproject/configs/experiments/etth3.yaml \
-#     -p mlproject/configs/generated/conditional_branch_serve.yaml \
-#     -i ./sample_input.csv \
-#     -a latest
+python -m mlproject.src.pipeline.dag_run serve \
+    -e mlproject/configs/experiments/etth3.yaml \
+    -p mlproject/configs/generated/conditional_branch_serve.yaml \
+    -i ./sample_input.csv \
+    -a latest
 
 python -m mlproject.src.pipeline.dag_run tune \
     -e mlproject/configs/experiments/etth3.yaml \
@@ -259,13 +259,10 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 **Flow:**
 ```
-load_data → preprocess → branch ─┬─ [data_size > 100] → TFT (deep learning)
-                                 └─ [data_size ≤ 100] → XGBoost (ML)
+load_data → preprocess → branch ─┬─ [feature_columns_size < 4] → TFT (deep learning)
+                                 └─ [feature_columns_size >= 4] → XGBoost (ML)
                                           ↓
                                       evaluate → log
-```
-
-### 4. Nested Sub-Pipeline
 Encapsulate feature engineering as a reusable sub-pipeline.
 
 ```bash

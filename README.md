@@ -265,7 +265,7 @@ curl -X POST http://localhost:8000/predict \
   }'
 ```
 
-Test API services: mlproject/configs/experiments/etth1etth1_feast.yaml
+Test API services: mlproject/configs/experiments/etth1_feast.yaml
 ```bash
 curl -X POST http://localhost:8000/predict/feast/batch \
   -H "Content-Type: application/json" \
