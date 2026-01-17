@@ -29,6 +29,10 @@ ray stop > /dev/null 2>&1 || true
 cleanup() {
     fuser -k 8082/tcp > /dev/null 2>&1 || true
     ray stop > /dev/null 2>&1 || true
+    # Find and kill any process using port 8082 (handles Errno 48)
+    if lsof -t -i:8082 > /dev/null 2>&1; then
+        lsof -t -i:8082 | xargs kill -9 > /dev/null 2>&1 || true
+    fi
 }
 trap cleanup EXIT
 

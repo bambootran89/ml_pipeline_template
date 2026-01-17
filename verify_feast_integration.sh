@@ -17,11 +17,21 @@ fi
 LOG_DIR="tmplogs/feast_verify"
 mkdir -p "$LOG_DIR"
 
-# Clean up function
+# Find and kill any process using port 8082 (handles Errno 48)
+if lsof -t -i:8082 > /dev/null 2>&1; then
+    lsof -t -i:8082 | xargs kill -9 > /dev/null 2>&1 || true
+fi
+
+# Clean up function to release port 8082 and stop Ray
 cleanup() {
+    # Alternative kill method for Linux environments
     fuser -k 8082/tcp > /dev/null 2>&1 || true
+
+    # Stop Ray runtime
     ray stop > /dev/null 2>&1 || true
 }
+
+# Ensure cleanup runs on script exit
 trap cleanup EXIT
 
 # Verify Response Function
@@ -64,18 +74,14 @@ except Exception as e:
     fi
 }
 
-# Define Test Cases
-# Format: "ExperimentConfig|PipelineConfig"
+# Define Test Cases: "ExperimentConfig|PipelineConfig"
 TEST_CASES=(
     "mlproject/configs/experiments/etth3_feast.yaml|mlproject/configs/pipelines/standard_train.yaml"
     "mlproject/configs/experiments/feast_tabular.yaml|mlproject/configs/pipelines/standard_train.yaml"
-
     "mlproject/configs/experiments/etth3_feast.yaml|mlproject/configs/pipelines/kmeans_then_xgboost.yaml"
     "mlproject/configs/experiments/feast_tabular.yaml|mlproject/configs/pipelines/kmeans_then_xgboost.yaml"
-
     "mlproject/configs/experiments/etth3_feast.yaml|mlproject/configs/pipelines/parallel_ensemble.yaml"
     "mlproject/configs/experiments/feast_tabular.yaml|mlproject/configs/pipelines/parallel_ensemble.yaml"
-
     "mlproject/configs/experiments/etth3_feast.yaml|mlproject/configs/pipelines/nested_suppipeline.yaml"
     "mlproject/configs/experiments/etth3_feast.yaml|mlproject/configs/pipelines/dynamic_adapter_train.yaml"
     "mlproject/configs/experiments/feast_tabular.yaml|mlproject/configs/pipelines/dynamic_adapter_train.yaml"
@@ -98,22 +104,20 @@ for CASE in "${TEST_CASES[@]}"; do
 
     # 1. Train
     echo -e "${BLUE}--- [1/3] Training ---${NC}"
-    if python -m mlproject.src.pipeline.dag_run train -e "$EXP_CONFIG" -p "$PIPE_CONFIG" > "$LOG_DIR/${RUN_ID}_train.log" 2>&1; then
+    if python -m mlproject.src.pipeline.dag_run train -e "$EXP_CONFIG" \
+        -p "$PIPE_CONFIG" > "$LOG_DIR/${RUN_ID}_train.log" 2>&1; then
         echo -e "${GREEN}Training PASS${NC}"
     else
-        echo -e "${RED}Training FAILED${NC}"
-        tail -n 20 "$LOG_DIR/${RUN_ID}_train.log"
-        continue
+        echo -e "${RED}Training FAILED${NC}"; tail -n 20 "$LOG_DIR/${RUN_ID}_train.log"; continue
     fi
 
     # 2. Generate Serve Config
     echo -e "${BLUE}--- [2/3] Generation ---${NC}"
-    if python -m mlproject.src.pipeline.dag_run generate -t "$PIPE_CONFIG" -e "$EXP_CONFIG" --type serve > "$LOG_DIR/${RUN_ID}_gen.log" 2>&1; then
+    if python -m mlproject.src.pipeline.dag_run generate -t "$PIPE_CONFIG" \
+        -e "$EXP_CONFIG" --type serve > "$LOG_DIR/${RUN_ID}_gen.log" 2>&1; then
         echo -e "${GREEN}Generation PASS${NC}"
     else
-        echo -e "${RED}Generation FAILED${NC}"
-        tail -n 20 "$LOG_DIR/${RUN_ID}_gen.log"
-        continue
+        echo -e "${RED}Generation FAILED${NC}"; tail -n 20 "$LOG_DIR/${RUN_ID}_gen.log"; continue
     fi
 
     SERVE_CONFIG="mlproject/configs/generated/${PIPE_NAME}_serve.yaml"
@@ -121,11 +125,13 @@ for CASE in "${TEST_CASES[@]}"; do
     # 3. Verify Serving (Loop Frameworks)
     for FRAMEWORK in "fastapi" "ray"; do
         echo -e "${BLUE}--- [3/3] Serving ($FRAMEWORK) ---${NC}"
+        # Clear port before starting new service
         cleanup
 
-        bash ./mlproject/serve_api.sh -e "$EXP_CONFIG" -a latest -f "$FRAMEWORK" "$SERVE_CONFIG" --port 8082 > "$LOG_DIR/${RUN_ID}_${FRAMEWORK}_serve.log" 2>&1 &
+        bash ./mlproject/serve_api.sh -e "$EXP_CONFIG" -a latest -f "$FRAMEWORK" \
+            "$SERVE_CONFIG" --port 8082 > "$LOG_DIR/${RUN_ID}_${FRAMEWORK}_serve.log" 2>&1 &
 
-        # Wait for health
+        # Wait for health status
         COUNT=0
         HEALTHY=false
         while [ $COUNT -lt 45 ]; do
@@ -146,28 +152,22 @@ for CASE in "${TEST_CASES[@]}"; do
 
         # Verify based on Experiment Type
         if [[ "$EXP_NAME" == *"tabular"* ]]; then
-            # Tabular Feast verification
-            # Single
+            # Tabular Prediction
             RESP=$(curl -s -X POST http://localhost:8082/predict/feast \
-                -H "Content-Type: application/json" \
-                -d '{"entities": [1]}')
+                -H "Content-Type: application/json" -d '{"entities": [1]}')
             verify_response "$RESP" 1 "Tabular Single ($FRAMEWORK)"
 
-            # Batch
             RESP=$(curl -s -X POST http://localhost:8082/predict/feast/batch \
                 -H "Content-Type: application/json" \
                 -d '{"entities": [1, 2, 3], "entity_key": "passenger_id"}')
             verify_response "$RESP" 3 "Tabular Batch ($FRAMEWORK)"
-
         else
-            # Timeseries Feast verification
-            # Single
+            # Timeseries Prediction
             RESP=$(curl -s -X POST http://localhost:8082/predict/feast \
                 -H "Content-Type: application/json" \
                 -d '{"time_point": "2024-01-09T00:00:00", "entities": [1]}')
             verify_response "$RESP" 1 "Timeseries Single ($FRAMEWORK)"
 
-            # Batch
             RESP=$(curl -s -X POST http://localhost:8082/predict/feast/batch \
                 -H "Content-Type: application/json" \
                 -d '{"time_point": "2024-01-09T00:00:00", "entities": [1], "entity_key": "location_id"}')
@@ -176,7 +176,6 @@ for CASE in "${TEST_CASES[@]}"; do
 
         cleanup
     done
-
     cleanup
 done
 
