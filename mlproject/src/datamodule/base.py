@@ -1,3 +1,4 @@
+import textwrap
 from typing import Tuple
 
 import numpy as np
@@ -71,6 +72,67 @@ class BaseDataModule:
         self.x_test: np.ndarray
         self.y_test: np.ndarray
         self._prepare_data()
+        self.print_info()
+
+    def print_info(self) -> None:
+        """
+        Prints full DataModule information with conditional sequence display.
+
+        The sequence information (input/output chunks) is hidden for tabular data.
+        Features are printed in full without truncation, wrapped to 88 characters.
+        """
+        line_width = 80
+        border = "=" * line_width
+        print(border)
+        print(f"DATAMODULE SUMMARY - Type: {self.data_type.upper()}")
+        print(border)
+
+        # Basic metadata
+        print(f"Total Samples:  {len(self.df)}")
+
+        # Conditional display: Hide sequence info if data type is tabular
+        if self.data_type.lower() != "tabular":
+            print(
+                f"Sequence:       Input={self.input_chunk}, Output={self.output_chunk}"
+            )
+
+        print(f"Target Columns: {', '.join(self.target_columns)}")
+
+        # Full Ordered Features (Wrapped for line length)
+        feat_header = "Features:       "
+        all_features_str = ", ".join(self.features)
+
+        # textwrap.fill handles multi-line alignment within 88 characters
+        wrapped_output = textwrap.fill(
+            all_features_str,
+            width=88,
+            initial_indent=feat_header,
+            subsequent_indent=" " * len(feat_header),
+        )
+        print(wrapped_output)
+        print(f"Total Count:    {len(self.features)} columns")
+
+        # Data Split Shapes
+        print("-" * line_width)
+        self._print_shapes_summary()
+        print(border)
+
+    def _print_shapes_summary(self) -> None:
+        """
+        Helper to print shapes of initialized data splits.
+        """
+        splits = {
+            "Train": (getattr(self, "x_train", None), getattr(self, "y_train", None)),
+            "Val": (getattr(self, "x_val", None), getattr(self, "y_val", None)),
+            "Test": (getattr(self, "x_test", None), getattr(self, "y_test", None)),
+        }
+
+        for name, (x_data, y_data) in splits.items():
+            # Validate data presence and size
+            is_valid = x_data is not None and x_data.size > 0
+            x_shape = x_data.shape if is_valid else "N/A"
+            y_shape = y_data.shape if is_valid else "N/A"
+            print(f"{name:15} Split: X={x_shape}, Y={y_shape}")
 
     def setup(self) -> None:
         """Optional hook to extend setup logic."""

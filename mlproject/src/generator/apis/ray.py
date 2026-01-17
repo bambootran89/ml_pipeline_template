@@ -146,6 +146,23 @@ if __name__ == "__main__":
     serve.run(app_builder({{}}))
 """
 
+    def _gen_feature_generators_config_ray(self, ctx: GenerationContext) -> str:
+        """Generate feature generators configuration for Ray Serve."""
+        if not ctx.data_config.feature_generators:
+            return "{}"
+
+        items = []
+        for fg in ctx.data_config.feature_generators:
+            items.append(
+                f'        "{fg.output_key}": {{'
+                f'"model_key": "{fg.model_key}", '
+                f'"artifact_name": "{fg.artifact_name}", '
+                f'"inference_method": "{fg.inference_method}", '
+                f'"step_type": "{fg.step_type}"}}'
+            )
+
+        return "{\n" + ",\n".join(items) + "\n    }"
+
     def _gen_model_service(self, ctx: GenerationContext) -> str:
         """Generate ModelService methods."""
         model_loads = "\n".join(
@@ -161,6 +178,24 @@ if __name__ == "__main__":
                 for key in set(ctx.model_keys)
             ]
         )
+
+        # Generate feature generator loading code
+        fg_loads = ""
+        for fg in ctx.data_config.feature_generators:
+            fg_loads += f"""
+        # Load feature generator: {fg.step_id}
+        print(f"[ModelService] Loading feature generator: {fg.artifact_name} "
+              f"(alias: {ctx.alias})...")
+        component = self.mlflow_manager.load_component(
+            name=f"{{experiment_name}}_{fg.artifact_name}",
+            alias="{ctx.alias}",
+        )
+        if component is not None:
+            self.feature_generators["{fg.output_key}"] = {{
+                "model": component,
+                "method": "{fg.inference_method}",
+                "type": "{fg.step_type}",
+            }}"""
 
         tabular_inference = "\n".join(
             [
@@ -228,12 +263,14 @@ if __name__ == "__main__":
 class ModelService:
     INPUT_CHUNK_LENGTH = {ctx.data_config.input_chunk_length}
     OUTPUT_CHUNK_LENGTH = {ctx.data_config.output_chunk_length}
+    ADDITIONAL_FEATURE_KEYS = {repr(ctx.data_config.additional_feature_keys)}
 
     def __init__(self, config_path: str) -> None:
         print("[ModelService] Initializing...")
         self.cfg = ConfigLoader.load(config_path)
         self.mlflow_manager = MLflowManager(self.cfg)
         self.models = {{}}
+        self.feature_generators = {{}}
         self.ready = False
         self.feature_store = None
         self._check_feast()
@@ -265,6 +302,7 @@ class ModelService:
             return
         experiment_name = self.cfg.experiment.get("name", "{ctx.pipeline_name}")
 {model_loads}
+{fg_loads}
         self.ready = True
         print("[ModelService] Ready")
 
@@ -313,10 +351,126 @@ class ModelService:
 {ts_inference}
         return {{"predictions": results, "metadata": metadata}}
 
+    def generate_additional_features(
+        self, base_features: pd.DataFrame
+    ) -> Dict[str, Any]:
+        \"\"\"Generate additional features using feature generators.\"\"\"
+        additional_features = {{}}
+        if not self.feature_generators:
+            return additional_features
+
+        print(f"[ModelService] Generating additional features from "
+              f"{{len(self.feature_generators)}} generators...")
+
+        x_input = (base_features.values
+                   if isinstance(base_features, pd.DataFrame)
+                   else base_features)
+
+        for output_key, fg_info in self.feature_generators.items():
+            model = fg_info["model"]
+            method = fg_info["method"]
+            fg_type = fg_info["type"]
+
+            try:
+                inference_fn = getattr(model, method, None)
+                if inference_fn is None:
+                    inference_fn = (getattr(model, "transform", None)
+                                    or getattr(model, "predict", None))
+
+                if inference_fn is None:
+                    print(f"  Warning: {{output_key}} has no inference method")
+                    continue
+
+                result = inference_fn(x_input)
+                additional_features[output_key] = result
+                result_shape = (result.shape
+                                if hasattr(result, "shape")
+                                else len(result))
+                print(f"  + {{output_key}} ({{fg_type}}): {{result_shape}}")
+
+            except Exception as e:
+                print(f"  Warning: Failed to generate {{output_key}}: {{e}}")
+                continue
+
+        return additional_features
+
+    def compose_features(
+        self,
+        base_features: pd.DataFrame,
+        additional_features: Dict[str, Any]
+    ) -> pd.DataFrame:
+        \"\"\"Compose base features with additional generated features.\"\"\"
+        if not additional_features:
+            return base_features
+
+        composed = (base_features.copy()
+                    if isinstance(base_features, pd.DataFrame)
+                    else pd.DataFrame(base_features))
+        n_samples = len(composed)
+
+        print(f"[ModelService] Composing features: base {{composed.shape}}")
+
+        for key, features in additional_features.items():
+            if isinstance(features, np.ndarray):
+                if features.ndim == 1:
+                    feat_df = pd.DataFrame({{f"{{key}}_0": features}})
+                else:
+                    cols = [f"{{key}}_{{i}}" for i in range(features.shape[1])]
+                    feat_df = pd.DataFrame(features, columns=cols)
+            elif isinstance(features, pd.DataFrame):
+                feat_df = features.copy()
+                feat_df.columns = [f"{{key}}_{{c}}" for c in feat_df.columns]
+            else:
+                feat_df = pd.DataFrame({{f"{{key}}_0": features}})
+
+            if len(feat_df) != n_samples:
+                if len(feat_df) == 1:
+                    feat_df = pd.concat([feat_df] * n_samples, ignore_index=True)
+                elif len(feat_df) > n_samples:
+                    feat_df = feat_df.iloc[:n_samples]
+                else:
+                    n_pad = n_samples - len(feat_df)
+                    pad_df = pd.concat(
+                        [feat_df.iloc[[0]]] * n_pad,
+                        ignore_index=True
+                    )
+                    feat_df = pd.concat([pad_df, feat_df], ignore_index=True)
+
+            feat_df.index = composed.index
+            composed = pd.concat([composed, feat_df], axis=1)
+            print(f"  + {{key}}: {{feat_df.shape}} -> Total: {{composed.shape}}")
+
+        return composed
+
+    def run_full_pipeline(
+        self, preprocessed_data: pd.DataFrame
+    ) -> Dict[str, Any]:
+        \"\"\"Run full inference pipeline including feature generation.\"\"\"
+        # Step 1: Generate additional features
+        additional_features = self.generate_additional_features(preprocessed_data)
+
+        # Step 2: Compose features
+        composed = self.compose_features(preprocessed_data, additional_features)
+
+        # Step 3: Run predictions
+        context = {{"preprocessed_data": composed}}
+
+        if "{ctx.data_config.data_type}" == "timeseries":
+            return self.predict_timeseries_multistep(
+                context, self.OUTPUT_CHUNK_LENGTH
+            )
+        return self.predict_tabular_batch(context)
+
     async def run_inference_pipeline(
         self, context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        # Run appropriate inference based on data type
+        # Run full pipeline with feature generation
+        preprocessed = context.get("preprocessed_data")
+        if preprocessed is not None:
+            result = self.run_full_pipeline(preprocessed)
+            return result.get("predictions", {{}})
+
+        # Fallback to old behavior
         if "{ctx.data_config.data_type}" == "timeseries":
             return self.predict_timeseries_multistep(
                 context, self.OUTPUT_CHUNK_LENGTH

@@ -53,6 +53,27 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
             alias=alias,
         )
 
+    def _get_feature_generator_keys(self, ctx: GenerationContext) -> List[str]:
+        """Get list of feature generator model keys."""
+        return [fg.model_key for fg in ctx.data_config.feature_generators]
+
+    def _gen_feature_generators_config(self, ctx: GenerationContext) -> str:
+        """Generate feature generators configuration as Python dict literal."""
+        if not ctx.data_config.feature_generators:
+            return "{}"
+
+        items = []
+        for fg in ctx.data_config.feature_generators:
+            items.append(
+                f'        "{fg.output_key}": {{'
+                f'"model_key": "{fg.model_key}", '
+                f'"artifact_name": "{fg.artifact_name}", '
+                f'"inference_method": "{fg.inference_method}", '
+                f'"step_type": "{fg.step_type}"}}'
+            )
+
+        return "{\n" + ",\n".join(items) + "\n    }"
+
     def _build_fastapi_code(self, ctx: GenerationContext) -> str:
         """Build complete FastAPI code."""
         parts = [
@@ -159,12 +180,15 @@ class ServeService:
     INPUT_CHUNK_LENGTH = {ctx.data_config.input_chunk_length}
     OUTPUT_CHUNK_LENGTH = {ctx.data_config.output_chunk_length}
     FEATURES = {features_str}
+    ADDITIONAL_FEATURE_KEYS = {repr(ctx.data_config.additional_feature_keys)}
+    FEATURE_GENERATORS = {self._gen_feature_generators_config(ctx)}
 
     def __init__(self, config_path: str) -> None:
         self.cfg = ConfigLoader.load(config_path)
         self.mlflow_manager = MLflowManager(self.cfg)
         self.preprocessor = None
         self.models = {{}}
+        self.feature_generators = {{}}
         self.feature_store = None
 
         if self.mlflow_manager.enabled:
@@ -219,6 +243,26 @@ class ServeService:
 """
             )
 
+        # Load feature generators from sub-pipeline
+        for fg in ctx.data_config.feature_generators:
+            parts.append(
+                f"""
+            # Load feature generator: {fg.step_id}
+            print(f"[ModelService] Loading feature generator: {fg.artifact_name} "
+                  f"(alias: {ctx.alias})...")
+            component = self.mlflow_manager.load_component(
+                name=f"{{experiment_name}}_{fg.artifact_name}",
+                alias="{ctx.alias}",
+            )
+            if component is not None:
+                self.feature_generators["{fg.output_key}"] = {{
+                    "model": component,
+                    "method": "{fg.inference_method}",
+                    "type": "{fg.step_type}",
+                }}
+"""
+            )
+
         return "".join(parts)
 
     def _gen_service_methods(self) -> str:
@@ -247,6 +291,155 @@ class ServeService:
             entity_ids=entities
         )
         return df
+
+    def generate_additional_features(self, base_features: pd.DataFrame) -> Dict[str, Any]:
+        \"\"\"Generate additional features using feature generators (sub-pipeline models).
+
+        Runs each feature generator model on the base features and returns
+        a dict of output_key -> generated_features.
+
+        Args:
+            base_features: Preprocessed base features DataFrame.
+
+        Returns:
+            Dict mapping output_key to generated feature arrays.
+        \"\"\"
+        additional_features = {}
+
+        if not self.feature_generators:
+            return additional_features
+
+        print(f"[ModelService] Generating additional features from "
+              f"{len(self.feature_generators)} generators...")
+
+        # Prepare input
+        x_input = base_features.values if isinstance(base_features, pd.DataFrame) else base_features
+
+        for output_key, fg_info in self.feature_generators.items():
+            model = fg_info["model"]
+            method = fg_info["method"]
+            fg_type = fg_info["type"]
+
+            try:
+                # Get inference method
+                inference_fn = getattr(model, method, None)
+                if inference_fn is None:
+                    # Fallback to transform or predict
+                    inference_fn = getattr(model, "transform", None) or getattr(model, "predict", None)
+
+                if inference_fn is None:
+                    print(f"  Warning: {output_key} has no {method}/transform/predict method, skipping")
+                    continue
+
+                # Run inference
+                result = inference_fn(x_input)
+
+                # Store result
+                additional_features[output_key] = result
+                result_shape = result.shape if hasattr(result, "shape") else len(result)
+                print(f"  + {output_key} ({fg_type}): {result_shape}")
+
+            except Exception as e:
+                print(f"  Warning: Failed to generate {output_key}: {e}")
+                continue
+
+        return additional_features
+
+    def compose_features(
+        self,
+        base_features: pd.DataFrame,
+        additional_features: Dict[str, Any]
+    ) -> pd.DataFrame:
+        \"\"\"Compose base features with additional generated features.
+
+        Args:
+            base_features: Base preprocessed features.
+            additional_features: Dict of output_key -> generated features.
+
+        Returns:
+            Composed DataFrame with all features.
+        \"\"\"
+        if not additional_features:
+            return base_features
+
+        composed = base_features.copy() if isinstance(base_features, pd.DataFrame) else pd.DataFrame(base_features)
+        n_samples = len(composed)
+
+        print(f"[ModelService] Composing features: base {composed.shape}")
+
+        for key, features in additional_features.items():
+            # Convert to DataFrame
+            if isinstance(features, np.ndarray):
+                if features.ndim == 1:
+                    feat_df = pd.DataFrame({f"{key}_0": features})
+                else:
+                    cols = [f"{key}_{i}" for i in range(features.shape[1])]
+                    feat_df = pd.DataFrame(features, columns=cols)
+            elif isinstance(features, pd.DataFrame):
+                feat_df = features.copy()
+                feat_df.columns = [f"{key}_{c}" for c in feat_df.columns]
+            else:
+                feat_df = pd.DataFrame({f"{key}_0": features})
+
+            # Align lengths
+            if len(feat_df) != n_samples:
+                if len(feat_df) == 1:
+                    # Broadcast
+                    feat_df = pd.concat([feat_df] * n_samples, ignore_index=True)
+                elif len(feat_df) > n_samples:
+                    # Truncate
+                    feat_df = feat_df.iloc[:n_samples]
+                else:
+                    # Pad at start
+                    n_pad = n_samples - len(feat_df)
+                    pad_df = pd.concat([feat_df.iloc[[0]]] * n_pad, ignore_index=True)
+                    feat_df = pd.concat([pad_df, feat_df], ignore_index=True)
+
+            # Reset index for alignment
+            feat_df.index = composed.index
+
+            # Concatenate
+            composed = pd.concat([composed, feat_df], axis=1)
+            print(f"  + {key}: {feat_df.shape} -> Total: {composed.shape}")
+
+        return composed
+
+    def run_full_pipeline(self, raw_data: pd.DataFrame) -> Dict[str, Any]:
+        \"\"\"Run full inference pipeline including feature generation.
+
+        This is the main entry point that:
+        1. Preprocesses raw data
+        2. Generates additional features via feature generators
+        3. Composes all features
+        4. Runs model predictions
+
+        Args:
+            raw_data: Raw input DataFrame.
+
+        Returns:
+            Dict with predictions and metadata.
+        \"\"\"
+        # Step 1: Preprocess
+        preprocessed = self.preprocess(raw_data)
+
+        # Step 2: Generate additional features (if any feature generators exist)
+        additional_features = self.generate_additional_features(preprocessed)
+
+        # Step 3: Compose features
+        composed = self.compose_features(preprocessed, additional_features)
+
+        # Step 4: Run predictions
+        context = {"preprocessed_data": composed}
+
+        if self.DATA_TYPE == "tabular":
+            result = self.predict_tabular_batch(context)
+        else:
+            result = self.predict_timeseries_multistep(
+                context,
+                steps_ahead=self.OUTPUT_CHUNK_LENGTH
+            )
+
+        return result
 
     def _prepare_input_timeseries(self, features: Any, model_type: str) -> np.ndarray:
         if isinstance(features, pd.DataFrame):
@@ -393,10 +586,12 @@ def health_check() -> HealthResponse:
 def predict(request: PredictRequest) -> MultiPredictResponse:
     try:
         df = pd.DataFrame(request.data)
-        preprocessed_data = service.preprocess(df)
-        context = {{"preprocessed_data": preprocessed_data}}
-        predictions = service.run_inference_pipeline(context)
-        return MultiPredictResponse(predictions=predictions)
+        # Use full pipeline with feature generation and composition
+        result = service.run_full_pipeline(df)
+        return MultiPredictResponse(
+            predictions=result.get("predictions", {{}}),
+            metadata=result.get("metadata")
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -404,10 +599,12 @@ def predict(request: PredictRequest) -> MultiPredictResponse:
 def predict_feast(request: FeastPredictRequest) -> MultiPredictResponse:
     try:
         df = service.get_online_dataset(request.entities)
-        preprocessed_data = service.preprocess(df)
-        context = {{"preprocessed_data": preprocessed_data}}
-        predictions = service.run_inference_pipeline(context)
-        return MultiPredictResponse(predictions=predictions)
+        # Use full pipeline with feature generation and composition
+        result = service.run_full_pipeline(df)
+        return MultiPredictResponse(
+            predictions=result.get("predictions", {{}}),
+            metadata=result.get("metadata")
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -426,15 +623,20 @@ def predict_feast_batch(request: FeastPredictRequest) -> MultiPredictResponse:
 def predict_batch(request: BatchPredictRequest) -> MultiPredictResponse:
     try:
         df = pd.DataFrame(request.data)
-        preprocessed_data = service.preprocess(df)
-        context = {"preprocessed_data": preprocessed_data}
-        result = service.predict_tabular_batch(
-            context,
-            return_probabilities=request.return_probabilities
-        )
+        # Use full pipeline with feature generation and composition
+        result = service.run_full_pipeline(df)
+        # Add probabilities if requested
+        if request.return_probabilities:
+            for key, model in service.models.items():
+                if hasattr(model, "predict_proba"):
+                    try:
+                        proba = model.predict_proba(df.values)
+                        result["predictions"][f"{key}_probabilities"] = proba.tolist()
+                    except Exception:
+                        pass
         return MultiPredictResponse(
-            predictions=result["predictions"],
-            metadata=result["metadata"]
+            predictions=result.get("predictions", {}),
+            metadata=result.get("metadata")
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -451,15 +653,11 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
                 detail=f"Input must have at least "
                        f"{service.INPUT_CHUNK_LENGTH} timesteps (got {len(df)})"
             )
-        preprocessed_data = service.preprocess(df)
-        context = {"preprocessed_data": preprocessed_data}
-        result = service.predict_timeseries_multistep(
-            context,
-            steps_ahead=request.steps_ahead
-        )
+        # Use full pipeline with feature generation and composition
+        result = service.run_full_pipeline(df)
         return MultiPredictResponse(
-            predictions=result["predictions"],
-            metadata=result["metadata"]
+            predictions=result.get("predictions", {}),
+            metadata=result.get("metadata")
         )
     except HTTPException:
         raise

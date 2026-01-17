@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.eval.base import BaseEvaluator
@@ -207,7 +209,9 @@ class EvaluatorStep(PipelineStep):
             DataModule instance.
         """
         # Compose features
-        features_df, _ = self.get_composed_features(context, "features", required=True)
+        features_df, metadata = self.get_composed_features(
+            context, "features", required=True
+        )
 
         # Get targets
         targets_df = self.get_input(context, "targets", required=False)
@@ -216,6 +220,14 @@ class EvaluatorStep(PipelineStep):
         data_cfg = self.cfg.get("data", {})
         data_type = str(data_cfg.get("type", "tabular")).lower()
 
+        # Get expected feature names from config
+        expected_features = list(data_cfg.get("features", []))
+
+        # Fix column names if they were lost (e.g., from numpy array)
+        features_df = self._restore_column_names(
+            features_df, expected_features, metadata
+        )
+
         if data_type == "timeseries":
             input_df = features_df.copy()
         elif targets_df is not None:
@@ -223,42 +235,19 @@ class EvaluatorStep(PipelineStep):
         else:
             input_df = features_df.copy()
 
-        # Restore feature names if lost (e.g. from numpy)
-        # This is critical for DataModule which expects specific column names
-        expected_features = data_cfg.get("features", [])
-        # Only rename if we have features only (no targets concatenated yet
-        # or we handle targets separately)
-        # In this logic, input_df might contain targets.
-        # But for 'timeseries' path above, input_df = features_df.
-        # And targets are handled inside DataModule via target_columns lookup
-        # on input_df?
-        # BaseDataModule splits x/y from 'df' using features and target_columns.
-        # So 'df' must contain both.
+        # Get composed feature names for config injection
+        composed_feature_names = list(features_df.columns)
 
-        # If input_df has fewer columns than features + targets, we might be
-        # missing targets.
-        # But if input_df has same num columns as features, and we are missing targets,
-        # BaseDataModule will fail to find targets.
+        # Debug: print shape and columns before building DataModule
+        print(
+            f"[{self.step_id}] DEBUG - Features shape: {input_df.shape}, "
+            f"columns: {list(input_df.columns)[:10]}..."
+        )
 
-        # In cluster_type_1_evaluate, targets are NOT provided.
-        # And DataModule might need them?
-        # BaseDataModule.__init__:
-        # raises error if df empty.
-        # self.target_columns loops cfg.get("target_columns") and checks if in
-        # df.columns.
-
-        # So if targets are missing from df, self.target_columns will be empty.
-        # Then _prepare_data calls _create_windows.
-        # _create_windows tries to get y_win using self.target_columns.
-        # If self.target_columns is empty, y_win will be empty?
-        # df.iloc[...][[]].values -> shape (window, 0).
-
-        # So it seems acceptable if targets are missing given BaseDataModule logic.
-
-        # So main issue is FEATURES.
-        if len(expected_features) == input_df.shape[1]:
-            print(f"[{self.step_id}] Restoring feature names: {expected_features}")
-            input_df.columns = expected_features
+        # Inject composed feature names into config for DataModule
+        cfg_for_dm = self._inject_composed_features_to_config(
+            composed_feature_names, context
+        )
 
         # Build DataModule
         print(
@@ -266,10 +255,183 @@ class EvaluatorStep(PipelineStep):
             f"{input_df.shape}"
         )
 
-        dm = DataModuleFactory.build(self.cfg, input_df)
+        dm = DataModuleFactory.build(cfg_for_dm, input_df)
         dm.setup()
 
         return dm
+
+    def _restore_column_names(
+        self,
+        df: pd.DataFrame,
+        expected_features: List[str],
+        metadata: Dict[str, tuple],
+    ) -> pd.DataFrame:
+        """Restore column names if they were lost.
+
+        When features come from numpy arrays, column names become numeric.
+        This method restores proper column names for base features using
+        the expected features from config, and generates proper names for
+        additional features.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame with potentially numeric column names.
+        expected_features : List[str]
+            Expected feature names from experiment config.
+        metadata : Dict[str, tuple]
+            Feature composition metadata with column indices.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with proper column names.
+        """
+        current_columns = list(df.columns)
+
+        # Check if columns need restoration (numeric names like 0, 1, 2 or base_0, etc)
+        first_col = str(current_columns[0]) if current_columns else ""
+        needs_restore = (
+            first_col.isdigit()
+            or first_col.startswith("base_")
+            or (expected_features and first_col not in expected_features)
+        )
+
+        if not needs_restore:
+            return df
+
+        print(f"[{self.step_id}] Restoring column names...")
+
+        new_columns = []
+
+        # Get base feature indices from metadata
+        base_start, base_end = metadata.get("base", (0, len(expected_features)))
+        n_base_cols = base_end - base_start
+
+        # Restore base feature names
+        if expected_features and len(expected_features) == n_base_cols:
+            new_columns.extend(expected_features)
+            print(f"  Base: restored {len(expected_features)} feature names")
+        else:
+            # Keep original or generate names
+            for i in range(n_base_cols):
+                if i < len(current_columns):
+                    new_columns.append(current_columns[i])
+                else:
+                    new_columns.append(f"feature_{i}")
+
+        # Handle additional feature columns
+        for source_name, (start_idx, end_idx) in metadata.items():
+            if source_name == "base":
+                continue
+
+            n_cols = end_idx - start_idx
+            for i in range(n_cols):
+                col_idx = start_idx + i
+                if col_idx < len(current_columns):
+                    # Use existing name if it looks correct (prefixed)
+                    existing = str(current_columns[col_idx])
+                    if existing.startswith(f"{source_name}_"):
+                        new_columns.append(existing)
+                    else:
+                        new_columns.append(f"{source_name}_{i}")
+                else:
+                    new_columns.append(f"{source_name}_{i}")
+
+            print(f"  {source_name}: {n_cols} columns")
+
+        # Apply new column names
+        if len(new_columns) == len(df.columns):
+            df = df.copy()
+            df.columns = new_columns
+        else:
+            print(
+                f"  Warning: Column count mismatch "
+                f"(expected {len(new_columns)}, got {len(df.columns)})"
+            )
+
+        return df
+
+    def _inject_composed_features_to_config(
+        self,
+        composed_feature_names: List[str],
+        context: Dict[str, Any],
+    ) -> DictConfig:
+        """Inject composed feature names into config for DataModule.
+
+        This ensures BaseDataModule uses all composed features (base + additional)
+        without requiring changes to experiment yaml.
+
+        Parameters
+        ----------
+        composed_feature_names : List[str]
+            List of all feature column names after composition.
+        context : Dict[str, Any]
+            Pipeline context (for storing metadata).
+
+        Returns
+        -------
+        DictConfig
+            Modified config with injected feature names.
+        """
+        # Deep copy config to avoid mutating original
+        if isinstance(self.cfg, DictConfig):
+            cfg_copy = OmegaConf.to_container(self.cfg, resolve=True)
+            cfg_copy = OmegaConf.create(cfg_copy)
+        else:
+            cfg_copy = OmegaConf.create(copy.deepcopy(dict(self.cfg)))
+
+        original_features = OmegaConf.select(cfg_copy, "data.features", default=[])
+
+        # Always inject composed feature names if they differ from original
+        # This handles both:
+        # 1. Cases with additional_feature_keys (composed features)
+        # 2. Cases where column names were lost (e.g., from numpy arrays)
+        should_inject = False
+
+        if self.additional_feature_keys:
+            # We have additional features, definitely inject
+            should_inject = True
+        elif composed_feature_names:
+            # Check if column names are numeric (lost original names)
+            # or different from expected features
+            first_col = str(composed_feature_names[0]) if composed_feature_names else ""
+            if first_col.isdigit() or (
+                original_features and composed_feature_names != list(original_features)
+            ):
+                # Columns are numeric or mismatched - use original feature names
+                # if they match the count
+                if original_features and len(original_features) == len(
+                    composed_feature_names
+                ):
+                    composed_feature_names = list(original_features)
+                    should_inject = True
+
+        if should_inject and composed_feature_names:
+            # Update data.features with composed feature names
+            OmegaConf.update(cfg_copy, "data.features", composed_feature_names)
+
+            # Also update n_features in hyperparams if present
+            if (
+                OmegaConf.select(cfg_copy, "experiment.hyperparams.n_features")
+                is not None
+            ):
+                OmegaConf.update(
+                    cfg_copy,
+                    "experiment.hyperparams.n_features",
+                    len(composed_feature_names),
+                )
+
+            print(
+                f"[{self.step_id}] Injected composed features into config: "
+                f"{len(original_features)} -> {len(composed_feature_names)} features"
+            )
+
+            # Store composed feature metadata in context for downstream steps
+            context["_composed_feature_names"] = composed_feature_names
+            context["_additional_feature_keys"] = self.additional_feature_keys
+
+        return cfg_copy
 
     def _eval_from_datamodule(
         self,

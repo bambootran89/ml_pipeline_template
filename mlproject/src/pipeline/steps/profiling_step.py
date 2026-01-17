@@ -9,6 +9,7 @@ This module provides comprehensive profiling of pipeline outputs including:
 from __future__ import annotations
 
 import json
+import textwrap
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -365,39 +366,153 @@ class ProfilingStep(BasePipelineStep):
         }
 
     def _print_profile(self, profile: Dict[str, Any]) -> None:
-        """Print profiling report to console.
-
-        Parameters
-        ----------
-        profile : Dict[str, Any]
-            Profiling results.
         """
-        print(f"\n{'=' * 60}")
-        print(f"[{self.step_id}] PIPELINE PROFILING REPORT")
-        print(f"{'=' * 60}")
+        Converts and prints profiling results as clean, structured DataFrames.
 
-        if profile["metrics"]:
-            print("\n[Metrics Summary]")
-            for key, data in profile["metrics"].items():
-                print(f"  {key}:")
-                for metric, value in data.get("values", {}).items():
-                    print(f"    - {metric}: {value}")
+        This method flattens complex nested dictionaries (Data Quality, Clusters,
+        Metrics) into readable tables while preserving all essential information.
+        """
+        print(f"\n>>> [PROFILING REPORT: {self.step_id}]")
 
-        if profile["clusters"]:
-            print("\n[Cluster Analysis]")
-            for key, data in profile["clusters"].items():
-                pretty_print(f"  {key}:", data)
+        # 1. Data Quality Summary & Schema
+        if profile.get("data_quality"):
+            self._display_data_quality(profile["data_quality"])
 
-        if profile["predictions"]:
-            print("\n[Prediction Statistics]")
-            for key, data in profile["predictions"].items():
-                pretty_print(f"  {key}:", data)
-        if profile["data_quality"]:
-            print("\n[data_quality Statistics]")
-            for key, data in profile["data_quality"].items():
-                pretty_print(f"  {key}:", data)
+        # 2. Cluster Analysis Summary & Distribution
+        if profile.get("clusters"):
+            self._display_clusters(profile["clusters"])
 
-        print(f"\n{'=' * 60}\n")
+        # 3. Metrics & Predictions
+        self._display_performance_stats(profile)
+
+    def _display_data_quality(self, dq_data: Dict[str, Any]) -> None:
+        """Processes and displays Data Quality statistics."""
+        summary_rows = []
+        for key, data in dq_data.items():
+            shape = data.get("shape", [0, 0])
+            if shape[0] == 0 and shape[1] == 0:
+                continue
+
+            summary_rows.append(
+                {
+                    "Object": key,
+                    "Rows": shape[0],
+                    "Cols": shape[1],
+                    "Missing": data.get("missing_total", 0),
+                    "Dtypes": ", ".join(set(data.get("dtypes", {}).values())),
+                }
+            )
+
+        if summary_rows:
+            print("\n[Data Quality Summary]")
+            print(pd.DataFrame(summary_rows).to_string(index=False))
+
+            # Print Schema for non-empty objects
+            for key, data in dq_data.items():
+                if data.get("shape", [0, 0])[0] > 0:
+                    print(f"\n  > Schema: {key}")
+                    schema_df = pd.DataFrame(
+                        {
+                            "Column": data.get("columns", []),
+                            "Dtype": [
+                                data.get("dtypes", {}).get(c)
+                                for c in data.get("columns", [])
+                            ],
+                            "Missing": [
+                                data.get("missing_per_column", {}).get(c)
+                                for c in data.get("columns", [])
+                            ],
+                        }
+                    )
+                    print(textwrap.indent(schema_df.to_string(index=False), "    "))
+
+    def _display_clusters(self, cluster_data: Dict[str, Any]) -> None:
+        """Processes and displays Cluster Analysis statistics."""
+        for key, data in cluster_data.items():
+            print(f"\n[Cluster Analysis: {key}]")
+
+            # Summary Metrics
+            summary = pd.DataFrame(
+                [
+                    {
+                        "N_Clusters": data.get("n_clusters"),
+                        "N_Samples": data.get("n_samples"),
+                        "Std_Size": f"{data.get('std_cluster_size', 0):.2f}",
+                        "Balance": f"{data.get('balance_ratio', 0):.4f}",
+                    }
+                ]
+            )
+            print(summary.to_string(index=False))
+
+            # Distribution Table
+            dist = data.get("distribution", {})
+            perc = data.get("percentages", {})
+            dist_df = pd.DataFrame(
+                {
+                    "Cluster": list(dist.keys()),
+                    "Count": list(dist.values()),
+                    "Percentage (%)": [f"{p:.2f}%" for p in perc.values()],
+                }
+            )
+            print("  Distribution:")
+            print(textwrap.indent(dist_df.to_string(index=False), "    "))
+
+    def _display_performance_stats(self, profile: Dict[str, Any]) -> None:
+        """
+        Processes and displays metrics and prediction statistics.
+
+        Detects statistical dictionaries in predictions and expands them into
+        individual columns for improved readability and analysis.
+        """
+        # 1. Handle Simple Metrics (Scalars)
+        metric_rows = []
+        for key, data in profile.get("metrics", {}).items():
+            for m_name, m_val in data.get("values", {}).items():
+                metric_rows.append({"Group": key, "Metric": m_name, "Value": m_val})
+
+        if metric_rows:
+            print("\n[ Performance Metrics ]")
+            print(pd.DataFrame(metric_rows).to_string(index=False))
+
+        # 2. Handle Prediction Statistics (Distributions)
+        self._display_prediction_stats(profile.get("predictions", {}))
+
+    def _display_prediction_stats(self, pred_data: Dict[str, Any]) -> None:
+        """
+        Formats prediction distribution statistics into a tabular summary.
+
+        Args:
+            pred_data: Dictionary containing prediction groups and target stats.
+        """
+        rows: List[Dict[str, Any]] = []
+
+        for group_name, targets in pred_data.items():
+            if not isinstance(targets, dict):
+                continue
+
+            for target_name, stats in targets.items():
+                if not isinstance(stats, dict):
+                    continue
+
+                # Flatten statistical dictionary into a row
+                rows.append(
+                    {
+                        "Group": group_name,
+                        "Target": target_name,
+                        "Samples": stats.get("n_samples"),
+                        "Mean": f"{stats.get('mean', 0):.4f}",
+                        "Std": f"{stats.get('std', 0):.4f}",
+                        "Min": f"{stats.get('min', 0):.4f}",
+                        "Max": f"{stats.get('max', 0):.4f}",
+                        "Median": f"{stats.get('median', 0):.4f}",
+                    }
+                )
+
+        if rows:
+            print("\n[ Prediction Statistics ]")
+            # Display the stats in a clean table without index
+            stats_df = pd.DataFrame(rows)
+            print(stats_df.to_string(index=False, justify="left"))
 
 
 StepFactory.register("profiling", ProfilingStep)

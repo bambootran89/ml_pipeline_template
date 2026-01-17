@@ -107,8 +107,17 @@ class InferenceStep(PipelineStep):
         print(f"[{self.step_id}] Running inference on shape {x.shape}")
         predictions = model.predict(x)
 
-        # Store output
+        # Store output - always store to predictions
         self.set_output(context, "predictions", predictions)
+
+        # Also store to features if configured (for clustering/feature-generating steps)
+        # This ensures clustering models that output_as_feature work correctly in serve mode
+        if "features" in self.output_keys:
+            self.set_output(context, "features", predictions)
+            print(
+                f"[{self.step_id}] Also stored to features key: "
+                f"{self.output_keys['features']}"
+            )
 
         # Optional: Save predictions
         if self.save_path:

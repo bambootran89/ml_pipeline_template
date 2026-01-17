@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.pipeline.steps.base import BasePipelineStep
@@ -82,9 +84,14 @@ class DataModuleStep(BasePipelineStep):
         df_features = self.get_input(context, "features")
         df_targets = self.get_input(context, "targets", required=False)
 
+        # Track composed feature names for config injection
+        composed_feature_names: List[str] = []
+
         # Compose with additional features if specified
         if self.additional_feature_keys:
-            df_features = self._compose_features(context, df_features)
+            df_features, composed_feature_names = self._compose_features_with_names(
+                context, df_features
+            )
 
         # Build input DataFrame
         data_cfg: Dict[str, Any] = self.cfg.get("data", {})
@@ -97,9 +104,14 @@ class DataModuleStep(BasePipelineStep):
         else:
             input_df = df_features.copy()
 
+        # Inject composed feature names into config if we have additional features
+        cfg_for_dm = self._inject_composed_features_to_config(
+            composed_feature_names, context
+        )
+
         # Build DataModule
         print(f"[{self.step_id}] Building DataModule with shape {input_df.shape}")
-        dm = DataModuleFactory.build(self.cfg, input_df)
+        dm = DataModuleFactory.build(cfg_for_dm, input_df)
         dm.setup()
 
         self.set_output(context, "datamodule", dm)
@@ -128,6 +140,28 @@ class DataModuleStep(BasePipelineStep):
         -------
         pd.DataFrame
             Composed features.
+        """
+        composed, _ = self._compose_features_with_names(context, base_features)
+        return composed
+
+    def _compose_features_with_names(
+        self,
+        context: Dict[str, Any],
+        base_features: pd.DataFrame,
+    ) -> tuple[pd.DataFrame, List[str]]:
+        """Compose base features with additional sources and return feature names.
+
+        Parameters
+        ----------
+        context : Dict[str, Any]
+            Pipeline context.
+        base_features : pd.DataFrame
+            Base feature DataFrame.
+
+        Returns
+        -------
+        tuple[pd.DataFrame, List[str]]
+            Composed features DataFrame and list of all feature column names.
         """
         if not isinstance(base_features, pd.DataFrame):
             base_features = pd.DataFrame(base_features)
@@ -167,7 +201,68 @@ class DataModuleStep(BasePipelineStep):
             composed = pd.concat([composed, additional], axis=1)
             print(f"  + {key}: {additional.shape} -> Total: {composed.shape}")
 
-        return composed
+        # Return composed DataFrame and all feature column names
+        composed_feature_names = list(composed.columns)
+        return composed, composed_feature_names
+
+    def _inject_composed_features_to_config(
+        self,
+        composed_feature_names: List[str],
+        context: Dict[str, Any],
+    ) -> DictConfig:
+        """Inject composed feature names into config for DataModule.
+
+        This ensures BaseDataModule uses all composed features (base + additional)
+        without requiring changes to experiment yaml.
+
+        Parameters
+        ----------
+        composed_feature_names : List[str]
+            List of all feature column names after composition.
+        context : Dict[str, Any]
+            Pipeline context (for storing metadata).
+
+        Returns
+        -------
+        DictConfig
+            Modified config with injected feature names.
+        """
+        # Deep copy config to avoid mutating original
+        if isinstance(self.cfg, DictConfig):
+            cfg_copy = OmegaConf.to_container(self.cfg, resolve=True)
+            cfg_copy = OmegaConf.create(cfg_copy)
+        else:
+            cfg_copy = OmegaConf.create(copy.deepcopy(dict(self.cfg)))
+
+        # Only inject if we have composed features from additional_feature_keys
+        if composed_feature_names and self.additional_feature_keys:
+            original_features = OmegaConf.select(cfg_copy, "data.features", default=[])
+
+            # Update data.features with composed feature names
+            OmegaConf.update(cfg_copy, "data.features", composed_feature_names)
+
+            # Also update n_features in hyperparams if present
+            if (
+                OmegaConf.select(cfg_copy, "experiment.hyperparams.n_features")
+                is not None
+            ):
+                OmegaConf.update(
+                    cfg_copy,
+                    "experiment.hyperparams.n_features",
+                    len(composed_feature_names),
+                )
+
+            print(
+                f"[{self.step_id}] Injected composed features into config: "
+                f"{len(original_features)} -> {len(composed_feature_names)} features"
+            )
+
+            # Store composed feature metadata in context for downstream steps
+            # (serve, eval, tune can use this)
+            context["_composed_feature_names"] = composed_feature_names
+            context["_additional_feature_keys"] = self.additional_feature_keys
+
+        return cfg_copy
 
     def _ndarray_to_df(self, arr: np.ndarray, prefix: str) -> pd.DataFrame:
         """Convert numpy array to DataFrame.
