@@ -103,34 +103,26 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         return str(output_path)
 
     def _extract_inference_steps_excluding_generators(self, steps, feature_generators):
-        """Extract inference steps, excluding feature generator steps."""
-        # Get all inference steps
-        all_inference = self._extract_inference_steps(steps)
+        """Extract inference steps, exclude generators, sort by deps."""
+        all_inf = self._extract_inference_steps(steps)
+        fg_ids = {fg["step_id"] for fg in feature_generators}
+        fg_keys = {fg["model_key"] for fg in feature_generators}
 
-        # Get feature generator step IDs to exclude
-        fg_step_ids = {fg["step_id"] for fg in feature_generators}
-        fg_model_keys = {fg["model_key"] for fg in feature_generators}
-
-        # Filter out feature generators from inference steps
         filtered = []
-        for inf in all_inference:
-            model_key = inf.get("model_key", "")
-            step_id = inf.get("id", "").replace("_inference", "")
-
-            # Skip if this is a feature generator
-            if step_id in fg_step_ids or model_key in fg_model_keys:
-                print(
-                    f"[ApiGenerator] Excluding feature generator from inference: {step_id}"
-                )
+        for inf in all_inf:
+            mk = inf.get("model_key", "")
+            sid = inf.get("id", "").replace("_inference", "")
+            if sid in fg_ids or mk in fg_keys or f"fitted_{sid}" in fg_keys:
                 continue
-
-            # Also skip by model_key pattern
-            if f"fitted_{step_id}" in fg_model_keys:
-                print(
-                    f"[ApiGenerator] Excluding feature generator from inference: {step_id}"
-                )
-                continue
-
             filtered.append(inf)
 
-        return filtered
+        sorted_inf = self._sort_by_deps(filtered)
+
+        if sorted_inf != filtered:
+            print("[ApiGenerator] Sorted by deps:")
+            for i, s in enumerate(sorted_inf):
+                ak = s.get("additional_feature_keys", [])
+                dep = f" (deps: {ak})" if ak else ""
+                print(f"  {i+1}. {s.get('id', '?')}{dep}")
+
+        return sorted_inf

@@ -53,6 +53,57 @@ class ApiGeneratorExtractorsMixin:
 
         return inference_steps
 
+    def _sort_by_deps(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Sort steps by additional_feature_keys dependencies."""
+        if not steps:
+            return steps
+
+        # Map output_key -> step
+        out_map = {s.get("output_key"): s for s in steps if s.get("output_key")}
+
+        # Build deps: step_id -> [dep_ids]
+        deps: Dict[str, List[str]] = {}
+        by_id = {}
+        for s in steps:
+            sid = s.get("id", "")
+            by_id[sid] = s
+            deps[sid] = []
+            for k in s.get("additional_feature_keys", []):
+                if k in out_map:
+                    dep = out_map[k].get("id", "")
+                    if dep and dep != sid:
+                        deps[sid].append(dep)
+
+        # Topological sort
+        result: List[Dict[str, Any]] = []
+        visited: set = set()
+        visiting: set = set()
+
+        def visit(sid: str) -> None:
+            if sid in visited:
+                return
+            if sid in visiting:
+                return  # Cycle, skip
+            visiting.add(sid)
+            for dep in deps.get(sid, []):
+                if dep in by_id:
+                    visit(dep)
+            visiting.remove(sid)
+            visited.add(sid)
+            if sid in by_id:
+                result.append(by_id[sid])
+
+        for sid in deps:
+            if sid not in visited:
+                visit(sid)
+
+        # Add remaining
+        for s in steps:
+            if s not in result:
+                result.append(s)
+
+        return result
+
     def _infer_model_type(self, model_key: str) -> str:
         """
         Infer model type from model key based on predefined patterns.
