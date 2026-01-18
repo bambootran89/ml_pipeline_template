@@ -111,7 +111,8 @@ class InferenceStep(PipelineStep):
         self.set_output(context, "predictions", predictions)
 
         # Also store to features if configured (for clustering/feature-generating steps)
-        # This ensures clustering models that output_as_feature work correctly in serve mode
+        # This ensures clustering models that output_as_feature work correctly in
+        # serve mode
         if "features" in self.output_keys:
             self.set_output(context, "features", predictions)
             print(

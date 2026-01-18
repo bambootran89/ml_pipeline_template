@@ -411,7 +411,9 @@ class ApiGeneratorExtractorsMixin:
         Returns:
             List of feature generator configurations.
         """
-        # Step 1: Find additional_feature_keys from datamodule or feature_inference steps
+        # Step 1: Find additional_feature_keys from datamodule or
+        # feature_inference steps
+        _ = parent_pipeline_id
         additional_keys = self._find_additional_feature_keys(steps)
         if not additional_keys:
             print("[ApiGenerator] No additional_feature_keys found in config")
@@ -483,7 +485,7 @@ class ApiGeneratorExtractorsMixin:
             if wiring and wiring.get("outputs"):
                 outputs = wiring.outputs
                 if hasattr(outputs, "items"):
-                    for local_key, context_key in outputs.items():
+                    for _, context_key in outputs.items():
                         output_map[str(context_key)] = step
 
             # Recursively process sub-pipelines
@@ -523,13 +525,13 @@ class ApiGeneratorExtractorsMixin:
             if "predict" in run_method:
                 inference_method = "predict"
 
-        # Determine fg_type from step_id or step_type
-        fg_type = "transform"
-        step_id_lower = step_id.lower()
-        if step_type == "clustering" or "cluster" in step_id_lower:
-            fg_type = "clustering"
-        elif "pca" in step_id_lower:
-            fg_type = "pca"
+        # # Determine fg_type from step_id or step_type
+        # fg_type = "transform"
+        # step_id_lower = step_id.lower()
+        # if step_type == "clustering" or "cluster" in step_id_lower:
+        #     fg_type = "clustering"
+        # elif "pca" in step_id_lower:
+        #     fg_type = "pca"
 
         return {
             "step_id": step_id,
@@ -537,7 +539,7 @@ class ApiGeneratorExtractorsMixin:
             "artifact_name": step_id,
             "output_key": output_key,
             "inference_method": inference_method,
-            "step_type": fg_type,
+            "step_type": step_type,
         }
 
     def _is_feature_generator(self, step: Any) -> bool:
@@ -576,11 +578,13 @@ class ApiGeneratorExtractorsMixin:
             return True  # Clustering typically generates features
 
         # Dynamic adapters - only those that ADD new columns are feature generators
-        # Imputers and scalers MODIFY existing columns, so they're preprocessors, not generators
+        # Imputers and scalers MODIFY existing columns, so they're preprocessors,
+        # not generators
         if step_type == "dynamic_adapter":
             class_path = step.get("class_path", "").lower()
 
-            # EXCLUDE preprocessors that modify columns in place (not feature generators)
+            # EXCLUDE preprocessors that modify columns in place (not feature
+            # generators)
             if any(
                 x in class_path for x in ["imputer", "scaler", "normalizer", "encoder"]
             ):

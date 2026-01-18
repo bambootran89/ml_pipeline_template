@@ -354,7 +354,11 @@ class ServeService:
                     )
                     continue
 
-                result = inference_fn(x_input)
+                if (fg_type != "dynamic_adapter") and self.DATA_TYPE != "tabular":
+                    ts_x_input = self._prepare_input_timeseries(x_input, "ml")
+                    result = inference_fn(ts_x_input)
+                else:
+                    result = inference_fn(x_input)
                 additional_features[output_key] = result
                 result_shape = (
                     result.shape

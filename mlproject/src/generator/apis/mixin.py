@@ -52,7 +52,7 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         else:
             data_config = self._extract_data_config(cfg)
 
-        # IMPORTANT: Extract feature generators from SERVE config (has pipeline structure)
+        # Extract feature generators from SERVE config (has pipeline structure)
         # This is separate from data_config extraction because serve config has
         # the transformed sub-pipeline steps that define feature generators
         feature_generators = self._extract_feature_generators(list(steps))

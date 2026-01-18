@@ -268,89 +268,87 @@ class EvaluatorStep(PipelineStep):
     ) -> pd.DataFrame:
         """Restore column names if they were lost.
 
-        When features come from numpy arrays, column names become numeric.
-        This method restores proper column names for base features using
-        the expected features from config, and generates proper names for
-        additional features.
+        Args:
+            df: DataFrame with potentially numeric column names.
+            expected_features: Expected feature names from experiment config.
+            metadata: Feature composition metadata with column indices.
 
-        Parameters
-        ----------
-        df : pd.DataFrame
-            DataFrame with potentially numeric column names.
-        expected_features : List[str]
-            Expected feature names from experiment config.
-        metadata : Dict[str, tuple]
-            Feature composition metadata with column indices.
-
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with proper column names.
+        Returns:
+            pd.DataFrame: DataFrame with proper column names.
         """
         current_columns = list(df.columns)
-
-        # Check if columns need restoration (numeric names like 0, 1, 2 or base_0, etc)
-        first_col = str(current_columns[0]) if current_columns else ""
-        needs_restore = (
-            first_col.isdigit()
-            or first_col.startswith("base_")
-            or (expected_features and first_col not in expected_features)
-        )
-
-        if not needs_restore:
+        if not self._should_restore(current_columns, expected_features):
             return df
 
         print(f"[{self.step_id}] Restoring column names...")
 
-        new_columns = []
-
         # Get base feature indices from metadata
         base_start, base_end = metadata.get("base", (0, len(expected_features)))
-        n_base_cols = base_end - base_start
+        new_columns = self._generate_base_columns(
+            current_columns, expected_features, base_end - base_start
+        )
 
-        # Restore base feature names
-        if expected_features and len(expected_features) == n_base_cols:
-            new_columns.extend(expected_features)
-            print(f"  Base: restored {len(expected_features)} feature names")
-        else:
-            # Keep original or generate names
-            for i in range(n_base_cols):
-                if i < len(current_columns):
-                    new_columns.append(current_columns[i])
-                else:
-                    new_columns.append(f"feature_{i}")
+        # Handle additional features
+        for source, (start, end) in metadata.items():
+            if source != "base":
+                extra_cols = self._generate_extra_columns(
+                    current_columns, source, start, end
+                )
+                new_columns.extend(extra_cols)
+                print(f"  {source}: {end - start} columns")
 
-        # Handle additional feature columns
-        for source_name, (start_idx, end_idx) in metadata.items():
-            if source_name == "base":
-                continue
-
-            n_cols = end_idx - start_idx
-            for i in range(n_cols):
-                col_idx = start_idx + i
-                if col_idx < len(current_columns):
-                    # Use existing name if it looks correct (prefixed)
-                    existing = str(current_columns[col_idx])
-                    if existing.startswith(f"{source_name}_"):
-                        new_columns.append(existing)
-                    else:
-                        new_columns.append(f"{source_name}_{i}")
-                else:
-                    new_columns.append(f"{source_name}_{i}")
-
-            print(f"  {source_name}: {n_cols} columns")
-
-        # Apply new column names
         if len(new_columns) == len(df.columns):
             df = df.copy()
             df.columns = new_columns
         else:
             print(
-                f"  Warning: Column count mismatch "
-                f"(expected {len(new_columns)}, got {len(df.columns)})"
+                f"  Warning: Mismatch (expected \
+                {len(new_columns)}, got {len(df.columns)})"
             )
 
         return df
+
+    def _should_restore(
+        self, current_columns: List, expected_features: List[str]
+    ) -> bool:
+        """Check if columns need restoration."""
+        if not current_columns:
+            return False
+        first_col = str(current_columns[0])
+        return (
+            first_col.isdigit()
+            or first_col.startswith("base_")
+            or (expected_features and first_col not in expected_features)
+        )
+
+    def _generate_base_columns(
+        self, current_columns: List, expected: List[str], n_base: int
+    ) -> List[str]:
+        """Generate names for base features."""
+        if expected and len(expected) == n_base:
+            print(f"  Base: restored {len(expected)} feature names")
+            return list(expected)
+
+        names = []
+        for i in range(n_base):
+            name = current_columns[i] if i < len(current_columns) else f"feature_{i}"
+            names.append(str(name))
+        return names
+
+    def _generate_extra_columns(
+        self, current_columns: List, source: str, start: int, end: int
+    ) -> List[str]:
+        """Generate names for additional features based on metadata."""
+        names = []
+        for i in range(end - start):
+            col_idx = start + i
+            if col_idx < len(current_columns):
+                existing = str(current_columns[col_idx])
+                if existing.startswith(f"{source}_"):
+                    names.append(existing)
+                    continue
+            names.append(f"{source}_{i}")
+        return names
 
     def _inject_composed_features_to_config(
         self,
