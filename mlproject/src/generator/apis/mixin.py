@@ -107,7 +107,6 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         all_inf = self._extract_inference_steps(steps)
         fg_ids = {fg["step_id"] for fg in feature_generators}
         fg_keys = {fg["model_key"] for fg in feature_generators}
-
         filtered = []
         for inf in all_inf:
             mk = inf.get("model_key", "")
@@ -115,7 +114,6 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
             if sid in fg_ids or mk in fg_keys or f"fitted_{sid}" in fg_keys:
                 continue
             filtered.append(inf)
-
         sorted_inf = self._sort_by_deps(filtered)
 
         if sorted_inf != filtered:

@@ -50,7 +50,6 @@ class ApiGeneratorExtractorsMixin:
             handler = handlers.get(step_type)
             if handler:
                 inference_steps.extend(handler(step))
-
         return inference_steps
 
     def _sort_by_deps(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -68,7 +67,8 @@ class ApiGeneratorExtractorsMixin:
             sid = s.get("id", "")
             by_id[sid] = s
             deps[sid] = []
-            for k in s.get("additional_feature_keys", []):
+            additional_keys = s.get("additional_feature_keys") or []
+            for k in additional_keys:
                 if k in out_map:
                     dep = out_map[k].get("id", "")
                     if dep and dep != sid:
