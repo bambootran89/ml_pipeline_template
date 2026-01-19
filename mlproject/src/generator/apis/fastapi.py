@@ -120,7 +120,7 @@ from pydantic import BaseModel, Field
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 from mlproject.src.features.facade import FeatureStoreFacade
-from mlproject.src.generator.constants import API_DEFAULTS, CONTEXT_KEYS
+from mlproject.src.generator.pipeline.constants import API_DEFAULTS, CONTEXT_KEYS
 
 app = FastAPI(
     title="{ctx.pipeline_name} API",
@@ -425,7 +425,7 @@ class ServeService:
             preprocessed
         )
         composed = self.compose_features(preprocessed, additional_features)
-        context = {{CONTEXT_KEYS.PREPROCESSED_DATA: composed}}
+        context = {CONTEXT_KEYS.PREPROCESSED_DATA: composed}
 
         if self.DATA_TYPE == "tabular":
             result = self.predict_tabular_batch(context)
@@ -690,6 +690,8 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 """
