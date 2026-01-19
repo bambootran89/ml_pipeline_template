@@ -140,17 +140,6 @@ def app_builder(args: Dict[str, str]) -> Any:
     return ServeAPI.bind(preprocess_deployment, model_deployment)
 
 if __name__ == "__main__":
-    import sys
-    # Default values
-    host = "0.0.0.0"
-    port = 8000
-
-    # Parse command line arguments for host/port (optional)
-    if "--host" in sys.argv:
-        host = sys.argv[sys.argv.index("--host") + 1]
-    if "--port" in sys.argv:
-        port = int(sys.argv[sys.argv.index("--port") + 1])
-
     serve.run(app_builder({{}}))
 """
 
