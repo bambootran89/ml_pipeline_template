@@ -60,10 +60,15 @@ def _configure_server_settings(
             f'uvicorn.run(app, host="{host}", port={port})',
         )
     elif framework == "ray":
+        # Ray Serve 2.x uses serve.run() which automatically starts the server
+        # We need to pass host/port via the Ray runtime environment
         code = code.replace(
             "serve.run(app_builder({}))",
-            f'serve.start(http_options={{"host": "{host}", "port": {port}}})\n'
-            f"    serve.run(app_builder({{}}))",
+            f'serve.run(\n'
+            f'        app_builder({{}}),\n'
+            f'        host="{host}",\n'
+            f'        port={port}\n'
+            f'    )',
         )
 
     with open(api_path, "w", encoding="utf-8") as f:

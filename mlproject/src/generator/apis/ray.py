@@ -140,6 +140,17 @@ def app_builder(args: Dict[str, str]) -> Any:
     return ServeAPI.bind(preprocess_deployment, model_deployment)
 
 if __name__ == "__main__":
+    import sys
+    # Default values
+    host = "0.0.0.0"
+    port = 8000
+
+    # Parse command line arguments for host/port (optional)
+    if "--host" in sys.argv:
+        host = sys.argv[sys.argv.index("--host") + 1]
+    if "--port" in sys.argv:
+        port = int(sys.argv[sys.argv.index("--port") + 1])
+
     serve.run(app_builder({{}}))
 """
 
@@ -302,6 +313,7 @@ if __name__ == "__main__":
     ray_actor_options={{"num_cpus": 1}}
 )
 class ModelService:
+    DATA_TYPE = "{ctx.data_config.data_type}"
     INPUT_CHUNK_LENGTH = {ctx.data_config.input_chunk_length}
     OUTPUT_CHUNK_LENGTH = {ctx.data_config.output_chunk_length}
     ADDITIONAL_FEATURE_KEYS = {repr(
