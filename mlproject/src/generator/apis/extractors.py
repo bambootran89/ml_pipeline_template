@@ -1,10 +1,20 @@
 """Mixins for extracting API logic from pipeline configurations."""
+
 # flake8: noqa: C901
 # pylint: disable=R1702, R0912
 
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+
+from ..pipeline.constants import (
+    CONTEXT_KEYS,
+    DATA_DEFAULTS,
+    INFERENCE_METHODS,
+    MODEL_PATTERNS,
+    STEP_CONSTANTS,
+)
+from ..pipeline.generator_config import ConfigurablePatternMatcher, GeneratorConfig
 
 
 class ApiGeneratorExtractorsMixin:
@@ -14,11 +24,14 @@ class ApiGeneratorExtractorsMixin:
     by identifying model-loading nodes and their dependencies.
     """
 
-    # Model type patterns for type inference
-    MODEL_PATTERNS = {
-        "dl": ["darts", "pytorch", "tensorflow", "keras", "lstm", "tft", "nhits"],
-        "ml": ["sklearn", "xgboost", "catboost", "lightgbm", "regression", "forest"],
-    }
+    def __init__(self, config: Optional[GeneratorConfig] = None):
+        """Initialize the extractor mixin.
+
+        Args:
+            config: Optional GeneratorConfig instance. If None, uses default config.
+        """
+        self.config = config or GeneratorConfig()
+        self.matcher = ConfigurablePatternMatcher(self.config)
 
     def _extract_inference_steps(self, steps: List[Any]) -> List[Dict[str, Any]]:
         """Extract all model inference steps from pipeline.
@@ -36,13 +49,13 @@ class ApiGeneratorExtractorsMixin:
 
         # Dispatcher map for step handlers
         handlers = {
-            "training": self._get_training_inference,
-            "clustering": self._get_training_inference,
-            "inference": self._get_inference_info,
-            "feature_inference": self._get_inference_info,
-            "branch": self._get_branch_inference,
-            "sub_pipeline": self._get_nested_inference,
-            "parallel": self._get_nested_inference,
+            STEP_CONSTANTS.TRAINER: self._get_training_inference,
+            STEP_CONSTANTS.CLUSTERING: self._get_training_inference,
+            STEP_CONSTANTS.INFERENCE: self._get_inference_info,
+            STEP_CONSTANTS.FEATURE_INFERENCE: self._get_inference_info,
+            STEP_CONSTANTS.BRANCH: self._get_branch_inference,
+            STEP_CONSTANTS.SUB_PIPELINE: self._get_nested_inference,
+            STEP_CONSTANTS.PARALLEL: self._get_nested_inference,
         }
 
         for step in steps:
@@ -114,11 +127,7 @@ class ApiGeneratorExtractorsMixin:
         Returns:
             String representing the model category (default is "ml").
         """
-        key_lower = model_key.lower()
-        for model_type, patterns in self.MODEL_PATTERNS.items():
-            if any(pattern in key_lower for pattern in patterns):
-                return model_type
-        return "ml"
+        return self.matcher.infer_model_type(model_key)
 
     def _get_training_inference(self, step: Any) -> List[Dict[str, Any]]:
         """Extract inference info from a training step."""
@@ -130,12 +139,12 @@ class ApiGeneratorExtractorsMixin:
 
         return [
             {
-                "id": f"{step_id}_inference",
+                "id": f"{step_id}{CONTEXT_KEYS.INFERENCE_SUFFIX}",
                 "model_key": model_key,
                 "model_type": model_type,
                 "inputs": list(inputs),
-                "features_key": "preprocessed_data",
-                "output_key": f"{step_id}_predictions",
+                "features_key": CONTEXT_KEYS.PREPROCESSED_DATA,
+                "output_key": f"{step_id}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}",
             }
         ]
 
@@ -163,7 +172,7 @@ class ApiGeneratorExtractorsMixin:
             model_key = (
                 step.get("source_model_key")
                 or step.get("model_key")
-                or step_id.replace("_inference", "")
+                or step_id.replace(CONTEXT_KEYS.INFERENCE_SUFFIX, "")
             )
 
         model_type = self._infer_model_type(model_key)
@@ -176,15 +185,14 @@ class ApiGeneratorExtractorsMixin:
             if wiring and wiring.get("inputs"):
                 inputs = wiring.get("inputs")
                 # heuristic to find input data key
-                for key in ["features", "X", "data", "input"]:
-                    if key in inputs:
-                        features_key = inputs[key]
-                        break
+                features_key = self.matcher.resolve_feature_key(inputs)
 
         if not features_key:
-            features_key = "preprocessed_data"
+            features_key = CONTEXT_KEYS.PREPROCESSED_DATA
 
-        output_key = step.get("output_key") or f"{model_key}_predictions"
+        output_key = (
+            step.get("output_key") or f"{model_key}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}"
+        )
 
         # Extract additional_feature_keys if present
         additional_feature_keys = step.get("additional_feature_keys")
@@ -233,7 +241,10 @@ class ApiGeneratorExtractorsMixin:
         load_map = {}
         for step in steps:
             step_type = getattr(step, "type", None) or step.get("type")
-            if step_type in ["init_artifacts", "mlflow_loader"]:
+            if step_type in [
+                STEP_CONSTANTS.INIT_ARTIFACTS_ID,
+                STEP_CONSTANTS.MLFLOW_LOADER,
+            ]:
                 # Handle artifacts from init_artifacts or mlflow_loader step
                 items = (
                     step.get("load_map")
@@ -250,19 +261,21 @@ class ApiGeneratorExtractorsMixin:
                                 load_map[key] = val
                         elif isinstance(items, dict):
                             for k, v in items.items():
-                                if any(
-                                    x in k.lower()
-                                    for x in ["model", "preprocess", "scaler"]
+                                k_lower = k.lower()
+                                if (
+                                    STEP_CONSTANTS.MODEL.lower() in k_lower
+                                    or STEP_CONSTANTS.PREPROCESS_ID in k_lower
+                                    or "scaler" in k_lower
                                 ):
                                     load_map[k] = v
                             break
 
             # Recursively explore nested steps for load_map (unlikely but possible)
-            elif step_type == "branch":
+            elif step_type == STEP_CONSTANTS.BRANCH:
                 load_map.update(
                     self._extract_load_map([step.get("if_true"), step.get("if_false")])
                 )
-            elif step_type in ["sub_pipeline", "parallel"]:
+            elif step_type in [STEP_CONSTANTS.SUB_PIPELINE, STEP_CONSTANTS.PARALLEL]:
                 nested_steps = step.get("steps") or (
                     step.get("pipeline", {}).get("steps")
                 )
@@ -278,14 +291,17 @@ class ApiGeneratorExtractorsMixin:
                 continue
             step_type = getattr(step, "type", None) or step.get("type")
 
-            if step_type == "preprocessor":
+            if step_type == STEP_CONSTANTS.PREPROCESSOR:
                 return {
                     "id": getattr(step, "id", None) or step.get("id"),
                     "instance_key": step.get("instance_key"),
                     "args": getattr(step, "args", None) or step,
                 }
 
-            if step_type in ["init_artifacts", "mlflow_loader"]:
+            if step_type in [
+                STEP_CONSTANTS.INIT_ARTIFACTS_ID,
+                STEP_CONSTANTS.MLFLOW_LOADER,
+            ]:
                 items = (
                     step.get("load_map")
                     or step.get("artifacts")
@@ -296,24 +312,31 @@ class ApiGeneratorExtractorsMixin:
                         if hasattr(item, "get"):
                             key = item.get("context_key") or item.get("step_id")
                             val = item.get("step_id")
-                            if key and (
-                                "preprocess" in key.lower() or "scaler" in key.lower()
-                            ):
-                                return {"id": key, "artifact_name": val}
+                            if key:
+                                key_lower = key.lower()
+                                if (
+                                    STEP_CONSTANTS.PREPROCESS_ID in key_lower
+                                    or "scaler" in key_lower
+                                ):
+                                    return {"id": key, "artifact_name": val}
                         elif isinstance(items, dict):
                             for k, v in items.items():
-                                if "preprocess" in k.lower() or "scaler" in k.lower():
+                                k_lower = k.lower()
+                                if (
+                                    STEP_CONSTANTS.PREPROCESS_ID in k_lower
+                                    or "scaler" in k_lower
+                                ):
                                     return {"id": k, "artifact_name": v}
                             break
 
             # Recursive search
-            if step_type == "branch":
+            if step_type == STEP_CONSTANTS.BRANCH:
                 info = self._extract_preprocessor_info(
                     [step.get("if_true"), step.get("if_false")]
                 )
                 if info:
                     return info
-            elif step_type in ["sub_pipeline", "parallel"]:
+            elif step_type in [STEP_CONSTANTS.SUB_PIPELINE, STEP_CONSTANTS.PARALLEL]:
                 nested_steps = step.get("steps") or (
                     step.get("pipeline", {}).get("steps")
                 )
@@ -346,8 +369,13 @@ class ApiGeneratorExtractorsMixin:
             return load_map[prep_id]
 
         # Fallback to id if it looks like a preprocessor
-        if prep_id and ("preprocess" in prep_id.lower() or "scaler" in prep_id.lower()):
-            return prep_id
+        if prep_id:
+            prep_id_lower = prep_id.lower()
+            if (
+                STEP_CONSTANTS.PREPROCESS_ID in prep_id_lower
+                or "scaler" in prep_id_lower
+            ):
+                return prep_id
 
         return None
 
@@ -358,7 +386,7 @@ class ApiGeneratorExtractorsMixin:
         # 1. Try to get from data section
         data = getattr(cfg, "data", None) or cfg.get("data")
         if data:
-            data_cfg["data_type"] = data.get("type", "timeseries")
+            data_cfg["data_type"] = data.get("type", DATA_DEFAULTS.TIMESERIES)
             data_cfg["features"] = list(data.get("features", []))
             data_cfg["path"] = data.get("path", "")
             data_cfg["entity_key"] = data.get("entity_key", "")
@@ -367,10 +395,10 @@ class ApiGeneratorExtractorsMixin:
         experiment = getattr(cfg, "experiment", None) or cfg.get("experiment")
         if experiment:
             exp_type = experiment.get("type")
-            if exp_type in ["classification", "regression"]:
-                data_cfg["data_type"] = "tabular"
-            elif exp_type in ["multivariate", "univariate"]:
-                data_cfg["data_type"] = "timeseries"
+            if exp_type in [DATA_DEFAULTS.CLASSIFICATION, DATA_DEFAULTS.REGRESSION]:
+                data_cfg["data_type"] = DATA_DEFAULTS.TABULAR
+            elif exp_type in [DATA_DEFAULTS.MULTIVARIATE, DATA_DEFAULTS.UNIVARIATE]:
+                data_cfg["data_type"] = DATA_DEFAULTS.TIMESERIES
             elif exp_type:
                 # Use experiment type if data type not yet set
                 if "data_type" not in data_cfg:
@@ -387,12 +415,14 @@ class ApiGeneratorExtractorsMixin:
                 data_cfg["feature_generators"] = feature_generators
 
         # Defaults
-        data_cfg.setdefault("data_type", "timeseries")
-        data_cfg.setdefault("features", [])
-        data_cfg.setdefault("input_chunk_length", 24)
-        data_cfg.setdefault("output_chunk_length", 6)
-        data_cfg.setdefault("additional_feature_keys", [])
-        data_cfg.setdefault("feature_generators", [])
+        data_cfg.setdefault("data_type", DATA_DEFAULTS.DATA_TYPE)
+        data_cfg.setdefault("features", DATA_DEFAULTS.FEATURES)
+        data_cfg.setdefault("input_chunk_length", DATA_DEFAULTS.INPUT_CHUNK_LENGTH)
+        data_cfg.setdefault("output_chunk_length", DATA_DEFAULTS.OUTPUT_CHUNK_LENGTH)
+        data_cfg.setdefault(
+            "additional_feature_keys", DATA_DEFAULTS.ADDITIONAL_FEATURE_KEYS
+        )
+        data_cfg.setdefault("feature_generators", DATA_DEFAULTS.FEATURE_GENERATORS)
 
         return data_cfg
 
@@ -449,19 +479,19 @@ class ApiGeneratorExtractorsMixin:
             step_type = getattr(step, "type", None) or step.get("type")
 
             # Check datamodule step
-            if step_type == "datamodule":
+            if step_type == STEP_CONSTANTS.DATAMODULE:
                 additional = step.get("additional_feature_keys")
                 if additional:
                     keys.extend(list(additional))
 
             # Check feature_inference step
-            if step_type == "feature_inference":
+            if step_type == STEP_CONSTANTS.FEATURE_INFERENCE:
                 additional = step.get("additional_feature_keys")
                 if additional:
                     keys.extend(list(additional))
 
             # Recursively check sub-pipelines
-            if step_type == "sub_pipeline":
+            if step_type == STEP_CONSTANTS.SUB_PIPELINE:
                 pipeline = step.get("pipeline")
                 if pipeline and "steps" in pipeline:
                     keys.extend(
@@ -489,13 +519,13 @@ class ApiGeneratorExtractorsMixin:
                         output_map[str(context_key)] = step
 
             # Recursively process sub-pipelines
-            if step_type == "sub_pipeline":
+            if step_type == STEP_CONSTANTS.SUB_PIPELINE:
                 pipeline = step.get("pipeline")
                 if pipeline and "steps" in pipeline:
                     nested_map = self._build_output_key_map(list(pipeline.steps))
                     output_map.update(nested_map)
 
-            elif step_type == "parallel":
+            elif step_type == STEP_CONSTANTS.PARALLEL:
                 nested_steps = step.get("steps") or []
                 nested_map = self._build_output_key_map(nested_steps)
                 output_map.update(nested_map)
@@ -513,17 +543,17 @@ class ApiGeneratorExtractorsMixin:
             return None
 
         # Determine inference method based on step type
-        inference_method = "transform"
-        if step_type in ["clustering", "trainer"]:
-            inference_method = "predict"
-        elif step_type == "inference":
+        inference_method = INFERENCE_METHODS.TRANSFORM
+        if step_type in [STEP_CONSTANTS.CLUSTERING, STEP_CONSTANTS.TRAINER]:
+            inference_method = INFERENCE_METHODS.PREDICT
+        elif step_type == STEP_CONSTANTS.INFERENCE:
             # Check step_id for hints
             if "cluster" in step_id.lower():
-                inference_method = "predict"
+                inference_method = INFERENCE_METHODS.PREDICT
         elif step.get("run_method"):
             run_method = str(step.run_method)
-            if "predict" in run_method:
-                inference_method = "predict"
+            if INFERENCE_METHODS.PREDICT in run_method:
+                inference_method = INFERENCE_METHODS.PREDICT
 
         # # Determine fg_type from step_id or step_type
         # fg_type = "transform"
@@ -535,7 +565,7 @@ class ApiGeneratorExtractorsMixin:
 
         return {
             "step_id": step_id,
-            "model_key": f"fitted_{step_id}",
+            "model_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{step_id}",
             "artifact_name": step_id,
             "output_key": output_key,
             "inference_method": inference_method,
@@ -565,13 +595,13 @@ class ApiGeneratorExtractorsMixin:
 
         step_type = getattr(step, "type", None) or step.get("type")
 
-        if step_type == "clustering":
+        if step_type == STEP_CONSTANTS.CLUSTERING:
             return self._check_clustering_generator(step)
 
-        if step_type == "dynamic_adapter":
+        if step_type == STEP_CONSTANTS.DYNAMIC_ADAPTER:
             return self._check_dynamic_adapter_generator(step)
 
-        if step_type == "inference":
+        if step_type == STEP_CONSTANTS.INFERENCE:
             return self._check_inference_generator(step)
 
         return False
@@ -582,9 +612,8 @@ class ApiGeneratorExtractorsMixin:
         if wiring and wiring.get("outputs"):
             outputs = wiring.outputs
             # Has feature output (not just model)
-            for key in ["features", "cluster_labels", "predictions"]:
-                if key in outputs:
-                    return True
+            if self.matcher.resolve_output_key(outputs):
+                return True
         return True  # Clustering typically generates features
 
     def _check_dynamic_adapter_generator(self, step: Any) -> bool:
@@ -592,11 +621,11 @@ class ApiGeneratorExtractorsMixin:
         class_path = step.get("class_path", "").lower()
 
         # EXCLUDE preprocessors that modify columns in place
-        if any(x in class_path for x in ["imputer", "scaler", "normalizer", "encoder"]):
+        if any(x in class_path for x in MODEL_PATTERNS.PREPROCESSOR_PATTERNS):
             return False
 
         # PCA, clustering add NEW columns - these are feature generators
-        if any(x in class_path for x in ["pca", "cluster", "kmeans"]):
+        if any(x in class_path for x in MODEL_PATTERNS.FEATURE_GENERATOR_PATTERNS):
             return True
 
         # Check output_as_feature flag for other dynamic adapters
@@ -610,7 +639,10 @@ class ApiGeneratorExtractorsMixin:
         step_id_lower = step_id.lower()
 
         # EXCLUDE preprocessors (impute, scale) - they don't add new columns
-        if any(x in step_id_lower for x in ["impute", "scale", "normalize"]):
+        preprocessor_keywords = (
+            MODEL_PATTERNS.IMPUTATION_KEYWORDS + MODEL_PATTERNS.SCALING_KEYWORDS
+        )
+        if any(x in step_id_lower for x in preprocessor_keywords):
             return False
 
         wiring = step.get("wiring")
@@ -621,7 +653,11 @@ class ApiGeneratorExtractorsMixin:
                 return True
 
         # Only cluster and pca add new columns
-        if any(x in step_id_lower for x in ["cluster", "pca"]):
+        feature_gen_keywords = (
+            MODEL_PATTERNS.CLUSTERING_KEYWORDS
+            + MODEL_PATTERNS.DIMENSIONALITY_REDUCTION_KEYWORDS
+        )
+        if any(x in step_id_lower for x in feature_gen_keywords):
             return True
         return False
 
@@ -651,7 +687,7 @@ class ApiGeneratorExtractorsMixin:
 
         return {
             "step_id": step_id,
-            "model_key": f"fitted_{step_id}",
+            "model_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{step_id}",
             "artifact_name": step_id,
             "output_key": output_key,
             "inference_method": inference_method,
@@ -664,69 +700,72 @@ class ApiGeneratorExtractorsMixin:
         wiring = step.get("wiring")
         if wiring and wiring.get("outputs"):
             outputs = wiring.outputs
-            # Try common output keys
-            for key in ["features", "cluster_labels", "predictions", "data"]:
-                if key in outputs:
-                    output_key = outputs[key]
-                    break
-            # Fallback to first output
+            # Try common output keys using matcher
+            output_key = self.matcher.resolve_output_key(outputs)
+            # Fallback to first output if matcher didn't find anything
             if not output_key and hasattr(outputs, "keys"):
                 keys = list(outputs.keys())
                 if keys:
                     output_key = outputs[keys[0]]
 
         if not output_key:
-            output_key = f"{step_id}_features"
+            output_key = f"{step_id}{CONTEXT_KEYS.FEATURES_SUFFIX}"
         return output_key
 
     def _determine_fg_inference_method(
         self, step: Any, step_type: str, step_id: str
     ) -> str:
         """Determine inference method for feature generator."""
-        inference_method = "transform"
-        if step_type == "clustering":
-            inference_method = "predict"
-        elif step_type == "inference":
+        inference_method = INFERENCE_METHODS.TRANSFORM
+        if step_type == STEP_CONSTANTS.CLUSTERING:
+            inference_method = INFERENCE_METHODS.PREDICT
+        elif step_type == STEP_CONSTANTS.INFERENCE:
             # For transformed inference steps, check step_id for type hints
             step_id_lower = step_id.lower()
-            if "cluster" in step_id_lower:
-                inference_method = "predict"
+            if any(x in step_id_lower for x in MODEL_PATTERNS.CLUSTERING_KEYWORDS):
+                inference_method = INFERENCE_METHODS.PREDICT
             else:
-                inference_method = "transform"
+                inference_method = INFERENCE_METHODS.TRANSFORM
         elif step.get("run_method"):
             run_method = step.run_method
-            if "transform" in run_method:
-                inference_method = "transform"
-            elif "predict" in run_method:
-                inference_method = "predict"
+            if INFERENCE_METHODS.TRANSFORM in run_method:
+                inference_method = INFERENCE_METHODS.TRANSFORM
+            elif INFERENCE_METHODS.PREDICT in run_method:
+                inference_method = INFERENCE_METHODS.PREDICT
         return inference_method
 
     def _determine_fg_type(self, step: Any, step_type: str, step_id: str) -> str:
         """Determine feature generator type."""
-        fg_type = "transform"
-        if step_type == "clustering":
-            fg_type = "clustering"
-        elif step_type == "inference":
+        fg_type = INFERENCE_METHODS.TRANSFORM
+        if step_type == STEP_CONSTANTS.CLUSTERING:
+            fg_type = STEP_CONSTANTS.CLUSTERING
+        elif step_type == STEP_CONSTANTS.INFERENCE:
             # For transformed inference steps, infer type from step_id
             step_id_lower = step_id.lower()
-            if "cluster" in step_id_lower or "kmeans" in step_id_lower:
-                fg_type = "clustering"
-            elif "pca" in step_id_lower:
+            if any(x in step_id_lower for x in MODEL_PATTERNS.CLUSTERING_KEYWORDS):
+                fg_type = STEP_CONSTANTS.CLUSTERING
+            elif any(
+                x in step_id_lower
+                for x in MODEL_PATTERNS.DIMENSIONALITY_REDUCTION_KEYWORDS
+            ):
                 fg_type = "pca"
-            elif "impute" in step_id_lower:
+            elif any(x in step_id_lower for x in MODEL_PATTERNS.IMPUTATION_KEYWORDS):
                 fg_type = "imputer"
-            elif "scaler" in step_id_lower:
+            elif any(x in step_id_lower for x in MODEL_PATTERNS.SCALING_KEYWORDS):
                 fg_type = "scaler"
-        elif step_type == "dynamic_adapter":
+        elif step_type == STEP_CONSTANTS.DYNAMIC_ADAPTER:
             class_path = step.get("class_path", "").lower()
-            if "pca" in class_path:
+            if any(
+                x in class_path
+                for x in MODEL_PATTERNS.DIMENSIONALITY_REDUCTION_KEYWORDS
+            ):
                 fg_type = "pca"
-            elif "imputer" in class_path or "impute" in class_path:
+            elif any(x in class_path for x in MODEL_PATTERNS.IMPUTATION_KEYWORDS):
                 fg_type = "imputer"
-            elif "scaler" in class_path:
+            elif any(x in class_path for x in MODEL_PATTERNS.SCALING_KEYWORDS):
                 fg_type = "scaler"
-            elif "cluster" in class_path or "kmeans" in class_path:
-                fg_type = "clustering"
+            elif any(x in class_path for x in MODEL_PATTERNS.CLUSTERING_KEYWORDS):
+                fg_type = STEP_CONSTANTS.CLUSTERING
         return fg_type
 
     def _extract_datamodule_recursive(self, steps: List[Any]) -> Dict[str, Any]:
@@ -739,7 +778,7 @@ class ApiGeneratorExtractorsMixin:
             step_type = getattr(step, "type", None) or step.get("type")
 
             # Check for datamodule step with additional_feature_keys
-            if step_type == "datamodule":
+            if step_type == STEP_CONSTANTS.DATAMODULE:
                 additional_keys = step.get("additional_feature_keys")
                 if additional_keys:
                     data_cfg["additional_feature_keys"] = list(additional_keys)
@@ -760,13 +799,13 @@ class ApiGeneratorExtractorsMixin:
                 # for additional_feature_keys
 
             # Recursive search
-            if step_type == "branch":
+            if step_type == STEP_CONSTANTS.BRANCH:
                 res = self._extract_datamodule_recursive(
                     [step.get("if_true"), step.get("if_false")]
                 )
                 if res:
                     data_cfg.update(res)
-            elif step_type in ["sub_pipeline", "parallel"]:
+            elif step_type in [STEP_CONSTANTS.SUB_PIPELINE, STEP_CONSTANTS.PARALLEL]:
                 nested_steps = step.get("steps") or (
                     step.get("pipeline", {}).get("steps")
                 )

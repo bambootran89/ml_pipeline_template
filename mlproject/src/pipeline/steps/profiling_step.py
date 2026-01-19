@@ -282,27 +282,41 @@ class ProfilingStep(BasePipelineStep):
         def _stats(arr: np.ndarray) -> Dict[str, Any]:
             return {
                 "n_samples": arr.size,
-                "mean": round(float(np.nanmean(arr)), 6)
-                if not np.all(np.isnan(arr))
-                else float("nan"),
-                "std": round(float(np.nanstd(arr)), 6)
-                if not np.all(np.isnan(arr))
-                else float("nan"),
-                "min": round(float(np.nanmin(arr)), 6)
-                if not np.all(np.isnan(arr))
-                else float("nan"),
-                "max": round(float(np.nanmax(arr)), 6)
-                if not np.all(np.isnan(arr))
-                else float("nan"),
-                "median": round(float(np.nanmedian(arr)), 6)
-                if not np.all(np.isnan(arr))
-                else float("nan"),
-                "q25": round(float(np.nanpercentile(arr, 25)), 6)
-                if not np.all(np.isnan(arr))
-                else float("nan"),
-                "q75": round(float(np.nanpercentile(arr, 75)), 6)
-                if not np.all(np.isnan(arr))
-                else float("nan"),
+                "mean": (
+                    round(float(np.nanmean(arr)), 6)
+                    if not np.all(np.isnan(arr))
+                    else float("nan")
+                ),
+                "std": (
+                    round(float(np.nanstd(arr)), 6)
+                    if not np.all(np.isnan(arr))
+                    else float("nan")
+                ),
+                "min": (
+                    round(float(np.nanmin(arr)), 6)
+                    if not np.all(np.isnan(arr))
+                    else float("nan")
+                ),
+                "max": (
+                    round(float(np.nanmax(arr)), 6)
+                    if not np.all(np.isnan(arr))
+                    else float("nan")
+                ),
+                "median": (
+                    round(float(np.nanmedian(arr)), 6)
+                    if not np.all(np.isnan(arr))
+                    else float("nan")
+                ),
+                "q25": (
+                    round(float(np.nanpercentile(arr, 25)), 6)
+                    if not np.all(np.isnan(arr))
+                    else float("nan")
+                ),
+                "q75": (
+                    round(float(np.nanpercentile(arr, 75)), 6)
+                    if not np.all(np.isnan(arr))
+                    else float("nan")
+                ),
             }
 
         if preds.ndim == 1:

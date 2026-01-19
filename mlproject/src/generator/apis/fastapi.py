@@ -120,6 +120,7 @@ from pydantic import BaseModel, Field
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 from mlproject.src.features.facade import FeatureStoreFacade
+from mlproject.src.generator.constants import API_DEFAULTS, CONTEXT_KEYS
 
 app = FastAPI(
     title="{ctx.pipeline_name} API",
@@ -424,7 +425,7 @@ class ServeService:
             preprocessed
         )
         composed = self.compose_features(preprocessed, additional_features)
-        context = {"preprocessed_data": composed}
+        context = {{CONTEXT_KEYS.PREPROCESSED_DATA: composed}}
 
         if self.DATA_TYPE == "tabular":
             result = self.predict_tabular_batch(context)
@@ -698,5 +699,5 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
         return """
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=API_DEFAULTS.FASTAPI_HOST, port=API_DEFAULTS.FASTAPI_PORT)
 """

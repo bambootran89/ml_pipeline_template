@@ -6,9 +6,21 @@ from typing import Any, Dict, List, Optional
 
 from omegaconf import OmegaConf
 
+from .constants import CONTEXT_KEYS, STEP_CONSTANTS
+from .generator_config import ConfigurablePatternMatcher, GeneratorConfig
+
 
 class LoaderBuilder:
     """Builds MLflow loader configuration."""
+
+    def __init__(self, config: Optional[GeneratorConfig] = None):
+        """Initialize LoaderBuilder with configuration.
+
+        Args:
+            config: GeneratorConfig instance. If None, uses default.
+        """
+        self.config = config or GeneratorConfig()
+        self.matcher = ConfigurablePatternMatcher(self.config)
 
     def add_mlflow_loader(
         self,
@@ -36,7 +48,7 @@ class LoaderBuilder:
             OmegaConf.create(
                 {
                     "id": init_id,
-                    "type": "mlflow_loader",
+                    "type": STEP_CONSTANTS.MLFLOW_LOADER,
                     "enabled": True,
                     "alias": alias,
                     "load_map": load_map,
@@ -61,11 +73,20 @@ class LoaderBuilder:
             List of load map entries.
         """
         load_map = [
-            {"step_id": p.id, "context_key": f"fitted_{p.id}"} for p in producers
+            {
+                "step_id": p.id,
+                "context_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{p.id}",
+            }
+            for p in producers
         ]
 
         for prep in preprocessors:
-            load_map.append({"step_id": prep.id, "context_key": f"fitted_{prep.id}"})
+            load_map.append(
+                {
+                    "step_id": prep.id,
+                    "context_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{prep.id}",
+                }
+            )
 
         if not legacy_preprocessor:
             return load_map
@@ -76,7 +97,7 @@ class LoaderBuilder:
         load_map.append(
             {
                 "step_id": legacy_preprocessor.id,
-                "context_key": "transform_manager",
+                "context_key": CONTEXT_KEYS.TRANSFORM_MANAGER,
             }
         )
 
