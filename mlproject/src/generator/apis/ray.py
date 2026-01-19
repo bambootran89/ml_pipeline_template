@@ -603,13 +603,13 @@ class PreprocessService:
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            context = {"preprocessed_data": preprocessed_data}
-            result = await self.model_handle.predict_tabular_batch.remote(
-                context, request.return_probabilities
+            # Use run_full_pipeline to ensure feature generators are called
+            result = await self.model_handle.run_full_pipeline.remote(
+                preprocessed_data
             )
             return MultiPredictResponse(
-                predictions=result["predictions"],
-                metadata=result["metadata"]
+                predictions=result.get("predictions", {{}}),
+                metadata=result.get("metadata")
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -624,16 +624,25 @@ class PreprocessService:
     ) -> MultiPredictResponse:
         try:
             df = pd.DataFrame(request.data)
+            if len(df) < self.INPUT_CHUNK_LENGTH:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Input must have at least "
+                        f"{{self.INPUT_CHUNK_LENGTH}} timesteps "
+                        f"(got {{len(df)}})"
+                    )
+                )
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            context = {{"preprocessed_data": preprocessed_data}}
-            result = await self.model_handle.predict_timeseries_multistep.remote(
-                context, steps_ahead
+            # Use run_full_pipeline to ensure feature generators are called
+            result = await self.model_handle.run_full_pipeline.remote(
+                preprocessed_data
             )
             return MultiPredictResponse(
-                predictions=result["predictions"],
-                metadata=result["metadata"]
+                predictions=result.get("predictions", {{}}),
+                metadata=result.get("metadata")
             )
         except HTTPException:
             raise
