@@ -56,6 +56,27 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
             alias=alias,
         )
 
+    def _get_feature_generator_keys(self, ctx: GenerationContext) -> List[str]:
+        """Get list of feature generator model keys."""
+        return [fg.model_key for fg in ctx.data_config.feature_generators]
+
+    def _gen_feature_generators_config(self, ctx: GenerationContext) -> str:
+        """Generate feature generators config as Python dict."""
+        if not ctx.data_config.feature_generators:
+            return "{}"
+
+        items = []
+        for fg in ctx.data_config.feature_generators:
+            items.append(
+                f'        "{fg.output_key}": {{'
+                f'"model_key": "{fg.model_key}", '
+                f'"artifact_name": "{fg.artifact_name}", '
+                f'"inference_method": "{fg.inference_method}", '
+                f'"step_type": "{fg.step_type}"}}'
+            )
+
+        return "{\n" + ",\n".join(items) + "\n    }"
+
     def _build_ray_code(self, ctx: GenerationContext) -> str:
         """Build full Ray Serve code string."""
         sections = [
@@ -73,7 +94,7 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
         return """import os
 import sys
 from typing import Any, Dict, List, Optional, Union
-
+import signal
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -117,6 +138,14 @@ class PredictRequest(BaseModel):
         ..., description="Input data as dict of columns to values"
     )
 
+class MultiStepPredictRequest(BaseModel):
+    data: Dict[str, List[Any]] = Field(..., description="Input timeseries data")
+    steps_ahead: int = Field(
+        default=-1,
+        description="Number of steps to predict ahead",
+        ge=1
+    )
+
 class BatchPredictRequest(BaseModel):
     data: Dict[str, List[Any]] = Field(
         ..., description="Input data with multiple rows"
@@ -141,6 +170,7 @@ def app_builder(args: Dict[str, str]) -> Any:
 
 if __name__ == "__main__":
     serve.run(app_builder({{}}))
+    signal.pause()
 """
 
     def _gen_model_service(self, ctx: GenerationContext) -> str:
@@ -302,11 +332,14 @@ if __name__ == "__main__":
     ray_actor_options={{"num_cpus": 1}}
 )
 class ModelService:
+    DATA_TYPE = "{ctx.data_config.data_type}"
     INPUT_CHUNK_LENGTH = {ctx.data_config.input_chunk_length}
     OUTPUT_CHUNK_LENGTH = {ctx.data_config.output_chunk_length}
+    FEATURES = {repr(ctx.data_config.features)}
     ADDITIONAL_FEATURE_KEYS = {repr(
         ctx.data_config.additional_feature_keys
     )}
+    FEATURE_GENERATORS = {self._gen_feature_generators_config(ctx)}
 
     def __init__(self, config_path: str) -> None:
         print("[ModelService] Initializing...")
@@ -506,35 +539,29 @@ class ModelService:
 
         return composed
 
-    def run_full_pipeline(
-        self, preprocessed_data: pd.DataFrame
+    async def run_full_pipeline(
+        self,
+        preprocessed: pd.DataFrame,
+        steps_ahead: int = -1
     ) -> Dict[str, Any]:
         \"\"\"Run full inference pipeline including feature generation.\"\"\"
         additional_features = self.generate_additional_features(
-            preprocessed_data
+            preprocessed
         )
-        composed = self.compose_features(preprocessed_data, additional_features)
+        composed = self.compose_features(preprocessed, additional_features)
         context = {{"preprocessed_data": composed}}
 
-        if "{ctx.data_config.data_type}" == "timeseries":
-            return self.predict_timeseries_multistep(
-                context, self.OUTPUT_CHUNK_LENGTH
+        if self.DATA_TYPE == "tabular":
+            result = self.predict_tabular_batch(context)
+        else:
+            if steps_ahead == -1:
+                steps_ahead = self.OUTPUT_CHUNK_LENGTH
+            result = self.predict_timeseries_multistep(
+                context,
+                steps_ahead=steps_ahead
             )
-        return self.predict_tabular_batch(context)
 
-    async def run_inference_pipeline(
-        self, context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        preprocessed = context.get("preprocessed_data")
-        if preprocessed is not None:
-            result = self.run_full_pipeline(preprocessed)
-            return result.get("predictions", {{}})
-
-        if "{ctx.data_config.data_type}" == "timeseries":
-            return self.predict_timeseries_multistep(
-                context, self.OUTPUT_CHUNK_LENGTH
-            )["predictions"]
-        return self.predict_tabular_batch(context)["predictions"]
+        return result
 """
 
     def _gen_preprocess_service(self, ctx: GenerationContext) -> str:
@@ -592,7 +619,7 @@ class PreprocessService:
     def _gen_serve_api(self, ctx: GenerationContext) -> str:
         """Generate ServeAPI."""
         if ctx.data_config.data_type == "tabular":
-            specific_endpoint = """
+            specific_endpoint = f"""
     @app.post("/predict/batch", response_model=MultiPredictResponse)
     async def predict_batch(
         self, request: BatchPredictRequest
@@ -602,13 +629,12 @@ class PreprocessService:
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            context = {"preprocessed_data": preprocessed_data}
             result = await self.model_handle.predict_tabular_batch.remote(
-                context, request.return_probabilities
+                preprocessed_data, request.return_probabilities
             )
             return MultiPredictResponse(
-                predictions=result["predictions"],
-                metadata=result["metadata"]
+                predictions=result.get("predictions", {{}}),
+                metadata=result.get("metadata", {{}})
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -618,21 +644,19 @@ class PreprocessService:
     @app.post("/predict/multistep", response_model=MultiPredictResponse)
     async def predict_multistep(
         self,
-        request: BatchPredictRequest,
-        steps_ahead: int = {ctx.data_config.output_chunk_length}
+        request: MultiStepPredictRequest,
     ) -> MultiPredictResponse:
         try:
             df = pd.DataFrame(request.data)
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            context = {{"preprocessed_data": preprocessed_data}}
-            result = await self.model_handle.predict_timeseries_multistep.remote(
-                context, steps_ahead
+            result = await self.model_handle.run_full_pipeline.remote(
+                preprocessed_data, request.steps_ahead
             )
             return MultiPredictResponse(
-                predictions=result["predictions"],
-                metadata=result["metadata"]
+                predictions=result.get("predictions", {{}}),
+                metadata=result.get("metadata", {{}})
             )
         except HTTPException:
             raise
@@ -658,13 +682,15 @@ class ServeAPI:
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            context = {{"preprocessed_data": preprocessed_data}}
-            predictions = (
-                await self.model_handle.run_inference_pipeline.remote(
-                    context
+            result = (
+                await self.model_handle.run_full_pipeline.remote(
+                    preprocessed_data
                 )
             )
-            return MultiPredictResponse(predictions=predictions)
+            return MultiPredictResponse(
+                predictions=result.get("predictions", {{}}),
+                metadata=result.get("metadata", {{}})
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 {specific_endpoint}
@@ -679,13 +705,15 @@ class ServeAPI:
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            context = {{"preprocessed_data": preprocessed_data}}
-            predictions = (
-                await self.model_handle.run_inference_pipeline.remote(
-                    context
+            result = (
+                await self.model_handle.run_full_pipeline.remote(
+                    preprocessed_data
                 )
             )
-            return MultiPredictResponse(predictions=predictions)
+            return MultiPredictResponse(
+                predictions=result.get("predictions", {{}}),
+                metadata=result.get("metadata", {{}})
+            )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -699,11 +727,12 @@ class ServeAPI:
     async def health(self) -> HealthResponse:
         try:
             prep_status = await self.preprocess_handle.check_health.remote()
+            model_status = await self.model_handle.check_health.remote()
             return HealthResponse(
                 status="healthy",
                 components={{
                     "preprocess": prep_status,
-                    "model": "ready"
+                    "model": model_status
                 }}
             )
         except Exception as e:

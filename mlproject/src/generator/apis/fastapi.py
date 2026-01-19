@@ -131,26 +131,18 @@ app = FastAPI(
 # Request/Response Schemas
 
 class FeastPredictRequest(BaseModel):
-    entities: List[Union[int, str]] = Field(
-        ..., description="List of entity IDs"
-    )
-    entity_key: Optional[str] = Field(
-        None, description="Key to join entities"
-    )
-    time_point: str = Field(
-        default="now", description="Time point for retrieval"
-    )
+    entities: List[Union[int, str]] = Field(..., description="List of entity IDs")
+    entity_key: Optional[str] = Field(None, description="Key to join entities")
+    time_point: str = Field(default="now", description="Time point for retrieval")
 
 class PredictRequest(BaseModel):
-    data: Dict[str, List[Any]] = Field(
-        ..., description="Input data as dict of columns to values"
+    data: Dict[str, List[Any]] = Field(...,
+        description="Input data as dict of columns to values"
     )
 
 
 class BatchPredictRequest(BaseModel):
-    data: Dict[str, List[Any]] = Field(
-        ..., description="Input data with multiple rows"
-    )
+    data: Dict[str, List[Any]] = Field(..., description="Input data with multiple rows")
     return_probabilities: bool = Field(
         default=False,
         description="Return prediction probabilities if available"
@@ -158,9 +150,7 @@ class BatchPredictRequest(BaseModel):
 
 
 class MultiStepPredictRequest(BaseModel):
-    data: Dict[str, List[Any]] = Field(
-        ..., description="Input timeseries data"
-    )
+    data: Dict[str, List[Any]] = Field(..., description="Input timeseries data")
     steps_ahead: int = Field(
         default={ctx.data_config.output_chunk_length},
         description="Number of steps to predict ahead",
@@ -299,14 +289,13 @@ class ServeService:
             return features.values
         return np.atleast_2d(np.array(features))
 
-    def get_online_dataset(
-        self,
-        entities: List[Union[int, str]],
-        time_point: str = "now"
-    ) -> pd.DataFrame:
+    def get_online_dataset(self,
+                           entities: List[Union[int, str]],
+                           time_point: str = "now") -> pd.DataFrame:
         if self.feature_store is None:
             raise RuntimeError("Feast not initialized")
 
+        # Use Facade to load features (handles windowing and prefixes)
         print(f"[ModelService] Fetching features for entities: {entities}")
         df = self.feature_store.load_features(
             time_point=time_point,
@@ -425,7 +414,9 @@ class ServeService:
         return composed
 
     def run_full_pipeline(
-        self, raw_data: pd.DataFrame
+        self,
+        raw_data: pd.DataFrame,
+        steps_ahead: int = -1
     ) -> Dict[str, Any]:
         \"\"\"Run full inference pipeline including feature generation.\"\"\"
         preprocessed = self.preprocess(raw_data)
@@ -438,16 +429,17 @@ class ServeService:
         if self.DATA_TYPE == "tabular":
             result = self.predict_tabular_batch(context)
         else:
+            if steps_ahead == -1:
+                steps_ahead = self.OUTPUT_CHUNK_LENGTH
             result = self.predict_timeseries_multistep(
                 context,
-                steps_ahead=self.OUTPUT_CHUNK_LENGTH
+                steps_ahead=steps_ahead
             )
 
         return result
 
-    def _prepare_input_timeseries(
-        self, features: Any, model_type: str
-    ) -> np.ndarray:
+
+    def _prepare_input_timeseries(self, features: Any, model_type: str) -> np.ndarray:
         if isinstance(features, pd.DataFrame):
             x_input = features.values
         else:
@@ -617,18 +609,6 @@ class ServeService:
         return """
         return {"predictions": results, "metadata": metadata}
 
-    def run_inference_pipeline(
-        self, context: Dict[str, Any]
-    ) -> Dict[str, List[float]]:
-        if self.DATA_TYPE == "tabular":
-            result = self.predict_tabular_batch(context)
-        else:
-            result = self.predict_timeseries_multistep(
-                context,
-                steps_ahead=self.OUTPUT_CHUNK_LENGTH
-            )
-        return result.get("predictions", {})
-
 """
 
     def _gen_api_init(self, ctx: GenerationContext) -> str:
@@ -676,9 +656,7 @@ def predict_feast(request: FeastPredictRequest) -> MultiPredictResponse:
 
 
 @app.post("/predict/feast/batch", response_model=MultiPredictResponse)
-def predict_feast_batch(
-    request: FeastPredictRequest
-) -> MultiPredictResponse:
+def predict_feast_batch(request: FeastPredictRequest) -> MultiPredictResponse:
     return predict_feast(request)
 
 """
@@ -689,44 +667,21 @@ def predict_feast_batch(
             return """
 @app.post("/predict/batch", response_model=MultiPredictResponse)
 def predict_batch(request: BatchPredictRequest) -> MultiPredictResponse:
-    try:
-        df = pd.DataFrame(request.data)
-        result = service.run_full_pipeline(df)
-        if request.return_probabilities:
-            for key, model in service.models.items():
-                if hasattr(model, "predict_proba"):
-                    try:
-                        proba = model.predict_proba(df.values)
-                        result["predictions"][f"{key}_probabilities"] = (
-                            proba.tolist()
-                        )
-                    except Exception:
-                        pass
-        return MultiPredictResponse(
-            predictions=result.get("predictions", {}),
-            metadata=result.get("metadata")
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    return predict(request)
 
 """
         return """
 @app.post("/predict/multistep", response_model=MultiPredictResponse)
-def predict_multistep(
-    request: MultiStepPredictRequest
-) -> MultiPredictResponse:
+def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
     try:
         df = pd.DataFrame(request.data)
         if len(df) < service.INPUT_CHUNK_LENGTH:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"Input must have at least "
-                    f"{service.INPUT_CHUNK_LENGTH} timesteps "
-                    f"(got {len(df)})"
-                )
+                detail=f"Input must have at least "
+                       f"{service.INPUT_CHUNK_LENGTH} timesteps (got {len(df)})"
             )
-        result = service.run_full_pipeline(df)
+        result = service.run_full_pipeline(df, steps_ahead=request.steps_ahead)
         return MultiPredictResponse(
             predictions=result.get("predictions", {}),
             metadata=result.get("metadata")
