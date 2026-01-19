@@ -58,21 +58,21 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
 
     def _get_feature_generator_keys(self, ctx: GenerationContext) -> List[str]:
         """Get list of feature generator model keys."""
-        return [fg.model_key for fg in ctx.data_config.feature_generators]
+        return [generator.model_key for generator in ctx.data_config.feature_generators]
 
-    def _gen_feature_generators_config(self, ctx: GenerationContext) -> str:
+    def _generate_feature_generators_config(self, ctx: GenerationContext) -> str:
         """Generate feature generators config as Python dict."""
         if not ctx.data_config.feature_generators:
             return "{}"
 
         items = []
-        for fg in ctx.data_config.feature_generators:
+        for generator in ctx.data_config.feature_generators:
             items.append(
-                f'        "{fg.output_key}": {{'
-                f'"model_key": "{fg.model_key}", '
-                f'"artifact_name": "{fg.artifact_name}", '
-                f'"inference_method": "{fg.inference_method}", '
-                f'"step_type": "{fg.step_type}"}}'
+                f'        "{generator.output_key}": {{'
+                f'"model_key": "{generator.model_key}", '
+                f'"artifact_name": "{generator.artifact_name}", '
+                f'"inference_method": "{generator.inference_method}", '
+                f'"step_type": "{generator.step_type}"}}'
             )
 
         return "{\n" + ",\n".join(items) + "\n    }"
@@ -80,16 +80,16 @@ class ApiGeneratorRayServeMixin(ApiGeneratorExtractorsMixin):
     def _build_ray_code(self, ctx: GenerationContext) -> str:
         """Build full Ray Serve code string."""
         sections = [
-            self._gen_ray_imports(),
-            self._gen_pydantic_models(ctx),
-            self._gen_preprocess_service(ctx),
-            self._gen_model_service(ctx),
-            self._gen_serve_api(ctx),
-            self._gen_ray_entrypoint(ctx),
+            self._generate_ray_imports(),
+            self._generate_pydantic_models(ctx),
+            self._generate_preprocess_service(ctx),
+            self._generate_model_service(ctx),
+            self._generate_serve_api(ctx),
+            self._generate_ray_entrypoint(ctx),
         ]
         return "\n".join(sections)
 
-    def _gen_ray_imports(self) -> str:
+    def _generate_ray_imports(self) -> str:
         """Generate Ray Serve imports."""
         return """import os
 import sys
@@ -115,7 +115,7 @@ from mlproject.src.generator.pipeline.constants import API_DEFAULTS, CONTEXT_KEY
 app = FastAPI(title="ML Pipeline API (Ray Serve)")
 """
 
-    def _gen_pydantic_models(self, ctx: GenerationContext) -> str:
+    def _generate_pydantic_models(self, ctx: GenerationContext) -> str:
         """Generate Ray Serve Pydantic models."""
         # pylint: disable=W0613
         return """
@@ -158,7 +158,7 @@ class MultiPredictResponse(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 """
 
-    def _gen_ray_entrypoint(self, ctx: GenerationContext) -> str:
+    def _generate_ray_entrypoint(self, ctx: GenerationContext) -> str:
         """Generate Ray Serve entrypoint."""
         return f"""
 def app_builder(args: Dict[str, str]) -> Any:
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     signal.pause()
 """
 
-    def _gen_model_service(self, ctx: GenerationContext) -> str:
+    def _generate_model_service(self, ctx: GenerationContext) -> str:
         """Generate ModelService methods."""
         model_loads = "\n".join(
             [
@@ -192,72 +192,72 @@ if __name__ == "__main__":
             ]
         )
 
-        fg_loads = ""
-        for fg in ctx.data_config.feature_generators:
-            fg_loads += f"""
-        # Load feature generator: {fg.step_id}
+        feature_generator_loads = ""
+        for generator in ctx.data_config.feature_generators:
+            feature_generator_loads += f"""
+        # Load feature generator: {generator.step_id}
         print(
             f"[ModelService] Loading feature generator: "
-            f"{fg.artifact_name} (alias: {ctx.alias})..."
+            f"{generator.artifact_name} (alias: {ctx.alias})..."
         )
         component = self.mlflow_manager.load_component(
-            name=f"{{experiment_name}}_{fg.artifact_name}",
+            name=f"{{experiment_name}}_{generator.artifact_name}",
             alias="{ctx.alias}",
         )
         if component is not None:
-            self.feature_generators["{fg.output_key}"] = {{
+            self.feature_generators["{generator.output_key}"] = {{
                 "model": component,
-                "method": "{fg.inference_method}",
-                "type": "{fg.step_type}",
+                "method": "{generator.inference_method}",
+                "type": "{generator.step_type}",
             }}"""
 
         tabular_inference_blocks = []
-        for s in ctx.inference_steps:
-            ak = s.get("additional_feature_keys", [])
-            fk = s["features_key"]
+        for inference_step in ctx.inference_steps:
+            additional_keys = inference_step.get("additional_feature_keys", [])
+            features_key = inference_step["features_key"]
 
-            if ak:
-                aks = ", ".join([f'"{k}"' for k in ak])
+            if additional_keys:
+                keys_str = ", ".join([f'"{key}"' for key in additional_keys])
                 prep = f"""
-            # {s['id']}: merge
-            base = context.get("{fk}")
-            adds = []
-            for k in [{aks}]:
-                if k in context:
-                    v = context[k]
-                    if isinstance(v, pd.DataFrame):
-                        adds.append(v.values)
-                    elif isinstance(v, np.ndarray):
-                        adds.append(v)
+            # {inference_step['id']}: merge additional features
+            base = context.get("{features_key}")
+            additional_features = []
+            for key in [{keys_str}]:
+                if key in context:
+                    value = context[key]
+                    if isinstance(value, pd.DataFrame):
+                        additional_features.append(value.values)
+                    elif isinstance(value, np.ndarray):
+                        additional_features.append(value)
             if isinstance(base, pd.DataFrame):
-                x = base.values
+                x_input = base.values
             else:
-                x = np.array(base) if base is not None else None
-            if x is not None and adds:
-                x = np.concatenate([x] + adds, axis=-1)
+                x_input = np.array(base) if base is not None else None
+            if x_input is not None and additional_features:
+                x_input = np.concatenate([x_input] + additional_features, axis=-1)
 """
             else:
                 prep = f"""
-            base = context.get("{fk}")
-            x = base.values if isinstance(base, pd.DataFrame) else base
+            base = context.get("{features_key}")
+            x_input = base.values if isinstance(base, pd.DataFrame) else base
 """
 
             tabular_inference_blocks.append(
                 f"""
-        model = self.models.get("{s['model_key']}")
+        model = self.models.get("{inference_step['model_key']}")
         if model is not None:
 {prep}
-            if x is not None:
-                inp = self._prepare_input_tabular(x)
-                metadata["n_samples"] = len(inp)
-                p = model.predict(inp)
-                results["{s['output_key']}"] = p.tolist()
-                context["{s['output_key']}"] = p
+            if x_input is not None:
+                prepared_input = self._prepare_input_tabular(x_input)
+                metadata["n_samples"] = len(prepared_input)
+                predictions = model.predict(prepared_input)
+                results["{inference_step['output_key']}"] = predictions.tolist()
+                context["{inference_step['output_key']}"] = predictions
                 if return_probabilities and hasattr(model, "predict_proba"):
                     try:
-                        pb = model.predict_proba(inp)
-                        results["{s['output_key']}_probabilities"] = (
-                            pb.tolist()
+                        probabilities = model.predict_proba(prepared_input)
+                        results["{inference_step['output_key']}_probabilities"] = (
+                            probabilities.tolist()
                         )
                     except Exception:
                         pass
@@ -267,61 +267,65 @@ if __name__ == "__main__":
         tabular_inference = "\n".join(tabular_inference_blocks)
 
         ts_inference_blocks = []
-        for s in ctx.inference_steps:
-            ak = s.get("additional_feature_keys", [])
+        for inference_step in ctx.inference_steps:
+            additional_keys = inference_step.get("additional_feature_keys", [])
 
-            if ak:
-                aks = ", ".join([f'"{k}"' for k in ak])
+            if additional_keys:
+                keys_str = ", ".join([f'"{key}"' for key in additional_keys])
                 merge = f"""
                     base = (
-                        cur.values if isinstance(cur, pd.DataFrame)
-                        else np.array(cur)
+                        current.values if isinstance(current, pd.DataFrame)
+                        else np.array(current)
                     )
-                    adds = []
-                    for k in [{aks}]:
-                        if k in context:
-                            v = context[k]
-                            if isinstance(v, pd.DataFrame):
-                                adds.append(v.values[:len(base)])
-                            elif isinstance(v, np.ndarray):
-                                adds.append(v[:len(base)])
+                    additional_features = []
+                    for key in [{keys_str}]:
+                        if key in context:
+                            value = context[key]
+                            if isinstance(value, pd.DataFrame):
+                                additional_features.append(value.values[:len(base)])
+                            elif isinstance(value, np.ndarray):
+                                additional_features.append(value[:len(base)])
                     merged = (
-                        np.concatenate([base] + adds, axis=-1) if adds else base
+                        np.concatenate([base] + additional_features, axis=-1)
+                        if additional_features else base
                     )
 """
             else:
                 merge = """
-                    merged = cur
+                    merged = current
 """
 
             ts_inference_blocks.append(
                 f"""
-        model = self.models.get("{s['model_key']}")
+        model = self.models.get("{inference_step['model_key']}")
         if model is not None:
-            feat = context.get("{s['features_key']}")
-            if feat is not None:
-                preds = []
-                cur = feat.copy() if isinstance(feat, pd.DataFrame) else feat
-                for bi in range(n_blocks):
-                    if len(cur) < self.INPUT_CHUNK_LENGTH:
+            features = context.get("{inference_step['features_key']}")
+            if features is not None:
+                predictions = []
+                current = (
+                    features.copy() if isinstance(features, pd.DataFrame)
+                    else features
+                )
+                for block_index in range(n_blocks):
+                    if len(current) < self.INPUT_CHUNK_LENGTH:
                         break
 {merge}
-                    inp = self._prepare_input_timeseries(
-                        merged, "{s['model_type']}"
+                    prepared_input = self._prepare_input_timeseries(
+                        merged, "{inference_step['model_type']}"
                     )
-                    bp = model.predict(inp)
-                    preds.append(bp[0])
-                    if bi < n_blocks - 1 and hasattr(cur, "iloc"):
-                        sh = min(self.OUTPUT_CHUNK_LENGTH, len(bp))
-                        if isinstance(cur, pd.DataFrame):
-                            cur = cur.iloc[sh:]
-                preds = np.array(preds)
-                out = (
-                    preds if preds.ndim == 1
-                    else np.concatenate(preds, axis=0)
+                    block_predictions = model.predict(prepared_input)
+                    predictions.append(block_predictions[0])
+                    if block_index < n_blocks - 1 and hasattr(current, "iloc"):
+                        shift = min(self.OUTPUT_CHUNK_LENGTH, len(block_predictions))
+                        if isinstance(current, pd.DataFrame):
+                            current = current.iloc[shift:]
+                predictions = np.array(predictions)
+                output = (
+                    predictions if predictions.ndim == 1
+                    else np.concatenate(predictions, axis=0)
                 )
-                results["{s['output_key']}"] = out.tolist()
-                context["{s['output_key']}"] = out
+                results["{inference_step['output_key']}"] = output.tolist()
+                context["{inference_step['output_key']}"] = output
 """
             )
 
@@ -340,7 +344,7 @@ class ModelService:
     ADDITIONAL_FEATURE_KEYS = {repr(
         ctx.data_config.additional_feature_keys
     )}
-    FEATURE_GENERATORS = {self._gen_feature_generators_config(ctx)}
+    FEATURE_GENERATORS = {self._generate_feature_generators_config(ctx)}
 
     def __init__(self, config_path: str) -> None:
         print("[ModelService] Initializing...")
@@ -569,7 +573,7 @@ class ModelService:
         return result
 """
 
-    def _gen_preprocess_service(self, ctx: GenerationContext) -> str:
+    def _generate_preprocess_service(self, ctx: GenerationContext) -> str:
         """Generate PreprocessService."""
         preprocessor_artifact = self._get_preprocessor_artifact_name(
             ctx.preprocessor, ctx.load_map
@@ -621,7 +625,7 @@ class PreprocessService:
         return "initializing"
 """
 
-    def _gen_serve_api(self, ctx: GenerationContext) -> str:
+    def _generate_serve_api(self, ctx: GenerationContext) -> str:
         """Generate ServeAPI."""
         if ctx.data_config.data_type == "tabular":
             specific_endpoint = """

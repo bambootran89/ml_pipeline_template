@@ -65,57 +65,74 @@ class ApiGeneratorExtractorsMixin:
                 inference_steps.extend(handler(step))
         return inference_steps
 
-    def _sort_by_deps(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Sort steps by additional_feature_keys dependencies."""
+    def _sort_by_dependencies(
+        self, steps: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Sort inference steps by additional_feature_keys dependencies.
+
+        Uses topological sort to ensure steps are executed in dependency order.
+        """
         if not steps:
             return steps
 
-        # Map output_key -> step
-        out_map = {s.get("output_key"): s for s in steps if s.get("output_key")}
+        # Build maps for efficient lookup
+        output_to_step_map = {
+            step.get("output_key"): step for step in steps if step.get("output_key")
+        }
+        step_id_to_step_map = {}
+        dependency_graph: Dict[str, List[str]] = {}
 
-        # Build deps: step_id -> [dep_ids]
-        deps: Dict[str, List[str]] = {}
-        by_id = {}
-        for s in steps:
-            sid = s.get("id", "")
-            by_id[sid] = s
-            deps[sid] = []
-            additional_keys = s.get("additional_feature_keys") or []
-            for k in additional_keys:
-                if k in out_map:
-                    dep = out_map[k].get("id", "")
-                    if dep and dep != sid:
-                        deps[sid].append(dep)
+        # Build dependency graph
+        for step in steps:
+            step_id = step.get("id", "")
+            step_id_to_step_map[step_id] = step
+            dependency_graph[step_id] = []
 
-        # Topological sort
-        result: List[Dict[str, Any]] = []
-        visited: set = set()
-        visiting: set = set()
+            additional_keys = step.get("additional_feature_keys") or []
+            for feature_key in additional_keys:
+                if feature_key in output_to_step_map:
+                    dependency_step_id = output_to_step_map[feature_key].get("id", "")
+                    if dependency_step_id and dependency_step_id != step_id:
+                        dependency_graph[step_id].append(dependency_step_id)
 
-        def visit(sid: str) -> None:
-            if sid in visited:
+        # Perform topological sort using DFS
+        sorted_steps: List[Dict[str, Any]] = []
+        visited_steps: set = set()
+        currently_visiting: set = set()
+
+        def visit_step(step_id: str) -> None:
+            """Visit step and its dependencies recursively."""
+            if step_id in visited_steps:
                 return
-            if sid in visiting:
-                return  # Cycle, skip
-            visiting.add(sid)
-            for dep in deps.get(sid, []):
-                if dep in by_id:
-                    visit(dep)
-            visiting.remove(sid)
-            visited.add(sid)
-            if sid in by_id:
-                result.append(by_id[sid])
+            if step_id in currently_visiting:
+                # Circular dependency detected, skip
+                return
 
-        for sid in deps:
-            if sid not in visited:
-                visit(sid)
+            currently_visiting.add(step_id)
 
-        # Add remaining
-        for s in steps:
-            if s not in result:
-                result.append(s)
+            # Visit all dependencies first
+            for dependency_id in dependency_graph.get(step_id, []):
+                if dependency_id in step_id_to_step_map:
+                    visit_step(dependency_id)
 
-        return result
+            currently_visiting.remove(step_id)
+            visited_steps.add(step_id)
+
+            # Add step to result after dependencies
+            if step_id in step_id_to_step_map:
+                sorted_steps.append(step_id_to_step_map[step_id])
+
+        # Visit all steps
+        for step_id in dependency_graph:
+            if step_id not in visited_steps:
+                visit_step(step_id)
+
+        # Add any remaining steps not in dependency graph
+        for step in steps:
+            if step not in sorted_steps:
+                sorted_steps.append(step)
+
+        return sorted_steps
 
     def _infer_model_type(self, model_key: str) -> str:
         """
