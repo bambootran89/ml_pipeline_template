@@ -258,7 +258,7 @@ python -m mlproject.src.pipeline.dag_run tune \
 ```
 
 **Flow:**
-```
+
 load_data → preprocess → branch ─┬─ [feature_columns_size < 4] → TFT (deep learning)
                                  └─ [feature_columns_size >= 4] → XGBoost (ML)
                                           ↓

@@ -120,7 +120,27 @@ class TrainerStep(BasePipelineStep):
 
             return dict(cfg_copy.experiment.hyperparams)
         else:
-            return dict(self.cfg.experiment.hyperparams)
+            params = dict(self.cfg.experiment.hyperparams)
+
+        # Override n_features/input_size if composed features are present in context
+        if "_composed_feature_names" in context:
+            n_features = len(context["_composed_feature_names"])
+            if "n_features" in params:
+                print(
+                    f"[{self.step_id}] Override n_features: "
+                    f"{params['n_features']} -> {n_features}"
+                )
+                params["n_features"] = n_features
+
+            # Also update input_size if it exists (common in RNNs)
+            if "input_size" in params:
+                print(
+                    f"[{self.step_id}] Override input_size: "
+                    f"{params['input_size']} -> {n_features}"
+                )
+                params["input_size"] = n_features
+
+        return params
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -146,6 +166,40 @@ class TrainerStep(BasePipelineStep):
         self.validate_dependencies(context)
 
         datamodule = self._get_datamodule(context)
+
+        # Patch config if composed features are present in context
+        # This ensures ModelFactory builds the model with correct input dimensions
+        if "_composed_feature_names" in context:
+            n_features = len(context["_composed_feature_names"])
+            print(f"[{self.step_id}] Patching config: n_features -> {n_features}")
+
+            # Update n_features
+            if (
+                OmegaConf.select(self.cfg, "experiment.hyperparams.n_features")
+                is not None
+            ):
+                OmegaConf.update(
+                    self.cfg, "experiment.hyperparams.n_features", n_features
+                )
+
+            # Update input_size
+            if (
+                OmegaConf.select(self.cfg, "experiment.hyperparams.input_size")
+                is not None
+            ):
+                OmegaConf.update(
+                    self.cfg, "experiment.hyperparams.input_size", n_features
+                )
+
+            # Ensure 'args' reflects this too if present (for some models)
+            if (
+                OmegaConf.select(self.cfg, "experiment.hyperparams.args.input_size")
+                is not None
+            ):
+                OmegaConf.update(
+                    self.cfg, "experiment.hyperparams.args.input_size", n_features
+                )
+
         model_class = self._build_model()
         trainer = self._build_trainer(model_class)
 

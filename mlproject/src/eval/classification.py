@@ -75,7 +75,6 @@ class ClassificationEvaluator(BaseEvaluator):
 
         if y_pred_proba is not None and self._can_compute_auc(y_true):
             metrics["roc_auc"] = roc_auc_score(y_true, y_pred_proba)
-        print(metrics)
         return metrics
 
     @staticmethod
