@@ -129,9 +129,12 @@ class BaseDataModule:
 
         for name, (x_data, y_data) in splits.items():
             # Validate data presence and size
-            is_valid = x_data is not None and x_data.size > 0
-            x_shape = x_data.shape if is_valid else "N/A"
-            y_shape = y_data.shape if is_valid else "N/A"
+            if x_data is not None and x_data.size > 0:
+                x_shape = str(x_data.shape)
+                y_shape = str(y_data.shape) if y_data is not None else "N/A"
+            else:
+                x_shape = "N/A"
+                y_shape = "N/A"
             print(f"{name:15} Split: X={x_shape}, Y={y_shape}")
 
     def setup(self) -> None:

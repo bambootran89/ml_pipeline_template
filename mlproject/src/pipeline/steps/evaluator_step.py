@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -318,7 +318,7 @@ class EvaluatorStep(PipelineStep):
         return (
             first_col.isdigit()
             or first_col.startswith("base_")
-            or (expected_features and first_col not in expected_features)
+            or (bool(expected_features) and first_col not in expected_features)
         )
 
     def _generate_base_columns(
@@ -429,7 +429,7 @@ class EvaluatorStep(PipelineStep):
             context["_composed_feature_names"] = composed_feature_names
             context["_additional_feature_keys"] = self.additional_feature_keys
 
-        return cfg_copy
+        return cast(DictConfig, cfg_copy)
 
     def _eval_from_datamodule(
         self,

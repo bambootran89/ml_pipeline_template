@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
 import pandas as pd
@@ -262,7 +262,7 @@ class DataModuleStep(BasePipelineStep):
             context["_composed_feature_names"] = composed_feature_names
             context["_additional_feature_keys"] = self.additional_feature_keys
 
-        return cfg_copy
+        return cast(DictConfig, cfg_copy)
 
     def _ndarray_to_df(self, arr: np.ndarray, prefix: str) -> pd.DataFrame:
         """Convert numpy array to DataFrame.

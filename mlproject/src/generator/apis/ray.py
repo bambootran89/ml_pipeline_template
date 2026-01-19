@@ -210,7 +210,7 @@ if __name__ == "__main__":
                 "type": "{fg.step_type}",
             }}"""
 
-        tabular_inference = []
+        tabular_inference_blocks = []
         for s in ctx.inference_steps:
             ak = s.get("additional_feature_keys", [])
             fk = s["features_key"]
@@ -241,7 +241,7 @@ if __name__ == "__main__":
             x = base.values if isinstance(base, pd.DataFrame) else base
 """
 
-            tabular_inference.append(
+            tabular_inference_blocks.append(
                 f"""
         model = self.models.get("{s['model_key']}")
         if model is not None:
@@ -263,9 +263,9 @@ if __name__ == "__main__":
 """
             )
 
-        tabular_inference = "\n".join(tabular_inference)
+        tabular_inference = "\n".join(tabular_inference_blocks)
 
-        ts_inference = []
+        ts_inference_blocks = []
         for s in ctx.inference_steps:
             ak = s.get("additional_feature_keys", [])
 
@@ -293,7 +293,7 @@ if __name__ == "__main__":
                     merged = cur
 """
 
-            ts_inference.append(
+            ts_inference_blocks.append(
                 f"""
         model = self.models.get("{s['model_key']}")
         if model is not None:
@@ -324,7 +324,7 @@ if __name__ == "__main__":
 """
             )
 
-        ts_inference = "\n".join(ts_inference)
+        ts_inference = "\n".join(ts_inference_blocks)
 
         return f"""
 @serve.deployment(
@@ -385,9 +385,10 @@ class ModelService:
         self.ready = True
         print("[ModelService] Ready")
 
-    def check_health(self) -> None:
+    def check_health(self) -> str:
         if not self.ready:
             raise RuntimeError("ModelService not ready")
+        return "healthy"
 
     def _prepare_input_tabular(self, features: Any) -> np.ndarray:
         if isinstance(features, pd.DataFrame):
@@ -542,7 +543,8 @@ class ModelService:
     async def run_full_pipeline(
         self,
         preprocessed: pd.DataFrame,
-        steps_ahead: int = -1
+        steps_ahead: int = -1,
+        return_probabilities: bool = False
     ) -> Dict[str, Any]:
         \"\"\"Run full inference pipeline including feature generation.\"\"\"
         additional_features = self.generate_additional_features(
@@ -552,7 +554,9 @@ class ModelService:
         context = {{"preprocessed_data": composed}}
 
         if self.DATA_TYPE == "tabular":
-            result = self.predict_tabular_batch(context)
+            result = self.predict_tabular_batch(
+                context, return_probabilities=return_probabilities
+            )
         else:
             if steps_ahead == -1:
                 steps_ahead = self.OUTPUT_CHUNK_LENGTH
@@ -619,7 +623,7 @@ class PreprocessService:
     def _gen_serve_api(self, ctx: GenerationContext) -> str:
         """Generate ServeAPI."""
         if ctx.data_config.data_type == "tabular":
-            specific_endpoint = f"""
+            specific_endpoint = """
     @app.post("/predict/batch", response_model=MultiPredictResponse)
     async def predict_batch(
         self, request: BatchPredictRequest
@@ -629,18 +633,18 @@ class PreprocessService:
             preprocessed_data = (
                 await self.preprocess_handle.preprocess.remote(df)
             )
-            result = await self.model_handle.predict_tabular_batch.remote(
-                preprocessed_data, request.return_probabilities
+            result = await self.model_handle.run_full_pipeline.remote(
+                preprocessed_data, return_probabilities=request.return_probabilities
             )
             return MultiPredictResponse(
-                predictions=result.get("predictions", {{}}),
-                metadata=result.get("metadata", {{}})
+                predictions=result.get("predictions", {}),
+                metadata=result.get("metadata", {})
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 """
         else:
-            specific_endpoint = f"""
+            specific_endpoint = """
     @app.post("/predict/multistep", response_model=MultiPredictResponse)
     async def predict_multistep(
         self,
@@ -655,8 +659,8 @@ class PreprocessService:
                 preprocessed_data, request.steps_ahead
             )
             return MultiPredictResponse(
-                predictions=result.get("predictions", {{}}),
-                metadata=result.get("metadata", {{}})
+                predictions=result.get("predictions", {}),
+                metadata=result.get("metadata", {})
             )
         except HTTPException:
             raise

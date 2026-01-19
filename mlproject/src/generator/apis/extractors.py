@@ -560,65 +560,69 @@ class ApiGeneratorExtractorsMixin:
         if not step:
             return False
 
-        step_type = getattr(step, "type", None) or step.get("type")
-
-        # Check output_as_feature flag
         if step.get("output_as_feature", False):
             return True
 
-        # Clustering steps that output features
+        step_type = getattr(step, "type", None) or step.get("type")
+
         if step_type == "clustering":
-            wiring = step.get("wiring")
-            if wiring and wiring.get("outputs"):
-                outputs = wiring.outputs
-                # Has feature output (not just model)
-                for key in ["features", "cluster_labels", "predictions"]:
-                    if key in outputs:
-                        return True
-            return True  # Clustering typically generates features
+            return self._check_clustering_generator(step)
 
-        # Dynamic adapters - only those that ADD new columns are feature generators
-        # Imputers and scalers MODIFY existing columns, so they're preprocessors,
-        # not generators
         if step_type == "dynamic_adapter":
-            class_path = step.get("class_path", "").lower()
+            return self._check_dynamic_adapter_generator(step)
 
-            # EXCLUDE preprocessors that modify columns in place (not feature
-            # generators)
-            if any(
-                x in class_path for x in ["imputer", "scaler", "normalizer", "encoder"]
-            ):
-                return False
-
-            # PCA, clustering add NEW columns - these are feature generators
-            if any(x in class_path for x in ["pca", "cluster", "kmeans"]):
-                return True
-
-            # Check output_as_feature flag for other dynamic adapters
-            if step.get("output_as_feature", False):
-                return True
-
-        # Inference steps that have features output (transformed clustering/PCA)
-        # In serve mode, clustering/model steps become "inference" type
         if step_type == "inference":
-            step_id = getattr(step, "id", None) or step.get("id", "")
-            step_id_lower = step_id.lower()
+            return self._check_inference_generator(step)
 
-            # EXCLUDE preprocessors (impute, scale) - they don't add new columns
-            if any(x in step_id_lower for x in ["impute", "scale", "normalize"]):
-                return False
+        return False
 
-            wiring = step.get("wiring")
-            if wiring and wiring.get("outputs"):
-                outputs = wiring.outputs
-                # Check if it outputs features (not just predictions)
-                if "features" in outputs:
+    def _check_clustering_generator(self, step: Any) -> bool:
+        """Check if clustering step is a feature generator."""
+        wiring = step.get("wiring")
+        if wiring and wiring.get("outputs"):
+            outputs = wiring.outputs
+            # Has feature output (not just model)
+            for key in ["features", "cluster_labels", "predictions"]:
+                if key in outputs:
                     return True
+        return True  # Clustering typically generates features
 
-            # Only cluster and pca add new columns
-            if any(x in step_id_lower for x in ["cluster", "pca"]):
+    def _check_dynamic_adapter_generator(self, step: Any) -> bool:
+        """Check if dynamic adapter step is a feature generator."""
+        class_path = step.get("class_path", "").lower()
+
+        # EXCLUDE preprocessors that modify columns in place
+        if any(x in class_path for x in ["imputer", "scaler", "normalizer", "encoder"]):
+            return False
+
+        # PCA, clustering add NEW columns - these are feature generators
+        if any(x in class_path for x in ["pca", "cluster", "kmeans"]):
+            return True
+
+        # Check output_as_feature flag for other dynamic adapters
+        if step.get("output_as_feature", False):
+            return True
+        return False
+
+    def _check_inference_generator(self, step: Any) -> bool:
+        """Check if inference step is a feature generator."""
+        step_id = getattr(step, "id", None) or step.get("id", "")
+        step_id_lower = step_id.lower()
+
+        # EXCLUDE preprocessors (impute, scale) - they don't add new columns
+        if any(x in step_id_lower for x in ["impute", "scale", "normalize"]):
+            return False
+
+        wiring = step.get("wiring")
+        if wiring and wiring.get("outputs"):
+            outputs = wiring.outputs
+            # Check if it outputs features (not just predictions)
+            if "features" in outputs:
                 return True
 
+        # Only cluster and pca add new columns
+        if any(x in step_id_lower for x in ["cluster", "pca"]):
+            return True
         return False
 
     def _build_feature_generator_info(self, step: Any) -> Optional[Dict[str, Any]]:
@@ -637,6 +641,25 @@ class ApiGeneratorExtractorsMixin:
             return None
 
         # Determine output key
+        output_key = self._determine_fg_output_key(step, step_id)
+
+        # Determine inference method
+        inference_method = self._determine_fg_inference_method(step, step_type, step_id)
+
+        # Determine step type for categorization
+        fg_type = self._determine_fg_type(step, step_type, step_id)
+
+        return {
+            "step_id": step_id,
+            "model_key": f"fitted_{step_id}",
+            "artifact_name": step_id,
+            "output_key": output_key,
+            "inference_method": inference_method,
+            "step_type": fg_type,
+        }
+
+    def _determine_fg_output_key(self, step: Any, step_id: str) -> str:
+        """Determine output key for feature generator."""
         output_key = None
         wiring = step.get("wiring")
         if wiring and wiring.get("outputs"):
@@ -654,8 +677,12 @@ class ApiGeneratorExtractorsMixin:
 
         if not output_key:
             output_key = f"{step_id}_features"
+        return output_key
 
-        # Determine inference method
+    def _determine_fg_inference_method(
+        self, step: Any, step_type: str, step_id: str
+    ) -> str:
+        """Determine inference method for feature generator."""
         inference_method = "transform"
         if step_type == "clustering":
             inference_method = "predict"
@@ -672,8 +699,10 @@ class ApiGeneratorExtractorsMixin:
                 inference_method = "transform"
             elif "predict" in run_method:
                 inference_method = "predict"
+        return inference_method
 
-        # Determine step type for categorization
+    def _determine_fg_type(self, step: Any, step_type: str, step_id: str) -> str:
+        """Determine feature generator type."""
         fg_type = "transform"
         if step_type == "clustering":
             fg_type = "clustering"
@@ -698,15 +727,7 @@ class ApiGeneratorExtractorsMixin:
                 fg_type = "scaler"
             elif "cluster" in class_path or "kmeans" in class_path:
                 fg_type = "clustering"
-
-        return {
-            "step_id": step_id,
-            "model_key": f"fitted_{step_id}",
-            "artifact_name": step_id,
-            "output_key": output_key,
-            "inference_method": inference_method,
-            "step_type": fg_type,
-        }
+        return fg_type
 
     def _extract_datamodule_recursive(self, steps: List[Any]) -> Dict[str, Any]:
         """Recursively search for datamodule configuration in steps."""
