@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, List, Optional
 
-from .constants import STEP_CONSTANTS
+from .constants import CONTEXT_KEYS, STEP_CONSTANTS
 from .dependency_builder import DependencyBuilder
 from .generator_config import ConfigurablePatternMatcher, GeneratorConfig
 from .step_analyzer import StepAnalyzer, StepExtractor
@@ -159,7 +159,6 @@ class BasePipelineBuilder:
         Returns:
             Base features key string.
         """
-        from .constants import CONTEXT_KEYS
 
         if hasattr(step, "wiring") and hasattr(step.wiring, "inputs"):
             inputs = step.wiring.inputs

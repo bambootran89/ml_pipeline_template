@@ -386,7 +386,9 @@ class ServeService:
                     )
                     continue
 
-                if (generator_type != "dynamic_adapter") and self.DATA_TYPE != "tabular":
+                if (generator_type != "dynamic_adapter") and (
+                    self.DATA_TYPE != "tabular"
+                ):
                     ts_x_input = self._prepare_input_timeseries(x_input, "ml")
                     result = inference_fn(ts_x_input)
                 else:

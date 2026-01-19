@@ -177,7 +177,8 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         return load_map, preprocessor
 
     def _extract_inference_steps_excluding_generators(self, steps, feature_generators):
-        """Extract inference steps, exclude feature generators, and sort by dependencies."""
+        """Extract inference steps, exclude feature generators,
+        and sort by dependencies."""
         all_inference_steps = self._extract_inference_steps(steps)
         generator_step_ids = {gen["step_id"] for gen in feature_generators}
         generator_model_keys = {gen["model_key"] for gen in feature_generators}

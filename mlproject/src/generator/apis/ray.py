@@ -386,7 +386,7 @@ class ModelService:
             "name", "{ctx.pipeline_name}"
         )
 {model_loads}
-{fg_loads}
+{feature_generator_loads}
         self.ready = True
         print("[ModelService] Ready")
 
