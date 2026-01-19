@@ -9,8 +9,10 @@ from typing import Any, Dict, Optional
 from omegaconf import DictConfig, OmegaConf
 
 from .api_generator import ApiGenerator
+from .pipeline.constants import STEP_CONSTANTS
 from .pipeline.eval_builder import EvalBuilder
 from .pipeline.feature_pipeline_parser import FeaturePipelineParser
+from .pipeline.generator_config import GeneratorConfig
 from .pipeline.serve_builder import ServeBuilder
 from .pipeline.step_analyzer import StepAnalyzer
 from .pipeline.tune_builder import TuneBuilder
@@ -28,13 +30,16 @@ class ConfigGenerator:
         self,
         train_config_path: str,
         experiment_config_path: Optional[str] = None,
+        generator_config: Optional[GeneratorConfig] = None,
     ) -> None:
         """Initialize config generator.
 
         Args:
             train_config_path: Path to training config YAML file.
             experiment_config_path: Optional experiment config path.
+            generator_config: Optional generator configuration for customization.
         """
+        self.generator_config = generator_config or GeneratorConfig()
         loaded = OmegaConf.load(train_config_path)
 
         if not isinstance(loaded, DictConfig):
@@ -84,13 +89,17 @@ class ConfigGenerator:
                 print(f"    - {feat.source_step_id} -> {feat.output_key}{parent_info}")
 
         self._eval_builder = EvalBuilder(
-            train_steps, experiment_type=self.experiment_type
+            train_steps,
+            experiment_type=self.experiment_type,
+            config=self.generator_config,
         )
         self._serve_builder = ServeBuilder(
-            train_steps, experiment_type=self.experiment_type
+            train_steps,
+            experiment_type=self.experiment_type,
+            config=self.generator_config,
         )
         self._tune_builder = TuneBuilder(train_steps)
-        self._api_generator = ApiGenerator()
+        self._api_generator = ApiGenerator(config=self.generator_config)
 
     def generate_api(
         self,
@@ -216,7 +225,7 @@ class ConfigGenerator:
             new_steps = self._tune_builder.build()
         else:
             preprocessor_step = self._find_preprocessor(train_steps)
-            init_id = "init_artifacts"
+            init_id = STEP_CONSTANTS.INIT_ARTIFACTS_ID
 
             if mode == "eval":
                 new_steps = self._eval_builder.build(
@@ -248,7 +257,7 @@ class ConfigGenerator:
         Returns:
             Preprocessor step if found, None otherwise.
         """
-        return next((s for s in steps if s.type == "preprocessor"), None)
+        return next((s for s in steps if s.type == STEP_CONSTANTS.PREPROCESSOR), None)
 
     def _save_config(self, cfg: DictConfig, path: str) -> None:
         """Save pipeline config to YAML file.

@@ -1,4 +1,5 @@
 """Serving pipeline builder."""
+
 # pylint: disable=R0911
 
 from __future__ import annotations
@@ -8,7 +9,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from omegaconf import DictConfig, OmegaConf
 
+from .constants import CONTEXT_KEYS, STEP_CONSTANTS
 from .dependency_builder import DependencyBuilder
+from .generator_config import ConfigurablePatternMatcher, GeneratorConfig
 from .loader_builder import LoaderBuilder
 from .step_analyzer import StepAnalyzer, StepExtractor
 from .step_transformer import StepTransformer
@@ -18,20 +21,26 @@ class ServeBuilder:
     """Builds serving pipeline from training pipeline."""
 
     def __init__(
-        self, train_steps: List[Any], experiment_type: str = "tabular"
+        self,
+        train_steps: List[Any],
+        experiment_type: str = "tabular",
+        config: Optional[GeneratorConfig] = None,
     ) -> None:
         """Initialize serve pipeline builder.
 
         Args:
             train_steps: Original training pipeline steps.
             experiment_type: Type of experiment (timeseries, tabular).
+            config: GeneratorConfig instance for customization.
         """
         self.train_steps = train_steps
         self.experiment_type = experiment_type
+        self.config = config or GeneratorConfig()
+        self.matcher = ConfigurablePatternMatcher(self.config)
         self.analyzer = StepAnalyzer()
         self.extractor = StepExtractor()
         self.dependency_builder = DependencyBuilder(train_steps)
-        self.loader_builder = LoaderBuilder()
+        self.loader_builder = LoaderBuilder(self.config)
         self.transformer = StepTransformer()
 
     def build(
@@ -74,9 +83,15 @@ class ServeBuilder:
         )
 
         pipeline_flags = {
-            "has_sub": any(s.type == "sub_pipeline" for s in self.train_steps),
-            "has_branch": any(s.type == "branch" for s in self.train_steps),
-            "has_parallel": any(s.type == "parallel" for s in self.train_steps),
+            "has_sub": any(
+                s.type == STEP_CONSTANTS.SUB_PIPELINE for s in self.train_steps
+            ),
+            "has_branch": any(
+                s.type == STEP_CONSTANTS.BRANCH for s in self.train_steps
+            ),
+            "has_parallel": any(
+                s.type == STEP_CONSTANTS.PARALLEL for s in self.train_steps
+            ),
         }
 
         special_last_id, branch_ids = self._handle_special_steps(
@@ -103,22 +118,22 @@ class ServeBuilder:
         last_id = init_id
 
         for step in self.train_steps:
-            if step.type == "preprocessor":
+            if step.type == STEP_CONSTANTS.PREPROCESSOR:
                 prep = copy.deepcopy(step)
                 prep.is_train = False
                 prep.alias = alias
-                prep.instance_key = f"fitted_{step.id}"
+                prep.instance_key = f"{CONTEXT_KEYS.FITTED_PREFIX}{step.id}"
                 prep.depends_on = [init_id]
                 steps.append(prep)
                 last_id = prep.id
 
-            elif step.type == "dynamic_adapter":
+            elif step.type == STEP_CONSTANTS.DYNAMIC_ADAPTER:
                 if not self._should_add_adapter(step):
                     continue
 
                 adapter = copy.deepcopy(step)
                 adapter.is_train = False
-                adapter.instance_key = f"fitted_{step.id}"
+                adapter.instance_key = f"{CONTEXT_KEYS.FITTED_PREFIX}{step.id}"
                 adapter.depends_on = [init_id]
 
                 if hasattr(step, "depends_on"):
@@ -159,7 +174,7 @@ class ServeBuilder:
         prep = copy.deepcopy(preprocessor_step)
         prep.is_train = False
         prep.alias = alias
-        prep.instance_key = "transform_manager"
+        prep.instance_key = CONTEXT_KEYS.TRANSFORM_MANAGER
         prep.depends_on = [init_id]
         steps.append(prep)
 
@@ -173,19 +188,19 @@ class ServeBuilder:
         has_branch: bool,
     ) -> Tuple[str, Set[str]]:
         """Handle sub-pipelines and branches."""
-        last_id = "init_artifacts"
+        last_id = STEP_CONSTANTS.INIT_ARTIFACTS_ID
         branch_ids: Set[str] = set()
 
         if has_sub:
             for step in self.train_steps:
-                if step.type == "sub_pipeline":
+                if step.type == STEP_CONSTANTS.SUB_PIPELINE:
                     transformed = self._transform_sub_pipeline(step, alias)
                     steps.append(transformed)
                     last_id = step.id
 
         if has_branch:
             for step in self.train_steps:
-                if step.type == "branch":
+                if step.type == STEP_CONSTANTS.BRANCH:
                     transformed = self._transform_branch(step)
                     steps.append(transformed)
                     last_id = step.id
@@ -213,17 +228,17 @@ class ServeBuilder:
             return transformed
 
         for sub_step in transformed.pipeline.steps:
-            if sub_step.type == "preprocessor":
+            if sub_step.type == STEP_CONSTANTS.PREPROCESSOR:
                 self.transformer.transform_preprocessor(sub_step, alias)
 
-            elif sub_step.type in ["clustering", "model"]:
-                sub_step.type = "inference"
+            elif sub_step.type in [STEP_CONSTANTS.CLUSTERING, STEP_CONSTANTS.MODEL]:
+                sub_step.type = STEP_CONSTANTS.INFERENCE
                 self.transformer.transform_model_step(sub_step)
 
                 sub_step.wiring.outputs.predictions = (
                     sub_step.wiring.outputs.predictions
                     if hasattr(sub_step.wiring.outputs, "predictions")
-                    else f"{sub_step['id']}_predictions"
+                    else f"{sub_step['id']}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}"
                 )
 
         return transformed
@@ -248,27 +263,24 @@ class ServeBuilder:
         """Resolve base features key from step wiring."""
         if hasattr(step, "wiring") and hasattr(step.wiring, "inputs"):
             inputs = step.wiring.inputs
-            # Prioritize standard keys
-            for key in ["X", "features", "data", "input"]:
-                if key in inputs:
-                    return inputs[key]
-        return "preprocessed_data"
+            return self.matcher.resolve_feature_key(inputs)
+        return CONTEXT_KEYS.PREPROCESSED_DATA
 
     def _branch_to_inference(self, branch: Any) -> Optional[DictConfig]:
         """Convert branch to inference step."""
         if not self.analyzer.is_model_producer(branch):
             return None
 
-        inf_id = f"{branch.id}_inference"
+        inf_id = f"{branch.id}{CONTEXT_KEYS.INFERENCE_SUFFIX}"
 
         config = {
             "id": inf_id,
-            "type": "feature_inference",
+            "type": STEP_CONSTANTS.FEATURE_INFERENCE,
             "enabled": True,
-            "depends_on": ["preprocess"],
-            "source_model_key": f"fitted_{branch.id}",
+            "depends_on": [STEP_CONSTANTS.PREPROCESS_ID],
+            "source_model_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{branch.id}",
             "base_features_key": self._resolve_base_features_key(branch),
-            "output_key": f"{branch.id}_predictions",
+            "output_key": f"{branch.id}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}",
             "apply_windowing": self._should_apply_windowing(branch.id),
         }
 
@@ -278,11 +290,11 @@ class ServeBuilder:
         """Create wiring for inference step."""
         return {
             "inputs": {
-                "model": f"fitted_{model_id}",
-                "features": "preprocessed_data",
+                "model": f"{CONTEXT_KEYS.FITTED_PREFIX}{model_id}",
+                "features": CONTEXT_KEYS.PREPROCESSED_DATA,
             },
             "outputs": {
-                "predictions": f"{model_id}_predictions",
+                "predictions": f"{model_id}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}",
             },
         }
 
@@ -346,7 +358,7 @@ class ServeBuilder:
 
         # Find step that outputs this datamodule key
         for step in self.train_steps:
-            if step.type != "datamodule":
+            if step.type != STEP_CONSTANTS.DATAMODULE:
                 continue
 
             if hasattr(step, "wiring") and hasattr(step.wiring, "outputs"):
@@ -389,16 +401,16 @@ class ServeBuilder:
     ) -> str:
         """Add inference steps to pipeline."""
         for producer in producers:
-            inf_id = f"{producer.id}_inference"
+            inf_id = f"{producer.id}{CONTEXT_KEYS.INFERENCE_SUFFIX}"
 
             config: Dict[str, Any] = {
                 "id": inf_id,
-                "type": "feature_inference",
+                "type": STEP_CONSTANTS.FEATURE_INFERENCE,
                 "enabled": True,
                 "depends_on": [init_id, last_id],
-                "source_model_key": f"fitted_{producer.id}",
+                "source_model_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{producer.id}",
                 "base_features_key": self._resolve_base_features_key(producer),
-                "output_key": f"{producer.id}_predictions",
+                "output_key": f"{producer.id}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}",
                 "apply_windowing": self._should_apply_windowing(producer.id),
             }
 
@@ -430,42 +442,19 @@ class ServeBuilder:
 
         step_type = train_step.get("type", "")
 
-        # Standard trainers and clustering steps in timeseries expect windowed data
-        if step_type in ["trainer", "clustering", "framework_model"]:
-            return True
-
-        # For dynamic adapters, check if they received a datamodule in training
-        if step_type == "dynamic_adapter":
-            if "wiring" in train_step and "inputs" in train_step.wiring:
-                inputs = train_step.wiring.inputs
-                if "datamodule" in inputs:
-                    return True
-            return False
-
-        # Fallback for other steps in timeseries
-        step_lower = step_id.lower()
-        if any(x in step_lower for x in ["impute", "pca", "scaler"]):
-            return False
-
-        return True
+        # Use configurable pattern matcher for windowing decision
+        return self.matcher.should_apply_windowing(step_type, step_id)
 
     def _add_final_profiling(self, steps: List[Any], last_id: str) -> None:
         """Add final profiling step."""
         steps.append(
             OmegaConf.create(
                 {
-                    "id": "final_profiling",
-                    "type": "profiling",
+                    "id": STEP_CONSTANTS.FINAL_PROFILING_ID,
+                    "type": STEP_CONSTANTS.PROFILING,
                     "enabled": True,
                     "depends_on": [last_id],
-                    "exclude_keys": [
-                        "cfg",
-                        "preprocessor",
-                        "df",
-                        "train_df",
-                        "val_df",
-                        "test_df",
-                    ],
+                    "exclude_keys": CONTEXT_KEYS.PROFILING_EXCLUDE_KEYS,
                 }
             )
         )

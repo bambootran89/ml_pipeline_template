@@ -59,6 +59,11 @@ def _configure_server_settings(
             'uvicorn.run(app, host="0.0.0.0", port=8000)',
             f'uvicorn.run(app, host="{host}", port={port})',
         )
+        code = code.replace(
+            "uvicorn.run(app, host=API_DEFAULTS.FASTAPI_HOST, "
+            "port=API_DEFAULTS.FASTAPI_PORT)",
+            f'uvicorn.run(app, host="{host}", port={port})',
+        )
     elif framework == "ray":
         code = code.replace(
             "serve.run(app_builder({}))",

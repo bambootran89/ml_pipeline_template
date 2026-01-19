@@ -8,7 +8,6 @@ Supports:
 - Timeseries data: multi-step prediction with configurable horizon
 """
 
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +15,8 @@ from typing import Any, Dict, List, Optional
 
 from omegaconf import DictConfig, OmegaConf
 
+from ..pipeline.constants import CONTEXT_KEYS
+from ..pipeline.generator_config import GeneratorConfig
 from .fastapi import ApiGeneratorFastAPIMixin
 from .ray import ApiGeneratorRayServeMixin
 
@@ -30,6 +31,15 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
     Supports both tabular and timeseries data types with appropriate
     prediction strategies (batch for tabular, multi-step for timeseries).
     """
+
+    def __init__(self, config: Optional[GeneratorConfig] = None):
+        """Initialize API generator with configuration.
+
+        Args:
+            config: Optional GeneratorConfig for customization.
+        """
+        ApiGeneratorFastAPIMixin.__init__(self, config)
+        ApiGeneratorRayServeMixin.__init__(self, config)
 
     def generate_api(
         self,
@@ -174,8 +184,12 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         filtered = []
         for inf in all_inf:
             mk = inf.get("model_key", "")
-            sid = inf.get("id", "").replace("_inference", "")
-            if sid in fg_ids or mk in fg_keys or f"fitted_{sid}" in fg_keys:
+            sid = inf.get("id", "").replace(CONTEXT_KEYS.INFERENCE_SUFFIX, "")
+            if (
+                sid in fg_ids
+                or mk in fg_keys
+                or f"{CONTEXT_KEYS.FITTED_PREFIX}{sid}" in fg_keys
+            ):
                 continue
             filtered.append(inf)
         sorted_inf = self._sort_by_deps(filtered)

@@ -110,6 +110,7 @@ if platform.system() == "Darwin":
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 from mlproject.src.features.facade import FeatureStoreFacade
+from mlproject.src.generator.pipeline.constants import API_DEFAULTS, CONTEXT_KEYS
 
 app = FastAPI(title="ML Pipeline API (Ray Serve)")
 """
@@ -328,8 +329,8 @@ if __name__ == "__main__":
 
         return f"""
 @serve.deployment(
-    num_replicas=1,
-    ray_actor_options={{"num_cpus": 1}}
+    num_replicas=API_DEFAULTS.RAY_MODEL_REPLICAS,
+    ray_actor_options={{"num_cpus": API_DEFAULTS.RAY_MODEL_CPUS}}
 )
 class ModelService:
     DATA_TYPE = "{ctx.data_config.data_type}"
@@ -551,7 +552,7 @@ class ModelService:
             preprocessed
         )
         composed = self.compose_features(preprocessed, additional_features)
-        context = {{"preprocessed_data": composed}}
+        context = {{CONTEXT_KEYS.PREPROCESSED_DATA: composed}}
 
         if self.DATA_TYPE == "tabular":
             result = self.predict_tabular_batch(
@@ -590,8 +591,8 @@ class ModelService:
             )
 
         return f"""@serve.deployment(
-    num_replicas=2,
-    ray_actor_options={{"num_cpus": 0.5}}
+    num_replicas=API_DEFAULTS.RAY_PREPROCESS_REPLICAS,
+    ray_actor_options={{"num_cpus": API_DEFAULTS.RAY_PREPROCESS_CPUS}}
 )
 class PreprocessService:
     def __init__(self, config_path: str) -> None:

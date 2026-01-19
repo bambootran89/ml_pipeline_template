@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from omegaconf import DictConfig, OmegaConf
 
+from .constants import CONTEXT_KEYS, STEP_CONSTANTS
 from .dependency_builder import DependencyBuilder
 from .feature_pipeline_parser import EngineeredFeature, FeaturePipeline
+from .generator_config import ConfigurablePatternMatcher, GeneratorConfig
 from .loader_builder import LoaderBuilder
 from .step_analyzer import StepAnalyzer, StepExtractor
 from .step_transformer import StepTransformer
@@ -19,7 +21,10 @@ class EvalBuilder:
 
     # pylint: disable=R0911
     def __init__(
-        self, train_steps: List[Any], experiment_type: str = "tabular"
+        self,
+        train_steps: List[Any],
+        experiment_type: str = "tabular",
+        config: Optional[GeneratorConfig] = None,
     ) -> None:
         """Initialize eval builder.
 
@@ -29,13 +34,17 @@ class EvalBuilder:
             Original training steps.
         experiment_type : str
             Type of experiment (timeseries, tabular).
+        config : Optional[GeneratorConfig]
+            Generator configuration for customization.
         """
         self.train_steps = train_steps
         self.experiment_type = experiment_type
+        self.config = config or GeneratorConfig()
+        self.matcher = ConfigurablePatternMatcher(self.config)
         self.analyzer = StepAnalyzer()
         self.extractor = StepExtractor()
         self.dependency_builder = DependencyBuilder(train_steps)
-        self.loader_builder = LoaderBuilder()
+        self.loader_builder = LoaderBuilder(self.config)
         self.transformer = StepTransformer()
 
     def build(
@@ -67,7 +76,7 @@ class EvalBuilder:
 
         # Data loader
         data_loader = next(
-            (s for s in self.train_steps if s.type == "data_loader"), None
+            (s for s in self.train_steps if s.type == STEP_CONSTANTS.DATA_LOADER), None
         )
         if data_loader:
             steps.append(data_loader)
@@ -112,7 +121,11 @@ class EvalBuilder:
             branch_ids,
             init_id,
             next(
-                (s.id for s in self.train_steps if s.type == "preprocessor"),
+                (
+                    s.id
+                    for s in self.train_steps
+                    if s.type == STEP_CONSTANTS.PREPROCESSOR
+                ),
                 None,
             ),
             [
@@ -182,17 +195,17 @@ class EvalBuilder:
         DictConfig
             Feature inference step.
         """
-        step_id = f"{feat.source_step_id}_inference"
-        model_key = f"fitted_{feat.source_step_id}"
+        step_id = f"{feat.source_step_id}{CONTEXT_KEYS.INFERENCE_SUFFIX}"
+        model_key = f"{CONTEXT_KEYS.FITTED_PREFIX}{feat.source_step_id}"
 
         return OmegaConf.create(
             {
                 "id": step_id,
-                "type": "feature_inference",
+                "type": STEP_CONSTANTS.FEATURE_INFERENCE,
                 "enabled": True,
                 "depends_on": [init_id],
                 "source_model_key": model_key,
-                "base_features_key": "preprocessed_data",
+                "base_features_key": CONTEXT_KEYS.PREPROCESSED_DATA,
                 "output_key": feat.output_key,
                 "apply_windowing": self._should_apply_windowing(feat.source_step_id),
             }
@@ -211,20 +224,20 @@ class EvalBuilder:
         step_type = train_step.get("type", "")
 
         # Standard trainers and clustering steps in timeseries expect windowed data
-        if step_type in ["trainer", "clustering", "framework_model"]:
+        if step_type in STEP_CONSTANTS.WINDOWING_STEP_TYPES:
             return True
 
         # For dynamic adapters, check if they received a datamodule in training
-        if step_type == "dynamic_adapter":
+        if step_type == STEP_CONSTANTS.DYNAMIC_ADAPTER:
             if "wiring" in train_step and "inputs" in train_step.wiring:
                 inputs = train_step.wiring.inputs
-                if "datamodule" in inputs:
+                if STEP_CONSTANTS.DATAMODULE in inputs:
                     return True
             return False
 
         # Fallback for other steps in timeseries
         step_lower = step_id.lower()
-        if any(x in step_lower for x in ["impute", "pca", "scaler"]):
+        if any(x in step_lower for x in STEP_CONSTANTS.NON_WINDOWING_KEYWORDS):
             return False
 
         return True
@@ -267,15 +280,15 @@ class EvalBuilder:
 
         # Transform nested steps
         for sub_step in transformed.pipeline.steps:
-            if sub_step.type == "preprocessor":
+            if sub_step.type == STEP_CONSTANTS.PREPROCESSOR:
                 self.transformer.transform_preprocessor(sub_step, alias)
 
-            elif sub_step.type == "dynamic_adapter":
+            elif sub_step.type == STEP_CONSTANTS.DYNAMIC_ADAPTER:
                 self._transform_dynamic_adapter_in_sub(
                     sub_step, alias, feature_pipeline
                 )
 
-            elif sub_step.type in ["clustering", "model"]:
+            elif sub_step.type in [STEP_CONSTANTS.CLUSTERING, STEP_CONSTANTS.MODEL]:
                 self._transform_model_in_sub(sub_step, alias, feature_pipeline)
 
         return transformed
@@ -300,7 +313,7 @@ class EvalBuilder:
         if is_feature:
             # Convert to feature inference mode
             step.is_train = False
-            step.instance_key = f"fitted_{step['id']}"
+            step.instance_key = f"{CONTEXT_KEYS.FITTED_PREFIX}{step['id']}"
             self.transformer.remove_training_configs(step)
 
             # Change run_method to transform
@@ -324,9 +337,9 @@ class EvalBuilder:
 
         if is_feature:
             # Convert to inference mode
-            step.type = "feature_inference"
-            step.source_model_key = f"fitted_{step['id']}"
-            step.base_features_key = "preprocessed_data"
+            step.type = STEP_CONSTANTS.FEATURE_INFERENCE
+            step.source_model_key = f"{CONTEXT_KEYS.FITTED_PREFIX}{step['id']}"
+            step.base_features_key = CONTEXT_KEYS.PREPROCESSED_DATA
 
             # Get output key from feature pipeline
             if feature_pipeline:
@@ -344,14 +357,14 @@ class EvalBuilder:
         branch_ids: Set[str] = set()
 
         for step in self.train_steps:
-            if step.type == "sub_pipeline":
+            if step.type == STEP_CONSTANTS.SUB_PIPELINE:
                 transformed = self._transform_sub_pipeline(
                     step, alias, feature_pipeline
                 )
                 special.append(transformed)
                 special_ids.append(step.id)
 
-            elif step.type == "branch":
+            elif step.type == STEP_CONSTANTS.BRANCH:
                 transformed = self._transform_branch(step)
                 special.append(transformed)
                 special_ids.append(step.id)
@@ -364,7 +377,7 @@ class EvalBuilder:
                     if hasattr(branch, "id"):
                         branch_ids.add(branch.id)
 
-            elif step.type == "parallel":
+            elif step.type == STEP_CONSTANTS.PARALLEL:
                 special_ids.append(step.id)
 
         return special, special_ids, branch_ids
@@ -388,11 +401,11 @@ class EvalBuilder:
         prep = copy.deepcopy(preprocessor_step)
         prep.is_train = False
         prep.alias = init_id
-        prep.instance_key = "transform_manager"
+        prep.instance_key = CONTEXT_KEYS.TRANSFORM_MANAGER
         prep.depends_on = [init_id]
 
         if data_loader:
-            prep.depends_on.append("load_data")
+            prep.depends_on.append(STEP_CONSTANTS.LOAD_DATA_ID)
 
         steps.append(prep)
 
@@ -405,25 +418,25 @@ class EvalBuilder:
     ) -> None:
         """Add preprocessors to pipeline."""
         for step in self.train_steps:
-            if step.type == "preprocessor":
+            if step.type == STEP_CONSTANTS.PREPROCESSOR:
                 prep = copy.deepcopy(step)
                 prep.is_train = False
                 prep.alias = alias
-                prep.instance_key = f"fitted_{step.id}"
+                prep.instance_key = f"{CONTEXT_KEYS.FITTED_PREFIX}{step.id}"
                 prep.depends_on = [init_id]
 
                 if data_loader:
-                    prep.depends_on.append("load_data")
+                    prep.depends_on.append(STEP_CONSTANTS.LOAD_DATA_ID)
 
                 steps.append(prep)
 
-            elif step.type == "dynamic_adapter":
+            elif step.type == STEP_CONSTANTS.DYNAMIC_ADAPTER:
                 if not self._should_add_adapter(step):
                     continue
 
                 adapter = copy.deepcopy(step)
                 adapter.is_train = False
-                adapter.instance_key = f"fitted_{step.id}"
+                adapter.instance_key = f"{CONTEXT_KEYS.FITTED_PREFIX}{step.id}"
                 adapter.depends_on = [init_id]
 
                 if hasattr(step, "depends_on"):
@@ -440,7 +453,7 @@ class EvalBuilder:
         if not hasattr(step, "artifact_type"):
             return False
 
-        return step.artifact_type == "preprocess"
+        return step.artifact_type == STEP_CONSTANTS.PREPROCESS_ID
 
     def _transform_branch(self, step: Any) -> Any:
         """Transform branch for eval."""
@@ -473,8 +486,8 @@ class EvalBuilder:
             return None
 
         eval_id = (
-            f"{branch.id}_evaluate"
-            if not branch.id.endswith("_evaluate")
+            f"{branch.id}{CONTEXT_KEYS.EVALUATE_SUFFIX}"
+            if not branch.id.endswith(CONTEXT_KEYS.EVALUATE_SUFFIX)
             else branch.id
         )
 
@@ -488,14 +501,14 @@ class EvalBuilder:
 
         config = {
             "id": eval_id,
-            "type": "evaluator",
+            "type": STEP_CONSTANTS.EVALUATOR,
             "enabled": True,
-            "depends_on": ["preprocess"],
+            "depends_on": [STEP_CONSTANTS.PREPROCESS_ID],
             "wiring": wiring,
         }
 
-        if branch.type == "clustering":
-            config["step_eval_type"] = "clustering"
+        if branch.type == STEP_CONSTANTS.CLUSTERING:
+            config["step_eval_type"] = STEP_CONSTANTS.CLUSTERING
 
         return OmegaConf.create(config)
 
@@ -505,20 +518,20 @@ class EvalBuilder:
         """Create evaluator wiring."""
         wiring = {
             "inputs": {
-                "model": f"fitted_{model_id}",
-                "features": "preprocessed_data",
+                "model": f"{CONTEXT_KEYS.FITTED_PREFIX}{model_id}",
+                "features": CONTEXT_KEYS.PREPROCESSED_DATA,
             },
             "outputs": {
                 "metrics": (
-                    outputs.get("metrics", "evaluation_metrics")
+                    outputs.get("metrics", CONTEXT_KEYS.EVALUATION_METRICS)
                     if outputs
-                    else "evaluation_metrics"
+                    else CONTEXT_KEYS.EVALUATION_METRICS
                 )
             },
         }
 
-        if model_type != "clustering":
-            wiring["inputs"]["targets"] = "target_data"
+        if model_type != STEP_CONSTANTS.CLUSTERING:
+            wiring["inputs"]["targets"] = CONTEXT_KEYS.TARGET_DATA
 
         return wiring
 
@@ -556,7 +569,7 @@ class EvalBuilder:
 
     def _is_clustering_adapter(self, step: Any) -> bool:
         """Check if clustering adapter."""
-        if step.type != "dynamic_adapter":
+        if step.type != STEP_CONSTANTS.DYNAMIC_ADAPTER:
             return False
 
         if not hasattr(step, "class_path"):
@@ -582,18 +595,18 @@ class EvalBuilder:
         if not hasattr(producer, "wiring") or not hasattr(producer.wiring, "inputs"):
             return None
 
-        datamodule_key = producer.wiring.inputs.get("datamodule")
+        datamodule_key = producer.wiring.inputs.get(STEP_CONSTANTS.DATAMODULE)
         if not datamodule_key:
             return None
 
         # Find step that outputs this datamodule key
         for step in self.train_steps:
-            if step.type != "datamodule":
+            if step.type != STEP_CONSTANTS.DATAMODULE:
                 continue
 
             if hasattr(step, "wiring") and hasattr(step.wiring, "outputs"):
                 outputs = step.wiring.outputs
-                if outputs.get("datamodule") == datamodule_key:
+                if outputs.get(STEP_CONSTANTS.DATAMODULE) == datamodule_key:
                     return step
 
         return None
@@ -631,7 +644,7 @@ class EvalBuilder:
     ) -> DictConfig:
         """Create evaluator config."""
         base_name = self.transformer.extract_base_name(producer.id)
-        eval_id = f"{base_name}_evaluate"
+        eval_id = f"{base_name}{CONTEXT_KEYS.EVALUATE_SUFFIX}"
 
         is_clustering = self.analyzer.is_clustering(producer)
         features_input = self.analyzer.extract_features_input(producer)
@@ -648,17 +661,17 @@ class EvalBuilder:
 
         config: Dict[str, Any] = {
             "id": eval_id,
-            "type": "evaluator",
+            "type": STEP_CONSTANTS.EVALUATOR,
             "enabled": True,
             "depends_on": deps,
             "wiring": {
                 "inputs": inputs,
-                "outputs": {"metrics": f"{base_name}_metrics"},
+                "outputs": {"metrics": f"{base_name}{CONTEXT_KEYS.METRICS_SUFFIX}"},
             },
         }
 
         if is_clustering:
-            config["step_eval_type"] = "clustering"
+            config["step_eval_type"] = STEP_CONSTANTS.CLUSTERING
 
         # Add additional_feature_keys if producer uses composed features
         additional_keys = self._get_additional_feature_keys(producer)
@@ -677,31 +690,24 @@ class EvalBuilder:
         """Build evaluator inputs."""
         inputs: Dict[str, Any] = {
             "features": features,
-            "model": f"fitted_{mp_id}",
+            "model": f"{CONTEXT_KEYS.FITTED_PREFIX}{mp_id}",
         }
 
         if not is_clustering:
-            inputs["targets"] = "target_data"
+            inputs["targets"] = CONTEXT_KEYS.TARGET_DATA
 
         return inputs
 
     def _add_auxiliary_steps(self, steps: List[Any], evaluator_ids: List[str]) -> None:
         """Add logger and profiling."""
         for step in self.train_steps:
-            if step.type not in ["logger", "profiling"]:
+            if step.type not in [STEP_CONSTANTS.LOGGER, STEP_CONSTANTS.PROFILING]:
                 continue
 
             aux = copy.deepcopy(step)
             aux.depends_on = evaluator_ids
 
-            if aux.type == "profiling":
-                aux.exclude_keys = [
-                    "cfg",
-                    "preprocessor",
-                    "df",
-                    "train_df",
-                    "val_df",
-                    "test_df",
-                ]
+            if aux.type == STEP_CONSTANTS.PROFILING:
+                aux.exclude_keys = CONTEXT_KEYS.PROFILING_EXCLUDE_KEYS
 
             steps.append(aux)

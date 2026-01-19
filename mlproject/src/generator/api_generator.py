@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from omegaconf import DictConfig, OmegaConf
 
 from .apis.mixin import ApiGeneratorMixin
+from .pipeline.generator_config import GeneratorConfig
 
 
 class ApiGenerator:
@@ -17,9 +20,14 @@ class ApiGenerator:
 
     def __init__(
         self,
+        config: Optional[GeneratorConfig] = None,
     ) -> None:
-        """Initialize ConfigGenerator and load training configuration."""
-        self._api_generator = ApiGeneratorMixin()
+        """Initialize ApiGenerator with optional configuration.
+
+        Args:
+            config: Optional GeneratorConfig for customization.
+        """
+        self._api_generator = ApiGeneratorMixin(config)
 
     def _save_config(self, cfg: DictConfig, path: str) -> None:
         """Save transformed pipeline configuration to YAML file."""
