@@ -7,17 +7,19 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from omegaconf import DictConfig, OmegaConf
 
+from .base_builder import BasePipelineBuilder
 from .constants import CONTEXT_KEYS, STEP_CONSTANTS
-from .dependency_builder import DependencyBuilder
 from .feature_pipeline_parser import EngineeredFeature, FeaturePipeline
-from .generator_config import ConfigurablePatternMatcher, GeneratorConfig
+from .generator_config import GeneratorConfig
 from .loader_builder import LoaderBuilder
-from .step_analyzer import StepAnalyzer, StepExtractor
-from .step_transformer import StepTransformer
 
 
-class EvalBuilder:
-    """Evaluation pipeline builder."""
+class EvalBuilder(BasePipelineBuilder):
+    """Evaluation pipeline builder.
+
+    Inherits common functionality from BasePipelineBuilder and adds
+    evaluation-specific pipeline generation logic.
+    """
 
     # pylint: disable=R0911
     def __init__(
@@ -37,15 +39,8 @@ class EvalBuilder:
         config : Optional[GeneratorConfig]
             Generator configuration for customization.
         """
-        self.train_steps = train_steps
-        self.experiment_type = experiment_type
-        self.config = config or GeneratorConfig()
-        self.matcher = ConfigurablePatternMatcher(self.config)
-        self.analyzer = StepAnalyzer()
-        self.extractor = StepExtractor()
-        self.dependency_builder = DependencyBuilder(train_steps)
+        super().__init__(train_steps, experiment_type, config)
         self.loader_builder = LoaderBuilder(self.config)
-        self.transformer = StepTransformer()
 
     def build(
         self,
@@ -207,40 +202,9 @@ class EvalBuilder:
                 "source_model_key": model_key,
                 "base_features_key": CONTEXT_KEYS.PREPROCESSED_DATA,
                 "output_key": feat.output_key,
-                "apply_windowing": self._should_apply_windowing(feat.source_step_id),
+                "apply_windowing": self.should_apply_windowing(feat.source_step_id),
             }
         )
-
-    def _should_apply_windowing(self, step_id: str) -> bool:
-        """Check if windowing should be applied based on step ID."""
-        if self.experiment_type != "timeseries":
-            return False
-
-        # Find the original training step to check its configuration
-        train_step = self.extractor.find_step_by_id(self.train_steps, step_id)
-        if not train_step:
-            return True
-
-        step_type = train_step.get("type", "")
-
-        # Standard trainers and clustering steps in timeseries expect windowed data
-        if step_type in STEP_CONSTANTS.WINDOWING_STEP_TYPES:
-            return True
-
-        # For dynamic adapters, check if they received a datamodule in training
-        if step_type == STEP_CONSTANTS.DYNAMIC_ADAPTER:
-            if "wiring" in train_step and "inputs" in train_step.wiring:
-                inputs = train_step.wiring.inputs
-                if STEP_CONSTANTS.DATAMODULE in inputs:
-                    return True
-            return False
-
-        # Fallback for other steps in timeseries
-        step_lower = step_id.lower()
-        if any(x in step_lower for x in STEP_CONSTANTS.NON_WINDOWING_KEYWORDS):
-            return False
-
-        return True
 
     def _transform_sub_pipeline(
         self, step: Any, alias: str, feature_pipeline: Optional[FeaturePipeline]
@@ -551,7 +515,7 @@ class EvalBuilder:
             if producer.id in branch_ids:
                 continue
 
-            if self._is_clustering_adapter(producer):
+            if self.is_clustering_adapter(producer):
                 continue
 
             evaluator = self._make_evaluator(
@@ -566,74 +530,6 @@ class EvalBuilder:
             steps.append(evaluator)
 
         return evaluator_ids
-
-    def _is_clustering_adapter(self, step: Any) -> bool:
-        """Check if clustering adapter."""
-        if step.type != STEP_CONSTANTS.DYNAMIC_ADAPTER:
-            return False
-
-        if not hasattr(step, "class_path"):
-            return False
-
-        path_lower = step.class_path.lower()
-        return "cluster" in path_lower or "kmeans" in path_lower
-
-    def _find_datamodule_for_producer(self, producer: Any) -> Optional[Any]:
-        """Find datamodule step used by producer.
-
-        Parameters
-        ----------
-        producer : Any
-            Model producer step.
-
-        Returns
-        -------
-        Optional[Any]
-            Datamodule step if found.
-        """
-        # Check if producer has datamodule input in wiring
-        if not hasattr(producer, "wiring") or not hasattr(producer.wiring, "inputs"):
-            return None
-
-        datamodule_key = producer.wiring.inputs.get(STEP_CONSTANTS.DATAMODULE)
-        if not datamodule_key:
-            return None
-
-        # Find step that outputs this datamodule key
-        for step in self.train_steps:
-            if step.type != STEP_CONSTANTS.DATAMODULE:
-                continue
-
-            if hasattr(step, "wiring") and hasattr(step.wiring, "outputs"):
-                outputs = step.wiring.outputs
-                if outputs.get(STEP_CONSTANTS.DATAMODULE) == datamodule_key:
-                    return step
-
-        return None
-
-    def _get_additional_feature_keys(self, producer: Any) -> Optional[List[str]]:
-        """Get additional_feature_keys from datamodule used by producer.
-
-        Parameters
-        ----------
-        producer : Any
-            Model producer step.
-
-        Returns
-        -------
-        Optional[List[str]]
-            Additional feature keys if found.
-        """
-        datamodule_step = self._find_datamodule_for_producer(producer)
-        if datamodule_step is None:
-            return None
-
-        if hasattr(datamodule_step, "additional_feature_keys"):
-            keys = datamodule_step.additional_feature_keys
-            if keys:
-                return list(keys)
-
-        return None
 
     def _make_evaluator(
         self,
@@ -674,7 +570,7 @@ class EvalBuilder:
             config["step_eval_type"] = STEP_CONSTANTS.CLUSTERING
 
         # Add additional_feature_keys if producer uses composed features
-        additional_keys = self._get_additional_feature_keys(producer)
+        additional_keys = self.extract_additional_feature_keys(producer)
         if additional_keys:
             config["additional_feature_keys"] = additional_keys
             print(

@@ -57,7 +57,7 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
         """Get list of feature generator model keys."""
         return [fg.model_key for fg in ctx.data_config.feature_generators]
 
-    def _gen_feature_generators_config(self, ctx: GenerationContext) -> str:
+    def _generate_feature_generators_config(self, ctx: GenerationContext) -> str:
         """Generate feature generators config as Python dict."""
         if not ctx.data_config.feature_generators:
             return "{}"
@@ -77,19 +77,19 @@ class ApiGeneratorFastAPIMixin(ApiGeneratorExtractorsMixin):
     def _build_fastapi_code(self, ctx: GenerationContext) -> str:
         """Build complete FastAPI code."""
         parts = [
-            self._gen_header(ctx),
-            self._gen_service_init(ctx),
-            self._gen_service_methods(),
-            self._gen_tabular_inference(ctx.inference_steps),
-            self._gen_timeseries_inference(ctx),
-            self._gen_service_entrypoint(),
-            self._gen_api_init(ctx),
-            self._gen_api_endpoints(ctx),
-            self._gen_main(),
+            self._generate_header(ctx),
+            self._generate_service_init(ctx),
+            self._generate_service_methods(),
+            self._generate_tabular_inference(ctx.inference_steps),
+            self._generate_timeseries_inference(ctx),
+            self._generate_service_entrypoint(),
+            self._generate_api_init(ctx),
+            self._generate_api_endpoints(ctx),
+            self._generate_main(),
         ]
         return "".join(parts)
 
-    def _gen_header(self, ctx: GenerationContext) -> str:
+    def _generate_header(self, ctx: GenerationContext) -> str:
         """Generate file header and imports."""
         desc = (
             "Tabular batch prediction"
@@ -184,7 +184,7 @@ class ServeService:
     ADDITIONAL_FEATURE_KEYS = {repr(
         ctx.data_config.additional_feature_keys
     )}
-    FEATURE_GENERATORS = {self._gen_feature_generators_config(ctx)}
+    FEATURE_GENERATORS = {self._generate_feature_generators_config(ctx)}
 
     def __init__(self, config_path: str) -> None:
         self.cfg = ConfigLoader.load(config_path)
@@ -200,7 +200,7 @@ class ServeService:
             )
 """
 
-    def _gen_service_init(self, ctx: GenerationContext) -> str:
+    def _generate_service_init(self, ctx: GenerationContext) -> str:
         """Generate service initialization code."""
         parts = []
 
@@ -277,19 +277,57 @@ class ServeService:
 
         return "".join(parts)
 
-    def _gen_service_methods(self) -> str:
-        """Generate service helper methods."""
+    def _generate_service_methods(self) -> str:
+        """Generate all service helper methods.
+
+        Combines multiple method generation functions to create a complete
+        service class with all necessary helper methods.
+        """
+        parts = [
+            self._generate_preprocess_method(),
+            self._generate_input_preparation_methods(),
+            self._generate_feast_method(),
+            self._generate_feature_generation_method(),
+            self._generate_feature_composition_method(),
+            self._generate_pipeline_runner_method(),
+        ]
+        return "\n".join(parts)
+
+    def _generate_preprocess_method(self) -> str:
+        """Generate preprocessing method."""
         return """
     def preprocess(self, data: pd.DataFrame) -> pd.DataFrame:
         if self.preprocessor is None:
             return data
         return self.preprocessor.transform(data)
+"""
 
+    def _generate_input_preparation_methods(self) -> str:
+        """Generate input preparation methods for tabular and timeseries data."""
+        return """
     def _prepare_input_tabular(self, features: Any) -> np.ndarray:
         if isinstance(features, pd.DataFrame):
             return features.values
         return np.atleast_2d(np.array(features))
 
+    def _prepare_input_timeseries(self, features: Any, model_type: str) -> np.ndarray:
+        if isinstance(features, pd.DataFrame):
+            x_input = features.values
+        else:
+            x_input = np.array(features)
+
+        if model_type == "ml":
+            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
+            x_input = x_input.reshape(1, -1)
+        else:
+            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
+            x_input = x_input[np.newaxis, :]
+        return x_input
+"""
+
+    def _generate_feast_method(self) -> str:
+        """Generate Feast feature store method."""
+        return """
     def get_online_dataset(self,
                            entities: List[Union[int, str]],
                            time_point: str = "now") -> pd.DataFrame:
@@ -303,7 +341,11 @@ class ServeService:
             entity_ids=entities
         )
         return df
+"""
 
+    def _generate_feature_generation_method(self) -> str:
+        """Generate feature generation method using feature generators."""
+        return """
     def generate_additional_features(
         self, base_features: pd.DataFrame
     ) -> Dict[str, Any]:
@@ -324,10 +366,10 @@ class ServeService:
             else base_features
         )
 
-        for output_key, fg_info in self.feature_generators.items():
-            model = fg_info["model"]
-            method = fg_info["method"]
-            fg_type = fg_info["type"]
+        for output_key, generator_info in self.feature_generators.items():
+            model = generator_info["model"]
+            method = generator_info["method"]
+            generator_type = generator_info["type"]
 
             try:
                 inference_fn = getattr(model, method, None)
@@ -344,7 +386,9 @@ class ServeService:
                     )
                     continue
 
-                if (fg_type != "dynamic_adapter") and self.DATA_TYPE != "tabular":
+                if (generator_type != "dynamic_adapter") and (
+                    self.DATA_TYPE != "tabular"
+                ):
                     ts_x_input = self._prepare_input_timeseries(x_input, "ml")
                     result = inference_fn(ts_x_input)
                 else:
@@ -355,14 +399,18 @@ class ServeService:
                     if hasattr(result, "shape")
                     else len(result)
                 )
-                print(f"  + {output_key} ({fg_type}): {result_shape}")
+                print(f"  + {output_key} ({generator_type}): {result_shape}")
 
             except Exception as e:
                 print(f"  Warning: Failed to generate {output_key}: {e}")
                 continue
 
         return additional_features
+"""
 
+    def _generate_feature_composition_method(self) -> str:
+        """Generate feature composition method."""
+        return """
     def compose_features(
         self,
         base_features: pd.DataFrame,
@@ -413,7 +461,11 @@ class ServeService:
             print(f"  + {key}: {feat_df.shape} -> Total: {composed.shape}")
 
         return composed
+"""
 
+    def _generate_pipeline_runner_method(self) -> str:
+        """Generate full pipeline runner method."""
+        return """
     def run_full_pipeline(
         self,
         raw_data: pd.DataFrame,
@@ -438,22 +490,12 @@ class ServeService:
             )
 
         return result
+"""
 
-
-    def _prepare_input_timeseries(self, features: Any, model_type: str) -> np.ndarray:
-        if isinstance(features, pd.DataFrame):
-            x_input = features.values
-        else:
-            x_input = np.array(features)
-
-        if model_type == "ml":
-            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
-            x_input = x_input.reshape(1, -1)
-        else:
-            x_input = x_input[:self.INPUT_CHUNK_LENGTH, :]
-            x_input = x_input[np.newaxis, :]
-        return x_input
-
+    def _generate_tabular_inference(self, inference_steps: List[Dict[str, Any]]) -> str:
+        """Generate tabular inference with sequential dependencies."""
+        parts = [
+            """
     def predict_tabular_batch(
         self,
         context: Dict[str, Any],
@@ -462,74 +504,76 @@ class ServeService:
         results = {}
         metadata = {"n_samples": 0, "model_type": "tabular"}
 """
+        ]
 
-    def _gen_tabular_inference(self, inference_steps: List[Dict[str, Any]]) -> str:
-        """Gen tabular inference with sequential deps."""
-        parts = []
-        for si in inference_steps:
-            ak = si.get("additional_feature_keys", [])
-            fk = si["features_key"]
+        for inference_step in inference_steps:
+            additional_keys = inference_step.get("additional_feature_keys", [])
+            features_key = inference_step["features_key"]
 
-            if ak:
-                aks = ", ".join([f'"{k}"' for k in ak])
+            if additional_keys:
+                keys_str = ", ".join([f'"{key}"' for key in additional_keys])
                 prep = f"""
-            # {si['id']}: merge features
-            base = context.get("{fk}")
-            adds = []
-            for k in [{aks}]:
-                if k in context:
-                    v = context[k]
-                    if isinstance(v, pd.DataFrame):
-                        adds.append(v.values)
-                    elif isinstance(v, np.ndarray):
-                        adds.append(v)
-                    elif isinstance(v, list):
-                        adds.append(np.array(v))
+            # {inference_step['id']}: merge features
+            base = context.get("{features_key}")
+            additional_features = []
+            for key in [{keys_str}]:
+                if key in context:
+                    value = context[key]
+                    if isinstance(value, pd.DataFrame):
+                        additional_features.append(value.values)
+                    elif isinstance(value, np.ndarray):
+                        additional_features.append(value)
+                    elif isinstance(value, list):
+                        additional_features.append(np.array(value))
             if isinstance(base, pd.DataFrame):
-                x = base.values
+                x_input = base.values
             else:
-                x = np.array(base) if base is not None else None
-            if x is not None and adds:
-                x = np.concatenate([x] + adds, axis=-1)
+                x_input = np.array(base) if base is not None else None
+            if x_input is not None and additional_features:
+                x_input = np.concatenate([x_input] + additional_features, axis=-1)
 """
             else:
                 prep = f"""
-            base = context.get("{fk}")
+            base = context.get("{features_key}")
             if isinstance(base, pd.DataFrame):
-                x = base.values
+                x_input = base.values
             else:
-                x = np.array(base) if base is not None else None
+                x_input = np.array(base) if base is not None else None
 """
 
             parts.append(
                 f"""
-        model = self.models.get("{si['model_key']}")
+        model = self.models.get("{inference_step['model_key']}")
         if model is not None:
 {prep}
-            if x is not None:
-                inp = self._prepare_input_tabular(x)
-                metadata["n_samples"] = len(inp)
-                p = model.predict(inp)
-                results["{si['output_key']}"] = p.tolist()
-                context["{si['output_key']}"] = p
+            if x_input is not None:
+                prepared_input = self._prepare_input_tabular(x_input)
+                metadata["n_samples"] = len(prepared_input)
+                predictions = model.predict(prepared_input)
+                results["{inference_step['output_key']}"] = predictions.tolist()
+                context["{inference_step['output_key']}"] = predictions
                 if return_probabilities and hasattr(model, "predict_proba"):
                     try:
-                        pb = model.predict_proba(inp)
-                        results["{si['output_key']}_probabilities"] = (
-                            pb.tolist()
+                        probabilities = model.predict_proba(prepared_input)
+                        results["{inference_step['output_key']}_probabilities"] = (
+                            probabilities.tolist()
                         )
                     except Exception:
                         pass
 """
             )
-        return "".join(parts)
 
-    def _gen_timeseries_inference(self, ctx: GenerationContext) -> str:
-        """Gen timeseries inference with sequential deps."""
-        parts = [
+        parts.append(
             """
         return {"predictions": results, "metadata": metadata}
+"""
+        )
+        return "".join(parts)
 
+    def _generate_timeseries_inference(self, ctx: GenerationContext) -> str:
+        """Generate timeseries inference with sequential dependencies."""
+        parts = [
+            """
     def predict_timeseries_multistep(
         self,
         context: Dict[str, Any],
@@ -546,73 +590,81 @@ class ServeService:
 """
         ]
 
-        for si in ctx.inference_steps:
-            ak = si.get("additional_feature_keys", [])
+        for inference_step in ctx.inference_steps:
+            additional_keys = inference_step.get("additional_feature_keys", [])
 
-            if ak:
-                aks = ", ".join([f'"{k}"' for k in ak])
+            if additional_keys:
+                keys_str = ", ".join([f'"{key}"' for key in additional_keys])
                 merge = f"""
-                    if isinstance(cur, pd.DataFrame):
-                        base = cur.values
+                    if isinstance(current, pd.DataFrame):
+                        base = current.values
                     else:
-                        base = np.array(cur)
-                    adds = []
-                    for k in [{aks}]:
-                        if k in context:
-                            v = context[k]
-                            if isinstance(v, pd.DataFrame):
-                                adds.append(v.values[:len(base)])
-                            elif isinstance(v, np.ndarray):
-                                adds.append(v[:len(base)])
+                        base = np.array(current)
+                    additional_features = []
+                    for key in [{keys_str}]:
+                        if key in context:
+                            value = context[key]
+                            if isinstance(value, pd.DataFrame):
+                                additional_features.append(value.values[:len(base)])
+                            elif isinstance(value, np.ndarray):
+                                additional_features.append(value[:len(base)])
                     merged = (
-                        np.concatenate([base] + adds, axis=-1) if adds else base
+                        np.concatenate([base] + additional_features, axis=-1)
+                        if additional_features else base
                     )
 """
             else:
                 merge = """
-                    merged = cur
+                    merged = current
 """
 
             parts.append(
                 f"""
-        model = self.models.get("{si['model_key']}")
+        model = self.models.get("{inference_step['model_key']}")
         if model is not None:
-            feat = context.get("{si['features_key']}")
-            if feat is not None:
-                preds = []
-                cur = feat.copy() if isinstance(feat, pd.DataFrame) else feat
-                for bi in range(n_blocks):
-                    if len(cur) < self.INPUT_CHUNK_LENGTH:
+            features = context.get("{inference_step['features_key']}")
+            if features is not None:
+                predictions = []
+                current = (
+                    features.copy() if isinstance(features, pd.DataFrame)
+                    else features
+                )
+                for block_index in range(n_blocks):
+                    if len(current) < self.INPUT_CHUNK_LENGTH:
                         break
 {merge}
-                    inp = self._prepare_input_timeseries(
-                        merged, "{si['model_type']}"
+                    prepared_input = self._prepare_input_timeseries(
+                        merged, "{inference_step['model_type']}"
                     )
-                    bp = model.predict(inp)
-                    preds.append(bp[0])
-                    if bi < n_blocks - 1 and hasattr(cur, "iloc"):
-                        sh = min(self.OUTPUT_CHUNK_LENGTH, len(bp))
-                        if isinstance(cur, pd.DataFrame):
-                            cur = cur.iloc[sh:]
-                preds = np.array(preds)
-                if preds.ndim == 1:
-                    out = preds
+                    block_predictions = model.predict(prepared_input)
+                    predictions.append(block_predictions[0])
+                    if block_index < n_blocks - 1 and hasattr(current, "iloc"):
+                        shift = min(self.OUTPUT_CHUNK_LENGTH, len(block_predictions))
+                        if isinstance(current, pd.DataFrame):
+                            current = current.iloc[shift:]
+                predictions = np.array(predictions)
+                if predictions.ndim == 1:
+                    output = predictions
                 else:
-                    out = np.concatenate(preds, axis=0)
-                results["{si['output_key']}"] = out.tolist()
-                context["{si['output_key']}"] = out
+                    output = np.concatenate(predictions, axis=0)
+                results["{inference_step['output_key']}"] = output.tolist()
+                context["{inference_step['output_key']}"] = output
 """
             )
+
+        parts.append(
+            """
+        return {"predictions": results, "metadata": metadata}
+"""
+        )
         return "".join(parts)
 
-    def _gen_service_entrypoint(self) -> str:
+    def _generate_service_entrypoint(self) -> str:
         """Generate service entrypoint method."""
         return """
-        return {"predictions": results, "metadata": metadata}
-
 """
 
-    def _gen_api_init(self, ctx: GenerationContext) -> str:
+    def _generate_api_init(self, ctx: GenerationContext) -> str:
         """Generate API initialization."""
         return f"""
 service = ServeService("{ctx.experiment_config_path}")
@@ -662,7 +714,7 @@ def predict_feast_batch(request: FeastPredictRequest) -> MultiPredictResponse:
 
 """
 
-    def _gen_api_endpoints(self, ctx: GenerationContext) -> str:
+    def _generate_api_endpoints(self, ctx: GenerationContext) -> str:
         """Generate data-type specific endpoints."""
         if ctx.data_config.data_type == "tabular":
             return """
@@ -696,7 +748,7 @@ def predict_multistep(request: MultiStepPredictRequest) -> MultiPredictResponse:
 
 """
 
-    def _gen_main(self) -> str:
+    def _generate_main(self) -> str:
         """Generate main entry point."""
         return """
 if __name__ == "__main__":

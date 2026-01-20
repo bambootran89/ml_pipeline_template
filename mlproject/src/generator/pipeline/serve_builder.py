@@ -9,16 +9,18 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from omegaconf import DictConfig, OmegaConf
 
+from .base_builder import BasePipelineBuilder
 from .constants import CONTEXT_KEYS, STEP_CONSTANTS
-from .dependency_builder import DependencyBuilder
-from .generator_config import ConfigurablePatternMatcher, GeneratorConfig
+from .generator_config import GeneratorConfig
 from .loader_builder import LoaderBuilder
-from .step_analyzer import StepAnalyzer, StepExtractor
-from .step_transformer import StepTransformer
 
 
-class ServeBuilder:
-    """Builds serving pipeline from training pipeline."""
+class ServeBuilder(BasePipelineBuilder):
+    """Builds serving pipeline from training pipeline.
+
+    Inherits common functionality from BasePipelineBuilder and adds
+    serving-specific pipeline generation logic.
+    """
 
     def __init__(
         self,
@@ -33,15 +35,8 @@ class ServeBuilder:
             experiment_type: Type of experiment (timeseries, tabular).
             config: GeneratorConfig instance for customization.
         """
-        self.train_steps = train_steps
-        self.experiment_type = experiment_type
-        self.config = config or GeneratorConfig()
-        self.matcher = ConfigurablePatternMatcher(self.config)
-        self.analyzer = StepAnalyzer()
-        self.extractor = StepExtractor()
-        self.dependency_builder = DependencyBuilder(train_steps)
+        super().__init__(train_steps, experiment_type, config)
         self.loader_builder = LoaderBuilder(self.config)
-        self.transformer = StepTransformer()
 
     def build(
         self,
@@ -259,13 +254,6 @@ class ServeBuilder:
 
         return transformed
 
-    def _resolve_base_features_key(self, step: Any) -> str:
-        """Resolve base features key from step wiring."""
-        if hasattr(step, "wiring") and hasattr(step.wiring, "inputs"):
-            inputs = step.wiring.inputs
-            return self.matcher.resolve_feature_key(inputs)
-        return CONTEXT_KEYS.PREPROCESSED_DATA
-
     def _branch_to_inference(self, branch: Any) -> Optional[DictConfig]:
         """Convert branch to inference step."""
         if not self.analyzer.is_model_producer(branch):
@@ -279,9 +267,9 @@ class ServeBuilder:
             "enabled": True,
             "depends_on": [STEP_CONSTANTS.PREPROCESS_ID],
             "source_model_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{branch.id}",
-            "base_features_key": self._resolve_base_features_key(branch),
+            "base_features_key": self.resolve_base_features_key(branch),
             "output_key": f"{branch.id}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}",
-            "apply_windowing": self._should_apply_windowing(branch.id),
+            "apply_windowing": self.should_apply_windowing(branch.id),
         }
 
         return OmegaConf.create(config)
@@ -335,63 +323,6 @@ class ServeBuilder:
             if p.id not in branch_ids and any(s.id == p.id for s in self.train_steps)
         ]
 
-    def _find_datamodule_for_producer(self, producer: Any) -> Optional[Any]:
-        """Find datamodule step used by producer.
-
-        Parameters
-        ----------
-        producer : Any
-            Model producer step.
-
-        Returns
-        -------
-        Optional[Any]
-            Datamodule step if found.
-        """
-        # Check if producer has datamodule input in wiring
-        if not hasattr(producer, "wiring") or not hasattr(producer.wiring, "inputs"):
-            return None
-
-        datamodule_key = producer.wiring.inputs.get("datamodule")
-        if not datamodule_key:
-            return None
-
-        # Find step that outputs this datamodule key
-        for step in self.train_steps:
-            if step.type != STEP_CONSTANTS.DATAMODULE:
-                continue
-
-            if hasattr(step, "wiring") and hasattr(step.wiring, "outputs"):
-                outputs = step.wiring.outputs
-                if outputs.get("datamodule") == datamodule_key:
-                    return step
-
-        return None
-
-    def _get_additional_feature_keys(self, producer: Any) -> Optional[List[str]]:
-        """Get additional_feature_keys from datamodule used by producer.
-
-        Parameters
-        ----------
-        producer : Any
-            Model producer step.
-
-        Returns
-        -------
-        Optional[List[str]]
-            Additional feature keys if found.
-        """
-        datamodule_step = self._find_datamodule_for_producer(producer)
-        if datamodule_step is None:
-            return None
-
-        if hasattr(datamodule_step, "additional_feature_keys"):
-            keys = datamodule_step.additional_feature_keys
-            if keys:
-                return list(keys)
-
-        return None
-
     def _add_inference_steps(
         self,
         steps: List[Any],
@@ -409,13 +340,13 @@ class ServeBuilder:
                 "enabled": True,
                 "depends_on": [init_id, last_id],
                 "source_model_key": f"{CONTEXT_KEYS.FITTED_PREFIX}{producer.id}",
-                "base_features_key": self._resolve_base_features_key(producer),
+                "base_features_key": self.resolve_base_features_key(producer),
                 "output_key": f"{producer.id}{CONTEXT_KEYS.PREDICTIONS_SUFFIX}",
-                "apply_windowing": self._should_apply_windowing(producer.id),
+                "apply_windowing": self.should_apply_windowing(producer.id),
             }
 
             # Add additional_feature_keys if producer uses composed features
-            additional_keys = self._get_additional_feature_keys(producer)
+            additional_keys = self.extract_additional_feature_keys(producer)
             if additional_keys:
                 config["additional_feature_keys"] = additional_keys
                 print(
@@ -429,21 +360,6 @@ class ServeBuilder:
             last_id = inf_id
 
         return last_id
-
-    def _should_apply_windowing(self, step_id: str) -> bool:
-        """Check if windowing should be applied based on step ID."""
-        if self.experiment_type != "timeseries":
-            return False
-
-        # Find the original training step to check its configuration
-        train_step = self.extractor.find_step_by_id(self.train_steps, step_id)
-        if not train_step:
-            return True
-
-        step_type = train_step.get("type", "")
-
-        # Use configurable pattern matcher for windowing decision
-        return self.matcher.should_apply_windowing(step_type, step_id)
 
     def _add_final_profiling(self, steps: List[Any], last_id: str) -> None:
         """Add final profiling step."""

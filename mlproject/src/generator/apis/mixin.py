@@ -177,28 +177,34 @@ class ApiGeneratorMixin(ApiGeneratorFastAPIMixin, ApiGeneratorRayServeMixin):
         return load_map, preprocessor
 
     def _extract_inference_steps_excluding_generators(self, steps, feature_generators):
-        """Extract inference steps, exclude generators, sort by deps."""
-        all_inf = self._extract_inference_steps(steps)
-        fg_ids = {fg["step_id"] for fg in feature_generators}
-        fg_keys = {fg["model_key"] for fg in feature_generators}
-        filtered = []
-        for inf in all_inf:
-            mk = inf.get("model_key", "")
-            sid = inf.get("id", "").replace(CONTEXT_KEYS.INFERENCE_SUFFIX, "")
+        """Extract inference steps, exclude feature generators,
+        and sort by dependencies."""
+        all_inference_steps = self._extract_inference_steps(steps)
+        generator_step_ids = {gen["step_id"] for gen in feature_generators}
+        generator_model_keys = {gen["model_key"] for gen in feature_generators}
+
+        # Filter out feature generator steps
+        filtered_steps = []
+        for inference_step in all_inference_steps:
+            model_key = inference_step.get("model_key", "")
+            step_id = inference_step.get("id", "").replace(
+                CONTEXT_KEYS.INFERENCE_SUFFIX, ""
+            )
             if (
-                sid in fg_ids
-                or mk in fg_keys
-                or f"{CONTEXT_KEYS.FITTED_PREFIX}{sid}" in fg_keys
+                step_id in generator_step_ids
+                or model_key in generator_model_keys
+                or f"{CONTEXT_KEYS.FITTED_PREFIX}{step_id}" in generator_model_keys
             ):
                 continue
-            filtered.append(inf)
-        sorted_inf = self._sort_by_deps(filtered)
+            filtered_steps.append(inference_step)
 
-        if sorted_inf != filtered:
-            print("[ApiGenerator] Sorted by deps:")
-            for i, s in enumerate(sorted_inf):
-                ak = s.get("additional_feature_keys", [])
-                dep = f" (deps: {ak})" if ak else ""
-                print(f"  {i+1}. {s.get('id', '?')}{dep}")
+        sorted_steps = self._sort_by_dependencies(filtered_steps)
 
-        return sorted_inf
+        if sorted_steps != filtered_steps:
+            print("[ApiGenerator] Sorted by dependencies:")
+            for index, step in enumerate(sorted_steps):
+                additional_keys = step.get("additional_feature_keys", [])
+                deps_info = f" (deps: {additional_keys})" if additional_keys else ""
+                print(f"  {index+1}. {step.get('id', '?')}{deps_info}")
+
+        return sorted_steps
