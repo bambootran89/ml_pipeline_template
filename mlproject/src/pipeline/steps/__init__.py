@@ -26,6 +26,7 @@ from mlproject.src.pipeline.steps.constants import (
     ContextKeys,
     DataTypes,
     DefaultValues,
+    ModelTypes,
 )
 from mlproject.src.pipeline.steps.data_handlers import (
     DataTypeHandler,
@@ -71,6 +72,7 @@ __all__ = [
     "ContextKeys",
     "ColumnNames",
     "DataTypes",
+    "ModelTypes",
     "DefaultValues",
     "ConfigPaths",
     # Utilities

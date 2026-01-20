@@ -17,6 +17,7 @@ import pandas as pd
 from omegaconf import DictConfig, ListConfig, OmegaConf
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import ContextKeys
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
@@ -157,7 +158,7 @@ class ProfilingStep(BasePipelineStep):
             Profile dict to update.
         """
 
-        if key.endswith("_metrics"):
+        if key.endswith(ContextKeys.METRICS):
             profile["metrics"][key] = self._summarize_metrics(value)
         elif "prediction" in key.lower() or "pred" in key.lower():
             profile["predictions"][key] = self._analyze_predictions(value)

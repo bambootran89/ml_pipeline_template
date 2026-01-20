@@ -18,6 +18,7 @@ from omegaconf import DictConfig, OmegaConf
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import DataTypes
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.pipeline.steps.utils import ConfigAccessor, ConfigMerger
 from mlproject.src.trainer.factory import TrainerFactory
@@ -429,7 +430,8 @@ class FrameworkModelStep(BasePipelineStep):
             return predictions
 
         df = datamodule.df
-        if getattr(datamodule, "data_type", "tabular") == "timeseries":
+        data_type = getattr(datamodule, "data_type", DataTypes.TABULAR)
+        if DataTypes.is_timeseries(data_type):
             predictions = self._generate_timeseries_features(wrapper, datamodule, df)
         else:
             x_all = df[datamodule.features].values

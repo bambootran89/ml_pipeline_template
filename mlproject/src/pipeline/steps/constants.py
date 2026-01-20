@@ -141,6 +141,37 @@ class DataTypes:
         return DataTypes.normalize(data_type) == DataTypes.TABULAR
 
 
+class ModelTypes:
+    """Model type constants.
+
+    Supported model types for pipeline processing.
+    """
+
+    ML = "ml"
+    DL = "dl"
+    TIMESERIES = "timeseries"
+    MULTIVARIATE = "multivariate"
+
+    # Model types that require 3D input (sequence models)
+    SEQUENCE_MODEL_TYPES = frozenset([DL, TIMESERIES, MULTIVARIATE])
+
+    @staticmethod
+    def is_sequence_model(model_type: str) -> bool:
+        """Check if model type requires sequence (3D) input.
+
+        Parameters
+        ----------
+        model_type : str
+            Model type to check.
+
+        Returns
+        -------
+        bool
+            True if model requires sequence input, False otherwise.
+        """
+        return model_type in ModelTypes.SEQUENCE_MODEL_TYPES
+
+
 class DefaultValues:
     """Default values for configuration parameters.
 

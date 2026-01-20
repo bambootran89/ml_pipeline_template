@@ -9,7 +9,7 @@ import pandas as pd
 from omegaconf import OmegaConf
 
 from mlproject.src.pipeline.steps.base import PipelineStep
-from mlproject.src.pipeline.steps.constants import DataTypes
+from mlproject.src.pipeline.steps.constants import DataTypes, ModelTypes
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.pipeline.steps.utils import (
     ConfigAccessor,
@@ -169,6 +169,7 @@ class FeatureInferenceStep(PipelineStep):
         target_samples: int,
     ) -> pd.DataFrame:
         """Align DataFrame to target number of samples using SampleAligner."""
+        # Force update for pylint check
         # Create base with target length
         base_arr = np.zeros((target_samples, 1))
 
@@ -255,7 +256,11 @@ class FeatureInferenceStep(PipelineStep):
         print(f"  Windowed shape: {x_windows.shape}")
 
         model_type_value = getattr(model, "model_type", None)
-        is_dl_model = model_type_value in ["dl", "timeseries", "multivariate"]
+        is_dl_model = (
+            ModelTypes.is_sequence_model(model_type_value)
+            if model_type_value
+            else False
+        )
 
         if not is_dl_model and x_windows.ndim == 3:
             x_windows = x_windows.reshape(x_windows.shape[0], -1)
