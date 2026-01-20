@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import DefaultValues
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 
@@ -31,13 +32,13 @@ class MLflowLoaderStep(BasePipelineStep):
         cfg: Any,
         enabled: bool = True,
         depends_on: Optional[List[str]] = None,
-        alias: str = "latest",
+        alias: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the MLflow loader with registry alias and component map."""
         super().__init__(step_id, cfg, enabled, depends_on)
         self.mlflow_manager: MLflowManager = MLflowManager(self.cfg)
-        self.alias: str = alias
+        self.alias: str = alias if alias is not None else DefaultValues.MLFLOW_ALIAS
         self.load_map: List[Dict[str, str]] = kwargs.get("load_map", [])
 
     def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:

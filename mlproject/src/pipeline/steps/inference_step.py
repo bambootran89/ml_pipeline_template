@@ -9,6 +9,7 @@ import pandas as pd
 
 from mlproject.src.pipeline.steps.base import PipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.utils import ConfigAccessor, WindowBuilder
 
 
 class InferenceStep(PipelineStep):
@@ -146,9 +147,9 @@ class InferenceStep(PipelineStep):
         np.ndarray
             Model input array.
         """
-        data_type = self.cfg.data.get("type", "timeseries")
+        config_accessor = ConfigAccessor(self.cfg)
 
-        if data_type == "timeseries":
+        if config_accessor.is_timeseries():
             return self._prepare_timeseries_input(features_df)
 
         # Tabular data: use as-is
@@ -170,52 +171,18 @@ class InferenceStep(PipelineStep):
         np.ndarray
             Windowed input array.
         """
-        entity_key = self.cfg.data.get("entity_key", "location_id")
-        hyperparams = self.cfg.experiment.get("hyperparams", {})
-        win_in = int(hyperparams.get("input_chunk_length", 24))
-        win_out = int(hyperparams.get("out_chunk_length", 6))
+        config_accessor = ConfigAccessor(self.cfg)
+        entity_key = config_accessor.get_entity_key()
+        window_config = config_accessor.get_window_config()
 
-        if entity_key in df.columns:
-            windows = []
-            for _, group in df.groupby(entity_key):
-                group_clean = group.drop(columns=[entity_key], errors="ignore")
-                windows.append(self._build_windows(group_clean, win_in, win_out))
-            return np.vstack(windows).astype(np.float32)
+        win_in = window_config["input_chunk_length"]
+        win_out = window_config["output_chunk_length"]
+        stride = window_config.get("stride", win_out)
 
-        return self._build_windows(df, win_in, win_out).astype(np.float32)
-
-    def _build_windows(
-        self,
-        df: pd.DataFrame,
-        input_length: int,
-        output_length: int,
-    ) -> np.ndarray:
-        """Build sliding windows from DataFrame.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Input DataFrame.
-        input_length : int
-            Window input length.
-        output_length : int
-            Window output length (stride).
-
-        Returns
-        -------
-        np.ndarray
-            Windowed array [n_windows, input_length, n_features].
-        """
-        n_rows = len(df)
-        if n_rows < input_length:
-            raise ValueError(f"Need at least {input_length} rows, got {n_rows}")
-
-        windows = []
-        for start in range(0, n_rows - input_length + 1, output_length):
-            window = df.iloc[start : start + input_length].values
-            windows.append(window)
-
-        return np.array(windows, dtype=np.float32)
+        # Use WindowBuilder utility
+        return WindowBuilder.create_grouped_windows(
+            df, entity_key, win_in, win_out, stride
+        )
 
     def _save_predictions(
         self,

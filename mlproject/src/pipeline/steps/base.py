@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 from omegaconf import DictConfig
 
+from mlproject.src.pipeline.steps.constants import ContextKeys
 from mlproject.src.pipeline.steps.feature_composer import (
     FeatureComposer,
     FeatureExtractor,
@@ -159,16 +160,14 @@ class BasePipelineStep(ABC):
 
     def register_for_discovery(self, context: Dict[str, Any], obj: Any) -> None:
         """Register the component into a central registry in the context."""
-        if "_artifact_registry" not in context:
-            context["_artifact_registry"] = {}
+        if ContextKeys.ARTIFACT_REGISTRY not in context:
+            context[ContextKeys.ARTIFACT_REGISTRY] = {}
 
         # Save the instance and its intended artifact type
-        context["_artifact_registry"][self.step_id] = {
+        context[ContextKeys.ARTIFACT_REGISTRY][self.step_id] = {
             "obj": obj,
             "type": self.artifact_type,
         }
-
-        print("registering", self.step_id, context["_artifact_registry"][self.step_id])
 
     def get_input(
         self,

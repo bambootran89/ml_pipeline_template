@@ -6,6 +6,7 @@ import pandas as pd
 
 from mlproject.src.datamodule.loader import resolve_datasets_from_cfg
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import ColumnNames, ContextKeys
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
@@ -56,9 +57,9 @@ class DataLoaderStep(BasePipelineStep):
 
         is_splited = False
         if len(df) == 0 and len(train_df) > 0:
-            train_df["dataset"] = "train"
-            val_df["dataset"] = "val"
-            test_df["dataset"] = "test"
+            train_df[ColumnNames.DATASET] = ColumnNames.TRAIN
+            val_df[ColumnNames.DATASET] = ColumnNames.VAL
+            test_df[ColumnNames.DATASET] = ColumnNames.TEST
             df = pd.concat([train_df, val_df, test_df], axis=0)
             is_splited = True
 
@@ -67,7 +68,7 @@ class DataLoaderStep(BasePipelineStep):
         self.set_output(context, "train_df", train_df)
         self.set_output(context, "val_df", val_df)
         self.set_output(context, "test_df", test_df)
-        context["is_splited_input"] = is_splited
+        context[ContextKeys.IS_SPLITED_INPUT] = is_splited
 
         print(f"[{self.step_id}] Loaded data: {df.shape}")
         print(f"[{self.step_id}] Train: {train_df.shape}")

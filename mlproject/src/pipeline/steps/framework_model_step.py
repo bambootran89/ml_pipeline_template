@@ -9,7 +9,6 @@ This module provides a unified model step that supports:
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import numpy as np
@@ -20,6 +19,7 @@ from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.steps.base import BasePipelineStep
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.utils import ConfigAccessor, ConfigMerger
 from mlproject.src.trainer.factory import TrainerFactory
 
 
@@ -197,31 +197,19 @@ class FrameworkModelStep(BasePipelineStep):
             If experiment_config file not found.
         """
         assert isinstance(self.experiment_config_path, str)
-        config_path = Path(self.experiment_config_path)
 
-        if not config_path.exists():
-            # Try relative to project root
-            alt_paths = [
-                Path("mlproject") / self.experiment_config_path,
-                Path(self.experiment_config_path),
-            ]
-            for alt in alt_paths:
-                if alt.exists():
-                    config_path = alt
-                    break
-            else:
-                raise FileNotFoundError(
-                    f"[{self.step_id}] experiment_config not found: "
-                    f"'{self.experiment_config_path}'. "
-                    f"Tried: {[str(p) for p in alt_paths]}"
-                )
+        print(
+            f"[{self.step_id}] Loading experiment config: {self.experiment_config_path}"
+        )
 
-        print(f"[{self.step_id}] Loading experiment config: {config_path}")
-        external_cfg = OmegaConf.load(config_path)
-        print(external_cfg)
-
-        # Merge: base < external (external has priority)
-        return cast(DictConfig, OmegaConf.merge(base_cfg, external_cfg))
+        # Use ConfigMerger utility
+        search_paths = ["mlproject", "."]
+        return cast(
+            DictConfig,
+            ConfigMerger.merge_external_file(
+                base_cfg, self.experiment_config_path, search_paths
+            ),
+        )
 
     def _merge_model_config(
         self, base_cfg: DictConfig, model_config: Dict[str, Any]
@@ -241,38 +229,17 @@ class FrameworkModelStep(BasePipelineStep):
         DictConfig
             Merged configuration.
         """
-        # Ensure experiment node exists
-        if "experiment" not in base_cfg:
-            base_cfg.experiment = {}
-
-        # Map model_config keys to experiment structure
-        if "model_name" in model_config:
-            base_cfg.experiment.model = model_config["model_name"]
-
-        if "model_type" in model_config:
-            base_cfg.experiment.model_type = model_config["model_type"]
-
-        if "hyperparams" in model_config:
-            if "hyperparams" not in base_cfg.experiment:
-                base_cfg.experiment.hyperparams = {}
-            # Deep merge hyperparams
-            for key, value in model_config["hyperparams"].items():
-                base_cfg.experiment.hyperparams[key] = value
-
-        # Also support nested 'experiment' key in model_config
-        if "experiment" in model_config:
-            base_cfg = cast(
-                DictConfig,
-                OmegaConf.merge(base_cfg, {"experiment": model_config["experiment"]}),
-            )
-
-        # Support data config override
-        if "data" in model_config:
-            base_cfg = cast(
-                DictConfig, OmegaConf.merge(base_cfg, {"data": model_config["data"]})
-            )
-
-        return base_cfg
+        # Use ConfigMerger utility
+        return cast(
+            DictConfig,
+            ConfigMerger.merge_model_config(
+                base_cfg,
+                model_name=model_config.get("model_name"),
+                model_type=model_config.get("model_type"),
+                hyperparams=model_config.get("hyperparams"),
+                data_config=model_config.get("data"),
+            ),
+        )
 
     def _apply_simple_overrides(self, base_cfg: DictConfig) -> DictConfig:
         """
@@ -288,26 +255,18 @@ class FrameworkModelStep(BasePipelineStep):
         DictConfig
             Configuration with simple overrides applied.
         """
-        # Ensure experiment node exists
-        if "experiment" not in base_cfg:
-            base_cfg.experiment = {}
-
-        # Override model name
-        if self.simple_model_name:
-            base_cfg.experiment.model = self.simple_model_name
-
-        # Override model type
-        if self.simple_model_type:
-            base_cfg.experiment.model_type = self.simple_model_type
-
-        # Override hyperparams
-        if self.simple_hyperparams:
-            if "hyperparams" not in base_cfg.experiment:
-                base_cfg.experiment.hyperparams = {}
-            for key, value in self.simple_hyperparams.items():
-                base_cfg.experiment.hyperparams[key] = value
-
-        return base_cfg
+        # Use ConfigMerger utility
+        return cast(
+            DictConfig,
+            ConfigMerger.merge_model_config(
+                base_cfg,
+                model_name=self.simple_model_name,
+                model_type=self.simple_model_type,
+                hyperparams=self.simple_hyperparams
+                if self.simple_hyperparams
+                else None,
+            ),
+        )
 
     def _get_input_data(self, context: Dict[str, Any]) -> pd.DataFrame:
         """Assemble DataFrame from features and targets."""
@@ -331,10 +290,9 @@ class FrameworkModelStep(BasePipelineStep):
             if target_names and len(target_names) == tg.shape[1]:
                 tg.columns = target_names
 
-        data_cfg: Dict[str, Any] = self.cfg.get("data", {})
-        data_type: str = str(data_cfg.get("type", "tabular")).lower()
+        config_accessor = ConfigAccessor(self.cfg)
 
-        if data_type == "timeseries":
+        if config_accessor.is_timeseries():
             return _ensure_df(f).copy()
 
         if tg is not None:

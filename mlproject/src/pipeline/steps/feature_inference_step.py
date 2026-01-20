@@ -9,7 +9,13 @@ import pandas as pd
 from omegaconf import OmegaConf
 
 from mlproject.src.pipeline.steps.base import PipelineStep
+from mlproject.src.pipeline.steps.constants import DataTypes
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.utils import (
+    ConfigAccessor,
+    SampleAligner,
+    WindowBuilder,
+)
 
 
 class FeatureInferenceStep(PipelineStep):
@@ -145,7 +151,7 @@ class FeatureInferenceStep(PipelineStep):
                 additional = pd.DataFrame(additional)
 
             # Align samples
-            additional = self._align_samples_for_inference(additional, n_samples, key)
+            additional = self._align_samples_for_inference(additional, n_samples)
 
             # Force index alignment
             if len(additional) == len(composed):
@@ -161,34 +167,17 @@ class FeatureInferenceStep(PipelineStep):
         self,
         df: pd.DataFrame,
         target_samples: int,
-        key: str,
     ) -> pd.DataFrame:
-        """Align DataFrame to target number of samples."""
-        current = len(df)
+        """Align DataFrame to target number of samples using SampleAligner."""
+        # Create base with target length
+        base_arr = np.zeros((target_samples, 1))
 
-        if current == target_samples:
-            return df
+        # Align using SampleAligner
+        _, aligned = SampleAligner.align_samples(base_arr, df, method="auto")
 
-        # Broadcast: single sample to multiple
-        if current == 1:
-            return pd.concat([df] * target_samples, ignore_index=True)
-
-        # Truncate: cut to size
-        if current > target_samples:
-            return df.iloc[:target_samples]
-
-        # Pad at start: for windowed features
-        if current < target_samples:
-            n_pad = target_samples - current
-            pad_df = pd.concat([df.iloc[[0]]] * n_pad, ignore_index=True)
-            result = pd.concat([pad_df, df], ignore_index=True)
-            print(
-                f"  [{key}] Padded {n_pad} samples at start "
-                f"({current} -> {target_samples})"
-            )
-            return result
-
-        return df
+        # Convert back to DataFrame
+        result = pd.DataFrame(aligned, columns=df.columns)
+        return result
 
     def _get_model_expected_features(self, model: Any) -> Optional[int]:
         """Get the number of features the model expects.
@@ -220,7 +209,7 @@ class FeatureInferenceStep(PipelineStep):
         This provides a safety check by comparing the model's expected
         feature count with the input feature count.
         """
-        if data_type != "timeseries":
+        if not DataTypes.is_timeseries(data_type):
             return False
 
         # Get model's expected feature count
@@ -233,10 +222,9 @@ class FeatureInferenceStep(PipelineStep):
 
         # If model expects more features than input has, windowing is needed
         if expected_features > input_features:
-            hyperparams = self.effective_cfg.get("experiment", {}).get(
-                "hyperparams", {}
-            )
-            input_chunk = hyperparams.get("input_chunk_length", 1)
+            config_accessor = ConfigAccessor(self.effective_cfg)
+            window_config = config_accessor.get_window_config()
+            input_chunk = window_config["input_chunk_length"]
             expected_windowed = input_features * input_chunk
 
             if expected_features == expected_windowed:
@@ -257,11 +245,13 @@ class FeatureInferenceStep(PipelineStep):
         self, model: Any, x: np.ndarray, method_name: str
     ) -> np.ndarray:
         """Run inference with windowing."""
-        hyperparams = self.effective_cfg.get("experiment", {}).get("hyperparams", {})
-        input_chunk = hyperparams.get("input_chunk_length", 1)
-        output_chunk = hyperparams.get("output_chunk_length", 1)
+        config_accessor = ConfigAccessor(self.effective_cfg)
+        window_config = config_accessor.get_window_config()
+        input_chunk = window_config["input_chunk_length"]
+        output_chunk = window_config["output_chunk_length"]
 
-        x_windows = self._create_windows(x, input_chunk, output_chunk)
+        # Use WindowBuilder for windowing
+        x_windows = WindowBuilder.create_windows(x, input_chunk, output_chunk)
         print(f"  Windowed shape: {x_windows.shape}")
 
         model_type_value = getattr(model, "model_type", None)
@@ -284,8 +274,8 @@ class FeatureInferenceStep(PipelineStep):
 
         model, x = self._get_model_and_input(context)
 
-        data_cfg = self.effective_cfg.get("data", {})
-        data_type = str(data_cfg.get("type", "tabular")).lower()
+        config_accessor = ConfigAccessor(self.effective_cfg)
+        data_type = config_accessor.get_data_type()
 
         method_name = self.inference_method
         if not hasattr(model, method_name):
@@ -316,7 +306,7 @@ class FeatureInferenceStep(PipelineStep):
         should_window = self._should_apply_windowing_runtime(model, x, data_type)
         print(f"  runtime apply_windowing: {should_window}")
 
-        if data_type == "timeseries" and should_window:
+        if DataTypes.is_timeseries(data_type) and should_window:
             features = self._run_windowed_inference(model, x, method_name)
         else:
             inference_func = getattr(model, method_name)
@@ -330,26 +320,6 @@ class FeatureInferenceStep(PipelineStep):
         )
 
         return context
-
-    def _create_windows(
-        self, x: np.ndarray, input_chunk: int, output_chunk: int
-    ) -> np.ndarray:
-        """Create sliding windows from input array."""
-        n = len(x)
-        windows = []
-        stride = 1
-
-        # Logic matching BaseDataModule._create_windows
-        for end_idx in range(input_chunk, n - output_chunk + 1, stride):
-            start_idx = end_idx - input_chunk
-            # Do NOT flatten window -> keep (Time, Feat)
-            win = x[start_idx:end_idx]
-            windows.append(win)
-
-        if not windows:
-            return np.empty((0, input_chunk, x.shape[1]))
-
-        return np.stack(windows)
 
     def _prepare_input(self, features: Any) -> np.ndarray:
         """Prepare input for model prediction.

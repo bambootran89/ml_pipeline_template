@@ -12,7 +12,9 @@ from typing import Any, Dict, Optional
 from mlproject.src.datamodule.splitters.base import BaseSplitter
 from mlproject.src.datamodule.splitters.timeseries import TimeSeriesFoldSplitter
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import DefaultValues
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.utils import ConfigAccessor
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.tuning.optuna import OptunaTuner
 
@@ -329,10 +331,11 @@ class TunerStep(BasePipelineStep):
         model_type: str,
     ) -> Dict[str, Any]:
         """Run Optuna tuning inside a parent MLflow run."""
+        run_name = DefaultValues.TUNING_RUN_NAME
         with mlflow_manager.start_run(
-            run_name="Hparam_Tuning_Experiment",
+            run_name=run_name,
         ):
-            print("\n[MLflow] Started parent run: Hparam_Tuning_Experiment")
+            print(f"\n[MLflow] Started parent run: {run_name}")
 
             tuner = OptunaTuner(
                 cfg=self.cfg,
@@ -363,10 +366,10 @@ class TunerStep(BasePipelineStep):
 
     def _build_splitter(self) -> BaseSplitter:
         """Build cross-validation splitter."""
-        data_type = self.cfg.get("data", {}).get("type", "timeseries")
-        n_splits = self.cfg.get("tuning", {}).get("n_splits", 3)
+        config_accessor = ConfigAccessor(self.cfg)
+        n_splits = config_accessor.get_n_splits()
 
-        if data_type == "timeseries":
+        if config_accessor.is_timeseries():
             return TimeSeriesFoldSplitter(self.cfg, n_splits=n_splits)
 
         return BaseSplitter(self.cfg, n_splits=n_splits)
@@ -380,7 +383,7 @@ class TunerStep(BasePipelineStep):
             "direction": tuning_cfg.get("direction", "minimize"),
             "n_trials": self.n_trials_override or tuning_cfg.get("n_trials", 50),
             "timeout": tuning_cfg.get("timeout"),
-            "n_splits": tuning_cfg.get("n_splits", 3),
+            "n_splits": tuning_cfg.get("n_splits", DefaultValues.N_SPLITS),
         }
 
     def _print_tuning_config(

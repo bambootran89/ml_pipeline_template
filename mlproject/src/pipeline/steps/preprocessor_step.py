@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import ColumnNames, ContextKeys
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.utils import ConfigAccessor
 from mlproject.src.preprocess.offline import OfflinePreprocessor
 
 
@@ -106,13 +108,12 @@ class PreprocessorStep(BasePipelineStep):
         pd.DataFrame
             Final dataset for evaluation.
         """
-        data_cfg = self.cfg.get("data", {})
-        data_type = str(data_cfg.get("type", "timeseries")).lower()
+        config_accessor = ConfigAccessor(self.cfg)
 
-        if data_type == "timeseries":
+        if config_accessor.is_timeseries():
             return fea_df
 
-        target_cols = data_cfg.get("target_columns", [])
+        target_cols = config_accessor.get_target_columns()
         if not target_cols:
             return fea_df
         df = fea_df.copy()
@@ -142,7 +143,7 @@ class PreprocessorStep(BasePipelineStep):
 
         preprocessor = OfflinePreprocessor(is_train=True, cfg=self.cfg)
 
-        if "dataset" in df_full.columns:
+        if ColumnNames.DATASET in df_full.columns:
             fit_subset = train_df
         else:
             fit_subset = preprocessor.select_train_subset(df_full)
@@ -192,7 +193,7 @@ class PreprocessorStep(BasePipelineStep):
         df_transformed: pd.DataFrame = preprocessor.transform(df_test)
 
         if is_split_input:
-            df_transformed["dataset"] = "test"
+            df_transformed[ColumnNames.DATASET] = ColumnNames.TEST
             print(f"[{self.step_id}] Upstream split used -> labeled as test.")
         else:
             print(
@@ -230,11 +231,11 @@ class PreprocessorStep(BasePipelineStep):
             test_df_result if test_df_result is not None else pd.DataFrame()
         )
 
-        is_split_input: bool = bool(context.get("is_splited_input", False))
+        is_split_input: bool = bool(context.get(ContextKeys.IS_SPLITED_INPUT, False))
 
-        data_cfg: Dict[str, Any] = self.cfg.get("data", {})
-        target_columns: List[str] = data_cfg.get("target_columns", [])
-        feature_columns: List[str] = data_cfg.get("features", [])
+        config_accessor = ConfigAccessor(self.cfg)
+        target_columns = config_accessor.get_target_columns()
+        feature_columns = config_accessor.get_feature_columns()
 
         if self.is_train:
             df_transformed = self.execute_train(context, df_full, train_df)
@@ -258,7 +259,7 @@ class PreprocessorStep(BasePipelineStep):
         )
 
         # Inject metadata for downstream logic (e.g. conditional branches)
-        context["feature_columns_size"] = len(feature_columns)
+        context[ContextKeys.FEATURE_COLUMNS_SIZE] = len(feature_columns)
 
         return context
 

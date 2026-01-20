@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, List, Optional
 from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.pipeline.steps.base import PipelineStep
+from mlproject.src.pipeline.steps.constants import DefaultValues
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 
 
@@ -33,7 +34,7 @@ class ParallelStep(PipelineStep):
         enabled: bool = True,
         depends_on: Optional[List[str]] = None,
         branches: Optional[List[Dict[str, Any]]] = None,
-        max_workers: int = 4,
+        max_workers: Optional[int] = None,
         additional_feature_keys: Optional[List[str]] = None,
         feature_align_method: str = "auto",
         **kwargs: Any,
@@ -48,7 +49,9 @@ class ParallelStep(PipelineStep):
             **kwargs,
         )
         self.branches = branches or []
-        self.max_workers = max_workers
+        self.max_workers = (
+            max_workers if max_workers is not None else DefaultValues.MAX_WORKERS
+        )
 
     def _execute_branch(
         self,
@@ -89,9 +92,7 @@ class ParallelStep(PipelineStep):
                 except Exception as e:
                     print(f"[{self.step_id}] Branch '{branch_id}' failed: {e}")
                     raise
-        print("CUONG: 1-", context.get("_artifact_registry", {}))
         merged = self._merge_results(context, results)
-        print("CUONG: 2-", merged.get("_artifact_registry", {}))
         print(f"[{self.step_id}] All branches completed")
         return merged
 
