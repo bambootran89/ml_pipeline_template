@@ -11,7 +11,9 @@ from omegaconf import DictConfig, OmegaConf
 
 from mlproject.src.datamodule.factory import DataModuleFactory
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import ContextKeys
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.utils import ConfigAccessor, SampleAligner
 
 
 class DataModuleStep(BasePipelineStep):
@@ -94,10 +96,9 @@ class DataModuleStep(BasePipelineStep):
             )
 
         # Build input DataFrame
-        data_cfg: Dict[str, Any] = self.cfg.get("data", {})
-        data_type: str = str(data_cfg.get("type", "tabular")).lower()
+        config_accessor = ConfigAccessor(self.cfg)
 
-        if data_type == "timeseries":
+        if config_accessor.is_timeseries():
             input_df = df_features.copy()
         elif df_targets is not None:
             input_df = pd.concat([df_features, df_targets], axis=1)
@@ -167,7 +168,7 @@ class DataModuleStep(BasePipelineStep):
             base_features = pd.DataFrame(base_features)
 
         composed = base_features.copy()
-        n_samples = len(composed)
+        len(composed)
 
         print(f"[{self.step_id}] Composing features:")
         print(f"  Base: {composed.shape}")
@@ -184,8 +185,21 @@ class DataModuleStep(BasePipelineStep):
             elif not isinstance(additional, pd.DataFrame):
                 additional = pd.DataFrame(additional)
 
-            # Align samples
-            additional = self._align_samples(additional, n_samples, key)
+            # Align samples using SampleAligner utility
+            _, additional_aligned = SampleAligner.align_samples(
+                base_data=composed, additional_data=additional, method="auto"
+            )
+            # Convert back to DataFrame if needed
+            if isinstance(additional, pd.DataFrame):
+                additional = pd.DataFrame(
+                    additional_aligned,
+                    columns=additional.columns,
+                    index=additional.index
+                    if len(additional) == len(additional_aligned)
+                    else None,
+                )
+            else:
+                additional = pd.DataFrame(additional_aligned)
 
             # Force index alignment if lengths match
             # This handles cases where additional features lost their index (e.g. from
@@ -259,8 +273,8 @@ class DataModuleStep(BasePipelineStep):
 
             # Store composed feature metadata in context for downstream steps
             # (serve, eval, tune can use this)
-            context["_composed_feature_names"] = composed_feature_names
-            context["_additional_feature_keys"] = self.additional_feature_keys
+            context[ContextKeys.COMPOSED_FEATURE_NAMES] = composed_feature_names
+            context[ContextKeys.ADDITIONAL_FEATURE_KEYS] = self.additional_feature_keys
 
         return cast(DictConfig, cfg_copy)
 
@@ -288,70 +302,6 @@ class DataModuleStep(BasePipelineStep):
 
         raise ValueError(
             f"Cannot convert {arr.ndim}D array to DataFrame. " "Supported: 1D, 2D"
-        )
-
-    def _align_samples(
-        self,
-        df: pd.DataFrame,
-        target_samples: int,
-        key: str,
-    ) -> pd.DataFrame:
-        """Align DataFrame to target number of samples.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            Input DataFrame.
-        target_samples : int
-            Target number of samples.
-        key : str
-            Feature key (for error messages).
-
-        Returns
-        -------
-        pd.DataFrame
-            Aligned DataFrame.
-
-        Raises
-        ------
-        ValueError
-            If shapes cannot be aligned.
-        """
-        current = len(df)
-
-        if current == target_samples:
-            return df
-
-        # Broadcast: single sample to multiple
-        if current == 1:
-            return pd.concat([df] * target_samples, ignore_index=True)
-
-        # Repeat: tile to match
-        if current < target_samples and target_samples % current == 0:
-            n_repeats = target_samples // current
-            return pd.concat([df] * n_repeats, ignore_index=True)
-
-        # Truncate: cut to size
-        if current > target_samples:
-            return df.iloc[:target_samples]
-
-        # Pad at start: for windowed features that have fewer samples
-        # (e.g., 171 windows from 200 samples due to sliding window)
-        # Padding at start because windows start from position input_chunk
-        if current < target_samples:
-            n_pad = target_samples - current
-            # Pad with the first row repeated
-            pad_df = pd.concat([df.iloc[[0]]] * n_pad, ignore_index=True)
-            result = pd.concat([pad_df, df], ignore_index=True)
-            print(
-                f"  [{key}] Padded {n_pad} samples at start "
-                f"({current} -> {target_samples})"
-            )
-            return result
-
-        raise ValueError(
-            f"Cannot align feature '{key}' with {current} samples "
-            f"to {target_samples} samples. Shapes incompatible."
         )
 
     def _generate_model_features(

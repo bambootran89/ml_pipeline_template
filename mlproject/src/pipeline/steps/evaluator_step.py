@@ -16,7 +16,9 @@ from mlproject.src.eval.clustering import ClusteringEvaluator
 from mlproject.src.eval.regression import RegressionEvaluator
 from mlproject.src.eval.timeseries import TimeSeriesEvaluator
 from mlproject.src.pipeline.steps.base import PipelineStep
+from mlproject.src.pipeline.steps.constants import ContextKeys
 from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.utils import ConfigAccessor
 
 
 def _ensure_numpy(x: Any) -> np.ndarray:
@@ -217,18 +219,17 @@ class EvaluatorStep(PipelineStep):
         targets_df = self.get_input(context, "targets", required=False)
 
         # Build input DataFrame
-        data_cfg = self.cfg.get("data", {})
-        data_type = str(data_cfg.get("type", "tabular")).lower()
+        config_accessor = ConfigAccessor(self.cfg)
 
         # Get expected feature names from config
-        expected_features = list(data_cfg.get("features", []))
+        expected_features = config_accessor.get_feature_columns()
 
         # Fix column names if they were lost (e.g., from numpy array)
         features_df = self._restore_column_names(
             features_df, expected_features, metadata
         )
 
-        if data_type == "timeseries":
+        if config_accessor.is_timeseries():
             input_df = features_df.copy()
         elif targets_df is not None:
             input_df = pd.concat([features_df, targets_df], axis=1)
@@ -426,8 +427,8 @@ class EvaluatorStep(PipelineStep):
             )
 
             # Store composed feature metadata in context for downstream steps
-            context["_composed_feature_names"] = composed_feature_names
-            context["_additional_feature_keys"] = self.additional_feature_keys
+            context[ContextKeys.COMPOSED_FEATURE_NAMES] = composed_feature_names
+            context[ContextKeys.ADDITIONAL_FEATURE_KEYS] = self.additional_feature_keys
 
         return cast(DictConfig, cfg_copy)
 

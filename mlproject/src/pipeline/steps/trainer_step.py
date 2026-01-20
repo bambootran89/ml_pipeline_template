@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 
 from mlproject.src.models.model_factory import ModelFactory
 from mlproject.src.pipeline.steps.base import BasePipelineStep
+from mlproject.src.pipeline.steps.constants import ContextKeys
 from mlproject.src.pipeline.steps.factory_step import StepFactory
 from mlproject.src.trainer.factory import TrainerFactory
 
@@ -98,7 +99,7 @@ class TrainerStep(BasePipelineStep):
                     f"tune_step_id parameter"
                 )
 
-            best_params_key = f"{self.tune_step_id}_best_params"
+            best_params_key = ContextKeys.step_best_params(self.tune_step_id)
             if best_params_key not in context:
                 raise ValueError(
                     f"Step '{self.step_id}': Expected '{best_params_key}' "
@@ -123,8 +124,8 @@ class TrainerStep(BasePipelineStep):
             params = dict(self.cfg.experiment.hyperparams)
 
         # Override n_features/input_size if composed features are present in context
-        if "_composed_feature_names" in context:
-            n_features = len(context["_composed_feature_names"])
+        if ContextKeys.COMPOSED_FEATURE_NAMES in context:
+            n_features = len(context[ContextKeys.COMPOSED_FEATURE_NAMES])
             if "n_features" in params:
                 print(
                     f"[{self.step_id}] Override n_features: "
@@ -169,8 +170,8 @@ class TrainerStep(BasePipelineStep):
 
         # Patch config if composed features are present in context
         # This ensures ModelFactory builds the model with correct input dimensions
-        if "_composed_feature_names" in context:
-            n_features = len(context["_composed_feature_names"])
+        if ContextKeys.COMPOSED_FEATURE_NAMES in context:
+            n_features = len(context[ContextKeys.COMPOSED_FEATURE_NAMES])
             print(f"[{self.step_id}] Patching config: n_features -> {n_features}")
 
             # Update n_features
