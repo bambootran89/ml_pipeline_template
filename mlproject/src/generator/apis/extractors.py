@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from ..pipeline.constants import (
+from ..config import ConfigurablePatternMatcher, GeneratorConfig
+from ..constants import (
     CONTEXT_KEYS,
     DATA_DEFAULTS,
     INFERENCE_METHODS,
     MODEL_PATTERNS,
     STEP_CONSTANTS,
 )
-from ..pipeline.generator_config import ConfigurablePatternMatcher, GeneratorConfig
 
 
 class ApiGeneratorExtractorsMixin:

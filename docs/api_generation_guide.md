@@ -63,7 +63,7 @@ curl -X POST http://localhost:8000/predict \
 ### Method 1: Using ConfigGenerator (Python)
 
 ```python
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 
 # Initialize generator with training config
 generator = ConfigGenerator("mlproject/configs/pipelines/standard_train.yaml")
@@ -100,7 +100,7 @@ python examples/generate_serve_apis.py
 
 ```bash
 python -c "
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 
 gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
 
@@ -121,7 +121,7 @@ Output: `mlproject/serve/generated/standard_train_serve_fastapi.py`
 
 ```bash
 python -c "
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 
 gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
 
@@ -142,7 +142,7 @@ Output: `mlproject/serve/generated/standard_train_serve_ray.py`
 
 ```bash
 python -c "
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 
 gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
 
@@ -290,7 +290,7 @@ This will:
 
 ```bash
 python -c "
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 
 gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
 gen.generate_api(
@@ -330,7 +330,7 @@ This will:
 
 ```bash
 python -c "
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 
 gen = ConfigGenerator('mlproject/configs/experiments/etth3.yaml')
 gen.generate_api(

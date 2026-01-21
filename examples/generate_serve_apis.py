@@ -7,7 +7,7 @@ generate FastAPI and Ray Serve code from serve pipeline configurations.
 
 from pathlib import Path
 
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 
 
 def generate_apis_for_pipeline(

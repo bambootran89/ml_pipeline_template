@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 from omegaconf import DictConfig
 
-from mlproject.src.pipeline.steps.base import BasePipelineStep
-from mlproject.src.pipeline.steps.factory_step import StepFactory
+from mlproject.src.pipeline.steps.core.base import BasePipelineStep
+from mlproject.src.pipeline.steps.core.factory import StepFactory
 
 
 class PipelineExecutor:
