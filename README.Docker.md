@@ -1,4 +1,7 @@
-# Docker Setup Guide
+# Docker Setup Guide (Legacy/All-in-One)
+
+> [!NOTE]
+> This guide covers the monolithic multi-stage Docker build. For the optimized **Separated Architecture** (Train vs. Serve), please refer to **[README.Docker.Separated.md](README.Docker.Separated.md)**.
 
 This document provides instructions for building, testing, and running the ML pipeline using Docker.
 
@@ -566,6 +569,19 @@ make docker-dev-all         # Development workflow
 - [Deployment Guide](docs/deployment_guide.md) - Kubernetes deployment
 - [API Generation Guide](docs/api_generation_guide.md) - Generate APIs
 - [Verification Guide](docs/verification_guide.md) - Testing scripts
+
+---
+
+## Kubernetes Deployment
+
+For professional deployment using these images on Kubernetes, please refer to the automated scripts:
+
+```bash
+# High-level deployment wrapper
+./deploy.sh [mode]
+```
+
+See the **[Zero-to-Hero Deployment Guide](docs/deployment_guide.md)** for full details.
 
 ---
 

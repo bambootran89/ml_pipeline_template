@@ -24,7 +24,7 @@ WORKDIR /build
 COPY requirements/prod.txt requirements.txt
 
 # Create wheels for all dependencies to speed up final stage
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
 
 # ============================================================================
 # Stage 2: Runtime - Minimal production image
@@ -40,7 +40,7 @@ LABEL description="Production ML Pipeline with FastAPI and Ray Serve"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app \
+    PYTHONPATH=/home/cuong/ml_pipeline_template \
     MLFLOW_TRACKING_URI=http://localhost:5000
 
 # Install only runtime dependencies (no build tools)
@@ -53,7 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
 
-WORKDIR /app
+WORKDIR /home/cuong/ml_pipeline_template
 
 # Copy wheels from builder stage
 COPY --from=builder /build/wheels /wheels
@@ -63,14 +63,14 @@ RUN pip install --no-cache --no-index --find-links=/wheels /wheels/* \
     && rm -rf /wheels
 
 # Copy application code
-COPY --chown=appuser:appuser . /app
+COPY --chown=appuser:appuser . /home/cuong/ml_pipeline_template
 
 # Install the package in editable mode
 RUN pip install --no-cache-dir -e .
 
 # Create directories for runtime data
-RUN mkdir -p /app/mlruns /app/artifacts /app/logs \
-    && chown -R appuser:appuser /app
+RUN mkdir -p /home/cuong/ml_pipeline_template/mlruns /home/cuong/ml_pipeline_template/artifacts /home/cuong/ml_pipeline_template/logs \
+    && chown -R appuser:appuser /home/cuong/ml_pipeline_template
 
 # Switch to non-root user
 USER appuser
@@ -83,7 +83,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Default command: start FastAPI server
-CMD ["uvicorn", "mlproject.serve.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Ensure helper scripts are executable
+RUN chmod +x mlproject/serve_api.sh
+
+# Default command: Helper script that auto-generates config if needed
+CMD ["./mlproject/serve_api.sh", "-e", "mlproject/configs/experiments/etth3.yaml", "-a", "latest", "mlproject/configs/generated/standard_train_serve.yaml"]
 
 # ============================================================================
 # Stage 3: Development - Include dev tools

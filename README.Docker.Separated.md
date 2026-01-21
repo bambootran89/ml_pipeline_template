@@ -568,6 +568,28 @@ make docker-size              # Show image sizes
 
 ---
 
+---
+
+## Deployment to Kubernetes
+
+While the above commands use `docker-compose` for local development, professional deployment to Kubernetes is handled via the automated `deploy.sh` script.
+
+```bash
+# Deploy to K8s with dynamic config
+./deploy.sh feast  # or standard
+```
+
+For a complete step-by-step walkthrough of the Kubernetes lifecycle, including verification and cleanup, see the **[Zero-to-Hero Deployment Guide](docs/deployment_guide.md)**.
+
+## Cleanup
+
+```bash
+# Cleanup K8s resources
+./cleanup.sh
+```
+
+---
+
 ## Support
 
 For issues:

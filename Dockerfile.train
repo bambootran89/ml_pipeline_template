@@ -24,7 +24,7 @@ WORKDIR /build
 COPY requirements/prod.txt requirements.txt
 
 # Build wheels for faster installation in next stage
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
 
 # ============================================================================
 # Stage 2: Training Runtime - Full ML environment
@@ -39,7 +39,7 @@ LABEL usage="training,evaluation,tuning,feast-ingestion"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app \
+    PYTHONPATH=/home/cuong/ml_pipeline_template \
     MLFLOW_TRACKING_URI=http://mlflow:5000
 
 # Install runtime dependencies including database drivers for Feast
@@ -47,30 +47,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     libpq-dev \
+    git \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Create non-root user
 RUN groupadd -r mluser && useradd -r -g mluser -u 1000 mluser
 
-WORKDIR /app
+WORKDIR /home/cuong/ml_pipeline_template
 
 # Copy wheels from builder
 COPY --from=builder /build/wheels /wheels
 
-# Install all dependencies
+# Install dependencies
 RUN pip install --no-cache --no-index --find-links=/wheels /wheels/* \
     && rm -rf /wheels
 
 # Copy application code
-COPY --chown=mluser:mluser . /app
+COPY --chown=mluser:mluser . /home/cuong/ml_pipeline_template
 
 # Install package
 RUN pip install --no-cache-dir -e .
 
 # Create necessary directories
-RUN mkdir -p /app/mlruns /app/artifacts /app/logs /app/feast_store \
-    && chown -R mluser:mluser /app
+RUN mkdir -p /home/cuong/ml_pipeline_template/mlruns /home/cuong/ml_pipeline_template/artifacts /home/cuong/ml_pipeline_template/logs /home/cuong/ml_pipeline_template/feast_store \
+    && chown -R mluser:mluser /home/cuong/ml_pipeline_template
 
 USER mluser
 

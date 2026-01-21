@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: training-job-etth1
+  name: training-job-standard-etth1
   labels:
     app: ml-training
     job-type: training
@@ -19,19 +19,19 @@ spec:
         runAsUser: 1000
         runAsGroup: 1000
         fsGroup: 1000
-      initContainers:
 
+      # [STANDARD] Init Container only fixes permissions for MLruns
+      # No Feast data copying required
+      initContainers:
       - name: fix-permissions
-        image: ml-pipeline-train:latest
-        imagePullPolicy: IfNotPresent
-        command: ["/bin/bash", "-c", "cp -rn /home/cuong/ml_pipeline_template/feature_repo_etth1/data/* /mnt/feast_data/ || true && chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns /mnt/feast_data"]
+        image: busybox
+        command: ["sh", "-c", "chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns"]
         securityContext:
           runAsUser: 0
         volumeMounts:
         - name: mlruns-volume
           mountPath: /home/cuong/ml_pipeline_template/mlruns
-        - name: feast-data-volume
-          mountPath: /mnt/feast_data
+
       containers:
       - name: trainer
         image: ml-pipeline-train:latest
@@ -39,24 +39,21 @@ spec:
         volumeMounts:
         - name: mlruns-volume
           mountPath: /home/cuong/ml_pipeline_template/mlruns
-        - name: feast-data-volume
-          mountPath: /home/cuong/ml_pipeline_template/feature_repo_etth1/data
+
         command:
         - /bin/bash
         - -c
         - |
-          cd /home/cuong/ml_pipeline_template/feature_repo_etth1 && feast apply && cd /home/cuong/ml_pipeline_template && python -m mlproject.src.pipeline.dag_run train -e /home/cuong/ml_pipeline_template/mlproject/configs/experiments/etth3_feast.yaml -p /home/cuong/ml_pipeline_template/mlproject/configs/pipelines/standard_train.yaml
+          # [STANDARD] Simple training  cd /home/cuong/ml_pipeline_template && python -m mlproject.src.pipeline.dag_run train -e /home/cuong/ml_pipeline_template/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} -p /home/cuong/ml_pipeline_template/mlproject/configs/pipelines/{{PIPELINE_CONFIG}}
+
         env:
         - name: MLFLOW_TRACKING_URI
           value: "http://host.minikube.internal:5000"
         - name: PYTHONUNBUFFERED
           value: "1"
+
       volumes:
       - name: mlruns-volume
         hostPath:
           path: /home/cuong/ml_pipeline_template/mlruns
-          type: DirectoryOrCreate
-      - name: feast-data-volume
-        hostPath:
-          path: /home/cuong/ml_pipeline_template/feature_repo_etth1/data
           type: DirectoryOrCreate

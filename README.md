@@ -48,7 +48,9 @@ This is a **DAG-driven ML framework** built for production-grade scalability and
 - **[Simple API Generation Guide](docs/api_generation_guide.md)** - Quick start for FastAPI and Ray Serve
 - [API Generation and Running](docs/readme_api.md) - Complete reference
 - **[Docker Setup Guide](README.Docker.md)** - Docker build, test, and run
-- **[Deployment Guide](docs/deployment_guide.md)** - Kubernetes deployment and production
+- **[Deployment Guide](docs/deployment_guide.md)** - **Primary Guide** for Kubernetes deployment (Zero-to-Hero)
+- **[Separated Docker Architecture](README.Docker.Separated.md)** - Best practices for Train vs. Serve images
+- [Docker Setup Guide (Legacy/All-in-One)](README.Docker.md) - Optional multi-stage build reference
 - **[Verification Guide](docs/verification_guide.md)** - Testing and verification scripts
 
 # Getting Started
@@ -281,22 +283,44 @@ curl -X POST http://localhost:8000/predict/feast \
 
 # Docker & Kubernetes
 
-Build Docker Image
+For professional deployment, use the automated build and deployment scripts.
+
+### 1. Build Images
 ```bash
-docker build -t ml-pipeline:latest .
+# Build training and serving images
+./docker-build.sh -i train
+./docker-build.sh -i serve
 ```
 
-Run Locally with Docker
+### 2. Deploy to Kubernetes (Local or Cluster)
+Use the enhanced deployment script which supports dynamic configuration.
 ```bash
-docker run -p 8000:8000 ml-pipeline:latest
+# Deploy in Feast mode (Advanced)
+./deploy.sh feast
+
+# Deploy in Standard mode (Simple)
+./deploy.sh standard
+
+# Deploy specific scenario (e.g., Tabular)
+./deploy.sh feast conditional_branch_tabular.yaml tabular.yaml
 ```
 
-Deploy to Kubernetes
+### 3. Verify Deployment
 ```bash
-# Apply Training Job
-kubectl apply -f k8s/job-training.yaml
-
-# Apply API Service
-kubectl apply -f k8s/deployment-api.yaml
-kubectl apply -f k8s/service-api.yaml
+# Wait for pods and run automated tests
+./test_api.sh
 ```
+
+## Cleanup & Maintenance
+
+To remove all deployed resources and stop local infrastructure:
+```bash
+# Cleanup K8s resources
+./cleanup.sh
+
+# Stop Minikube (if applicable)
+minikube stop
+```
+
+---
+For more details, see the **[Zero-to-Hero Deployment Guide](docs/deployment_guide.md)**.

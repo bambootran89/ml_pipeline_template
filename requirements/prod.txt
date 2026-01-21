@@ -4,6 +4,9 @@ scikit-learn
 torch
 xgboost
 catboost
+graphviz
+matplotlib
+plotly
 torchvision
 pydantic
 fastapi

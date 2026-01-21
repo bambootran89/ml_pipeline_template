@@ -60,8 +60,8 @@ mlruns/
 mlartifacts/
 
 # Data (mount as volumes instead)
-mlproject/data/
-!mlproject/data/README.md
+# mlproject/data/
+# !mlproject/data/README.md
 
 # Artifacts (mount as volumes)
 artifacts/

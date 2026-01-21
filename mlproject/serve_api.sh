@@ -94,11 +94,7 @@ if [ -z "$EXPERIMENT_CONFIG" ]; then
     show_help
 fi
 
-# Check if files exist
-if [ ! -f "$SERVE_CONFIG" ]; then
-    echo -e "${YELLOW}Error: Serve config not found: $SERVE_CONFIG${NC}"
-    exit 1
-fi
+
 
 if [ ! -f "$EXPERIMENT_CONFIG" ]; then
     echo -e "${YELLOW}Error: Experiment config not found: $EXPERIMENT_CONFIG${NC}"
@@ -113,6 +109,40 @@ echo "  Host: $HOST"
 echo "  Port: $PORT"
 echo "  Alias: $ALIAS"
 echo ""
+
+# Auto-generate serve config if missing
+if [ ! -f "$SERVE_CONFIG" ]; then
+    echo -e "${YELLOW}Serve config not found. Generating from experiment...${NC}"
+    # Infer pipeline config from serve config name (standard_train_serve.yaml -> standard_train.yaml)
+    # This is a heuristic; properly we should pass the pipeline config as an arg, but for now we infer or use defaults
+    # Re-using the standard training dag_run generate command
+
+    # We need the training config path to generate.
+    # Assumption: The input serve config path follows pattern configs/generated/<pipeline>_serve.yaml
+    # We try to reverse engineer the pipeline config path
+
+    BASE_NAME=$(basename "$SERVE_CONFIG" _serve.yaml)
+    PIPELINE_CONFIG="mlproject/configs/pipelines/${BASE_NAME}.yaml"
+
+    if [ -f "$PIPELINE_CONFIG" ]; then
+         echo "Detected pipeline config: $PIPELINE_CONFIG"
+         python -m mlproject.src.pipeline.dag_run generate \
+            -t "$PIPELINE_CONFIG" \
+            -e "$EXPERIMENT_CONFIG" \
+            --type serve \
+            --alias "$ALIAS"
+
+         if [ -f "$SERVE_CONFIG" ]; then
+             echo -e "${GREEN}Successfully generated $SERVE_CONFIG${NC}"
+         else
+             echo -e "${RED}Failed to generate $SERVE_CONFIG${NC}"
+             exit 1
+         fi
+    else
+         echo -e "${RED}Could not infer pipeline config path from $SERVE_CONFIG. Cannot auto-generate.${NC}"
+         exit 1
+    fi
+fi
 
 # Run the Python command
 echo -e "${BLUE}Starting server...${NC}"

@@ -81,7 +81,7 @@ elif [ "$IMAGE_TYPE" = "serve" ]; then
     DOCKERFILE="Dockerfile.serve"
     IMAGE_NAME="ml-pipeline-serve"
     if [ -z "$STAGE" ]; then
-        STAGE="serving"
+        STAGE="runtime"
     fi
 else
     echo -e "${RED}Error: Invalid image type '$IMAGE_TYPE'${NC}"
