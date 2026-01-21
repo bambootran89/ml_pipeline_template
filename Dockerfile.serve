@@ -1,0 +1,111 @@
+# Multi-stage Dockerfile for production-ready ML pipeline
+
+# ============================================================================
+# Stage 1: Builder - Install dependencies and build wheels
+# ============================================================================
+FROM python:3.11-slim as builder
+
+# Prevent Python from writing pyc files and enable unbuffered output
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy only requirements first for better layer caching
+COPY requirements/prod.txt requirements.txt
+
+# Create wheels for all dependencies to speed up final stage
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+
+# ============================================================================
+# Stage 2: Runtime - Minimal production image
+# ============================================================================
+FROM python:3.11-slim as runtime
+
+# Metadata labels
+LABEL maintainer="ML Pipeline Team"
+LABEL version="1.0.0"
+LABEL description="Production ML Pipeline with FastAPI and Ray Serve"
+
+# Environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/app \
+    MLFLOW_TRACKING_URI=http://localhost:5000
+
+# Install only runtime dependencies (no build tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+
+WORKDIR /app
+
+# Copy wheels from builder stage
+COPY --from=builder /build/wheels /wheels
+
+# Install dependencies from pre-built wheels
+RUN pip install --no-cache --no-index --find-links=/wheels /wheels/* \
+    && rm -rf /wheels
+
+# Copy application code
+COPY --chown=appuser:appuser . /app
+
+# Install the package in editable mode
+RUN pip install --no-cache-dir -e .
+
+# Create directories for runtime data
+RUN mkdir -p /app/mlruns /app/artifacts /app/logs \
+    && chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose FastAPI port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Default command: start FastAPI server
+CMD ["uvicorn", "mlproject.serve.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+
+# ============================================================================
+# Stage 3: Development - Include dev tools
+# ============================================================================
+FROM runtime as development
+
+USER root
+
+# Install development dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    vim \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dev requirements
+COPY requirements/dev.txt /tmp/dev-requirements.txt
+
+# Install dev dependencies
+RUN pip install --no-cache-dir -r /tmp/dev-requirements.txt \
+    && rm /tmp/dev-requirements.txt
+
+USER appuser
+
+# Override CMD for development (interactive shell)
+CMD ["/bin/bash"]

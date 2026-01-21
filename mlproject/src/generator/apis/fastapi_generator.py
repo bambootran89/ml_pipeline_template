@@ -120,7 +120,7 @@ from pydantic import BaseModel, Field
 from mlproject.src.tracking.mlflow_manager import MLflowManager
 from mlproject.src.utils.config_class import ConfigLoader
 from mlproject.src.features.facade import FeatureStoreFacade
-from mlproject.src.generator.pipeline.constants import API_DEFAULTS, CONTEXT_KEYS
+from mlproject.src.generator.constants import API_DEFAULTS, CONTEXT_KEYS
 
 app = FastAPI(
     title="{ctx.pipeline_name} API",

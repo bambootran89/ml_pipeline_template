@@ -1,27 +1,92 @@
-# .dockerignore
-
+# Python
 __pycache__
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
+*.egg-info
+dist/
+build/
+*.egg
 
-# Local virtual environments
+# Virtual environments
 env/
 venv/
+ENV/
+env.bak/
+venv.bak/
 mlproject_env/
+py3.10/
 
-# Git metadata
-.git
-.github
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
 
-# Caches
-.pytest_cache
-.mypy_cache
+# Version control
+.git/
+.gitignore
+.github/
 
-# MLflow runs directory
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+
+# Testing
+.pytest_cache/
+.coverage
+.tox/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Logs and temporary files
+*.log
+logs/
+tmplogs/
+*.tmp
+*.temp
+
+# MLflow
 mlruns/
+mlartifacts/
 
-# Data should be mounted from an external volume,
-# not included in the image (except for small samples)
-# mlproject/data/
+# Data (mount as volumes instead)
+mlproject/data/
+!mlproject/data/README.md
+
+# Artifacts (mount as volumes)
+artifacts/
+
+# Backup files
+*.bak
+*.old
+*.orig
+Dockerfile.old
+
+# OS
+Thumbs.db
+.Trash-*
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Node (if any)
+node_modules/
+npm-debug.log
+
+# Kubernetes
+k8s/
+
+# Verification scripts and test outputs
+verify_*.sh
+test_*.sh

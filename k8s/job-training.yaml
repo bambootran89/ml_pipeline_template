@@ -4,30 +4,46 @@ metadata:
   name: training-job-etth1
   labels:
     app: ml-training
+    job-type: training
 spec:
   backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
         app: ml-training
+        job-type: training
     spec:
       restartPolicy: Never
       containers:
-        - name: trainer
-          image: ml-pipeline-template:latest   # Replace with your actual image path
-          command:
-            - python
-            - -m
-            - mlproject.src.pipeline.run_pipeline
-            - train
-            - --config
-            - mlproject/configs/experiments/etth1.yaml
-          env:
-            - name: MLFLOW_TRACKING_URI
-              value: "http://mlflow-service:5000"
-          volumeMounts:
-            - name: model-storage
-              mountPath: /app/mlruns   # Directory to store artifacts if not using S3
-      volumes:
+      - name: trainer
+        image: ml-pipeline-template:latest
+        imagePullPolicy: IfNotPresent
+        command:
+        - python
+        - -m
+        - mlproject.src.pipeline.dag_run
+        - train
+        - -e
+        - /app/mlproject/configs/experiments/etth3.yaml
+        - -p
+        - /app/mlproject/configs/pipelines/standard_train.yaml
+        env:
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow-service:5000"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "2Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        volumeMounts:
         - name: model-storage
-          emptyDir: {}   # Use PVC in production instead of emptyDir
+          mountPath: /app/mlruns
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: ml-artifacts-pvc

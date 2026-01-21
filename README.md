@@ -44,9 +44,12 @@ This is a **DAG-driven ML framework** built for production-grade scalability and
 - [Online Workflow](docs/onlineworkflow.md)
 - [Preprocessing](docs/preprocessing.md)
 - [Adding New Model](docs/adding_new_model.md)
-- [Generating Configs](docs/generating_configs.md)
+- [Pipeline Orchestration](docs/pipeline_orchestration.md)
 - **[Simple API Generation Guide](docs/api_generation_guide.md)** - Quick start for FastAPI and Ray Serve
 - [API Generation and Running](docs/readme_api.md) - Complete reference
+- **[Docker Setup Guide](README.Docker.md)** - Docker build, test, and run
+- **[Deployment Guide](docs/deployment_guide.md)** - Kubernetes deployment and production
+- **[Verification Guide](docs/verification_guide.md)** - Testing and verification scripts
 
 # Getting Started
 ## 1. Prerequisites

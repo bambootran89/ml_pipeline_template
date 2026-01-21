@@ -356,19 +356,19 @@ This enables:
 
 ## Step Types Reference
 
-| Type            | Description                         | Implementation                |
-| :-------------- | :---------------------------------- | :---------------------------- |
-| `data_loader`   | Data ingestion (CSV/Feast)          | `data_loader_step.py`         |
-| `datamodule`    | Data processing and splitting       | `datamodule_step.py`          |
-| `preprocessor`  | Feature fitting and transformation  | `preprocessor_step.py`        |
-| `trainer`       | Core training execution             | `trainer_step.py`             |
-| `model`         | Framework-specific model logic      | `framework_model_step.py`     |
-| `mlflow_loader` | Model loading from MLflow registry  | `mlflow_loader_step.py`       |
-| `tuner`         | Hyperparameter optimization         | `tuner_step.py`               |
-| `profiling`     | Data and output statistics          | `profiling_step.py`           |
-| `advanced`      | Complex logic (e.g., Clustering)    | `advanced_step.py`            |
-| `adapter`       | Parallel and conditional branching  | `dynamic_adapter_step.py`     |
-| `evaluator`     | Metrics and performance evaluation  | `evaluator_step.py`           |
-| `inference`     | Prediction and inference logic      | `inference_step.py`           |
-| `factory`       | Dynamic component generation        | `factory_step.py`             |
-| `logger`        | Pipeline logging and tracking       | `logger_step.py`              |
+| Type            | Description                         | Implementation                          |
+| :-------------- | :---------------------------------- | :-------------------------------------- |
+| `data_loader`   | Data ingestion (CSV/Feast)          | `steps/data/data_loader.py`             |
+| `datamodule`    | Data processing and splitting       | `steps/data/datamodule.py`              |
+| `preprocessor`  | Feature fitting and transformation  | `steps/data/preprocessor.py`            |
+| `trainer`       | Core training execution             | `steps/models/trainer.py`               |
+| `model`         | Framework-specific model logic      | `steps/models/framework_model.py`       |
+| `mlflow_loader` | Model loading from MLflow registry  | `steps/mlops/mlflow_loader.py`          |
+| `tuner`         | Hyperparameter optimization         | `steps/models/tuner.py`                 |
+| `profiling`     | Data and output statistics          | `steps/mlops/profiling.py`              |
+| `advanced`      | Complex control flow                | `steps/control/advanced.py`             |
+| `adapter`       | Dynamic wiring and branching        | `steps/control/dynamic_adapter.py`      |
+| `evaluator`     | Metrics and performance evaluation  | `steps/inference/evaluator.py`          |
+| `inference`     | Prediction and inference logic      | `steps/inference/inference.py`          |
+| `factory`       | Dynamic component generation        | `steps/core/factory.py`                 |
+| `logger`        | Pipeline logging and tracking       | `steps/mlops/logger.py`                 |

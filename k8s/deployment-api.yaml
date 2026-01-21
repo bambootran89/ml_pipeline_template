@@ -4,26 +4,36 @@ metadata:
   name: ml-prediction-api
   labels:
     app: ml-prediction
+    version: v1
 spec:
-  replicas: 2  # Run 2 pods for load handling and high availability
+  replicas: 2
   selector:
     matchLabels:
       app: ml-prediction
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
         app: ml-prediction
+        version: v1
     spec:
       containers:
       - name: api-container
-        image: ml-pipeline-template:latest  # Replace with your repository image (e.g., docker.io/user/repo:tag)
+        image: ml-pipeline-template:latest
         imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 8000
+        - name: http
+          containerPort: 8000
+          protocol: TCP
         env:
-        # Configure MLflow to point to your MLflow server in Kubernetes
         - name: MLFLOW_TRACKING_URI
           value: "http://mlflow-service:5000"
+        - name: PYTHONUNBUFFERED
+          value: "1"
         resources:
           requests:
             cpu: "500m"
@@ -31,3 +41,19 @@ spec:
           limits:
             cpu: "1000m"
             memory: "1Gi"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3

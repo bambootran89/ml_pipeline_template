@@ -45,11 +45,72 @@ mlproject/
 │   └── schemas.py                # Request/response schemas
 │
 ├── src/                          # Core ML logic
+│   ├── generator/                # Config & API generation
+│   │   ├── orchestrator.py       # Main entry point (ConfigGenerator)
+│   │   ├── config.py             # Generator configuration
+│   │   ├── constants.py          # Generator constants
+│   │   ├── api_generator.py      # API generation orchestrator
+│   │   ├── apis/                 # API code generators
+│   │   │   ├── generator.py      # Core generator logic
+│   │   │   ├── fastapi_generator.py
+│   │   │   ├── rayserve_generator.py
+│   │   │   ├── extractors.py     # Feature extraction utilities
+│   │   │   └── types.py          # Type definitions
+│   │   └── pipeline/             # Pipeline transformation
+│   │       ├── builders/         # Pipeline builders (grouped)
+│   │       │   ├── base.py       # BasePipelineBuilder
+│   │       │   ├── eval.py       # EvalBuilder
+│   │       │   ├── serve.py      # ServeBuilder
+│   │       │   ├── tune.py       # TuneBuilder
+│   │       │   └── loader.py     # LoaderBuilder
+│   │       ├── dependency.py     # Dependency resolution
+│   │       ├── feature_parser.py # Feature pipeline parser
+│   │       ├── step_analyzer.py  # Step analysis
+│   │       └── step_transformer.py
+│   │
+│   ├── pipeline/                 # DAG-based pipeline execution
+│   │   ├── dag_run.py            # Main DAG runner
+│   │   ├── executor.py           # Pipeline executor
+│   │   ├── compat/               # Backward compatibility
+│   │   │   └── v1/               # Legacy v1.run interface
+│   │   ├── feature_ops/          # Feature store operations
+│   │   └── steps/                # Pipeline step implementations
+│   │       ├── core/             # Core framework
+│   │       │   ├── base.py       # BasePipelineStep
+│   │       │   ├── factory.py    # StepFactory
+│   │       │   ├── constants.py  # Step constants (ContextKeys, DataTypes, etc.)
+│   │       │   └── utils.py      # Utilities (ConfigAccessor, WindowBuilder, etc.)
+│   │       ├── handlers/         # Data type handlers
+│   │       │   └── data_handlers.py  # TimeseriesHandler, TabularHandler
+│   │       ├── data/             # Data pipeline steps
+│   │       │   ├── data_loader.py
+│   │       │   ├── preprocessor.py
+│   │       │   └── datamodule.py
+│   │       ├── features/         # Feature engineering steps
+│   │       │   ├── composer.py
+│   │       │   └── inference.py
+│   │       ├── models/           # Model training steps
+│   │       │   ├── framework_model.py
+│   │       │   ├── trainer.py
+│   │       │   └── tuner.py
+│   │       ├── inference/        # Inference steps
+│   │       │   ├── inference.py
+│   │       │   └── evaluator.py
+│   │       ├── mlops/            # MLOps steps
+│   │       │   ├── logger.py
+│   │       │   ├── mlflow_loader.py
+│   │       │   └── profiling.py
+│   │       └── control/          # Control flow steps
+│   │           ├── advanced.py   # ParallelStep, BranchStep, SubPipelineStep
+│   │           └── dynamic_adapter.py
+│   │
 │   ├── datamodule/               # Data loading & splitting
 │   ├── eval/                     # Evaluation metrics & runners
 │   ├── features/                 # Feature store (Feast)
+│   │   ├── definitions/          # Feature definitions
+│   │   ├── transformers/         # Feature transformers
+│   │   └── examples/             # Usage examples
 │   ├── models/                   # Model implementations
-│   ├── pipeline/                 # Training, evaluation, and serving pipelines
 │   ├── preprocess/               # Data transformation & preprocessing
 │   ├── tracking/                 # MLflow integration
 │   ├── trainer/                  # Training loops (ML & DL)
