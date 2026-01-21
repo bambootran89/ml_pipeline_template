@@ -4,8 +4,8 @@ from typing import Optional
 
 from omegaconf import DictConfig, OmegaConf
 
-from .apis.mixin import ApiGeneratorMixin
-from .pipeline.generator_config import GeneratorConfig
+from .apis.generator import ApiGeneratorMixin
+from .config import GeneratorConfig
 
 
 class ApiGenerator:

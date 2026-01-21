@@ -19,11 +19,11 @@ import pandas as pd
 from omegaconf import DictConfig
 
 from mlproject.src.dataio.loaddata import load_csv_data, load_from_feast
-from mlproject.src.generator.config_generator import ConfigGenerator
+from mlproject.src.generator.orchestrator import ConfigGenerator
 from mlproject.src.pipeline.flexible_pipeline import FlexiblePipeline
 from mlproject.src.utils.config_class import ConfigMerger
 
-# from mlproject.src.generator.config_generator import ConfigGenerator
+# from mlproject.src.generator.orchestrator import ConfigGenerator
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 os.environ["OMP_NUM_THREADS"] = "1"
