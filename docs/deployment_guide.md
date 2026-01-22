@@ -1,157 +1,260 @@
-# Zero-to-Hero Deployment Guide
+# Complete Deployment Guide - ML Pipeline Template
 
-This guide is a comprehensive, step-by-step manual to deploy the `ml-pipeline-template` from scratch locally using Minikube. It is structured into two main scenarios:
-1.  **Scenario A: Feast Mode (Advanced)** - Full Feature Store integration (Offline + Online Store).
-2.  **Scenario B: Standard Mode (Simple)** - Basic ML pipeline without Feature Store.
+This comprehensive guide will walk you through deploying the ML Pipeline Template from scratch. Follow the steps exactly as written to avoid common pitfalls.
 
 ## Table of Contents
-1.  [Prerequisites & Installation](#1-prerequisites--installation)
-2.  [Scenario A: Feast Mode (Advanced)](#2-scenario-a-feast-mode-advanced)
-3.  [Scenario B: Standard Mode (Basic)](#3-scenario-b-standard-mode-basic)
-4.  [Customizing the Training Pipeline](#4-customizing-the-training-pipeline)
-6.  [Updating the Model (Retraining & Reloading)](#6-updating-the-model-retraining--reloading)
-7.  [Cleanup](#7-cleanup)
+1. [Prerequisites & Setup](#1-prerequisites--setup)
+2. [Quick Start - Standard Mode](#2-quick-start---standard-mode)
+3. [Quick Start - Feast Mode](#3-quick-start---feast-mode)
+4. [Testing Your Deployment](#4-testing-your-deployment)
+5. [Understanding the Two Modes](#5-understanding-the-two-modes)
+6. [Troubleshooting](#6-troubleshooting)
+7. [Advanced Topics](#7-advanced-topics)
 
 ---
 
-## 1. Prerequisites & Installation
+## 1. Prerequisites & Setup
 
-You need **Docker**, **kubectl**, and **Minikube** installed.
+### 1.1 Required Software
 
-### Install Docker
+You need Docker, kubectl, and Minikube installed.
+
+#### Install Docker
 ```bash
 sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+sudo apt-get install -y docker.io
 sudo usermod -aG docker $USER
-# Log out and log back in
+# IMPORTANT: Log out and log back in for group changes to take effect
 ```
 
-### Install kubectl & Minikube
+#### Install kubectl
 ```bash
-# kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+```
 
-# Minikube
+#### Install Minikube
+```bash
 curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
 sudo install minikube-linux-amd64 /usr/local/bin/minikube
 ```
 
-### Start Minikube
+### 1.2 Start Minikube
+
 ```bash
+# Start Minikube with sufficient resources
 minikube start --driver=docker --cpus=4 --memory=8192
-eval $(minikube docker-env) # Point shell to Minikube Docker daemon
+
+# CRITICAL: Point your shell to Minikube's Docker daemon
+eval $(minikube docker-env)
+
+# Verify it's working
+minikube status
+docker ps
 ```
+
+**IMPORTANT**: Every time you open a new terminal, run `eval $(minikube docker-env)` before building images!
+
+### 1.3 Build Docker Images
+
+```bash
+# Navigate to project root
+cd /path/to/ml_pipeline_template
+
+# Build training image
+./docker-build.sh -i train
+
+# Build serving image
+./docker-build.sh -i serve
+
+# Verify images are built
+docker images | grep ml-pipeline
+```
+
+You should see:
+- `ml-pipeline-train:latest`
+- `ml-pipeline-serve:latest`
 
 ---
 
-## 2. Scenario A: Feast Mode (Advanced)
+## 2. Quick Start - Standard Mode
 
-Use this mode for full Feature Store integration (Offline + Online Store).
+Standard mode is simpler and doesn't require Feast feature store. Use this for learning or simple ML workflows.
 
-### Step 1: Build & Deploy
-Copy and run this entire block to build images and deploy the Feast training job.
+### Step 1: Deploy Everything
+
 ```bash
-# 1. Build Images
-./docker-build.sh -i train
-./docker-build.sh -i serve
-
-# 2. Deploy Feast Mode
-# Important: Ensure you have initialized the feature store locally first!
-# 1. Ingest Data
-python -m mlproject.src.pipeline.feature_ops.ingest_batch_etth1 --csv mlproject/data/ETTh1.csv --repo feature_repo_etth1
-
-# 2. Materialize features (Offline -> Online)
-python -m mlproject.src.pipeline.feature_ops.materialize_etth1 --repo feature_repo_etth1 --data feature_repo_etth1/data/features.parquet
-
-# 3. Deploy
-./deploy.sh -m feast
-
-# 3. Wait for Training to Start
-echo "Waiting for training job..."
-kubectl wait --for=condition=ready pod -l job-name=training-job-fast-etth1 --timeout=60s
+# Deploy standard mode with etth3.yaml experiment config
+./deploy.sh -m standard -e etth3.yaml
 ```
 
-### Step 2: Verify Training & Populate Online Store
-Run this block to follow the logs and automatically populate the online store once training finishes.
-```bash
-# 1. Stream Logs (Ctrl+C to exit if needed, but it should finish)
-kubectl logs -f job/training-job-fast-etth1
+This command will:
+1. Deploy MLflow server
+2. Create and run a training job
+3. Deploy the prediction API
 
-# 2. Populate Online Store (Materialize)
-# This assumes the training job has completed successfully.
-echo "Materializing Online Store..."
-POD_NAME=$(kubectl get pods -l app=ml-prediction -o jsonpath="{.items[0].metadata.name}")
-kubectl exec $POD_NAME -- bash -c "cd feature_repo_etth1 && feast materialize-incremental $(date -u +'%Y-%m-%dT%H:%M:%S')"
+### Step 2: Wait for Training to Complete
+
+```bash
+# Wait for training job to finish (max 10 minutes)
+kubectl wait --for=condition=complete job/training-job-standard-etth1 -n ml-pipeline --timeout=600s
 ```
 
-### Step 3: Verify API
-Run this block to expose the service and run automated tests.
-```bash
-# 1. Expose Service (Background)
-pkill -f "kubectl port-forward"
-kubectl port-forward service/ml-prediction-service 8000:80 > /dev/null 2>&1 &
-echo "Service exposed on localhost:8000"
+Expected output: `job.batch/training-job-standard-etth1 condition met`
 
-# 2. Run Automated Verification
+### Step 3: Verify Training Success
+
+```bash
+# Check training logs for model registration
+kubectl logs -n ml-pipeline job/training-job-standard-etth1 --tail=30 | grep "Created version"
+```
+
+You should see something like:
+```
+Created version '20' of model 'xgboost_train_model'.
+Created version '21' of model 'xgboost_preprocess'.
+```
+
+### Step 4: Restart API to Load New Model
+
+The API starts before training completes, so we need to restart it to load the newly trained model.
+
+```bash
+# Restart the API deployment
+kubectl rollout restart deployment ml-prediction-api-standard -n ml-pipeline
+
+# Wait for new pods to be ready (this takes about 30 seconds)
+kubectl wait --for=condition=ready pod -l app=ml-prediction -n ml-pipeline --timeout=120s
+```
+
+### Step 5: Test the API
+
+```bash
+# Set up port forwarding in background
+kubectl port-forward -n ml-pipeline service/ml-prediction-service 8000:80 > /dev/null 2>&1 &
+
+# Wait a moment for port forward to establish
 sleep 5
+
+# Run automated tests
 ./test_api.sh
 ```
 
+**Expected Results**:
+- Health check: ✓ (shows 3 features: HUFL, MUFL, mobility_inflow)
+- `/predict`: ✓ (returns predictions)
+- `/predict/multistep`: ✓ (returns predictions)
+
 ---
 
-## 3. Scenario B: Standard Mode (Basic)
+## 3. Quick Start - Feast Mode
 
-Use this mode for simpler pipelines without Feast.
+Feast mode adds feature engineering with lag features and rolling statistics.
 
-### Step 1: Build & Deploy
+### Step 1: Prepare Feast Feature Store
+
+Before deploying, you need to initialize the Feast feature store locally:
+
 ```bash
-# 1. Build & Deploy
-./docker-build.sh -i train
-./docker-build.sh -i serve
-./deploy.sh -m standard
+# 1. Ingest data into feature store
+python -m mlproject.src.pipeline.feature_ops.ingest_batch_etth1 \
+  --csv mlproject/data/ETTh1.csv \
+  --repo feature_repo_etth1
 
-# 2. Wait for Training
-echo "Waiting for training job..."
-kubectl wait --for=condition=ready pod -l job-name=training-job-standard-etth1 --timeout=60s
+# 2. Materialize features (Offline -> Online store)
+python -m mlproject.src.pipeline.feature_ops.materialize_etth1 \
+  --repo feature_repo_etth1 \
+  --data feature_repo_etth1/data/features.parquet
 ```
 
-### Step 2: Verify Training & API
+### Step 2: Deploy Feast Mode
+
 ```bash
-# 1. Watch Logs
-kubectl logs -f job/training-job-standard-etth1
+# Deploy feast mode with etth3_feast.yaml experiment config
+./deploy.sh -m feast -e etth3_feast.yaml
+```
 
-# 2. Restart API (to load new model)
-kubectl rollout restart deployment/ml-prediction-api-standard
-kubectl rollout status deployment/ml-prediction-api-standard
+### Step 3: Wait for Training
 
-# 3. Test
+```bash
+# Wait for training job to complete
+kubectl wait --for=condition=complete job/training-job-feast-etth1 -n ml-pipeline --timeout=600s
+
+# Verify model was registered
+kubectl logs -n ml-pipeline job/training-job-feast-etth1 --tail=30 | grep "Created version"
+```
+
+### Step 4: Restart API to Load New Model
+
+```bash
+# Restart feast API
+kubectl rollout restart deployment ml-prediction-api-feast -n ml-pipeline
+
+# Wait for pods to be ready
+kubectl wait --for=condition=ready pod -l app=ml-prediction -n ml-pipeline --timeout=120s
+```
+
+### Step 5: Test Feast API
+
+```bash
+# Kill any existing port forwards
 pkill -f "kubectl port-forward"
-kubectl port-forward service/ml-prediction-service 8000:80 > /dev/null 2>&1 &
+
+# Set up port forwarding
+kubectl port-forward -n ml-pipeline service/ml-prediction-service 8000:80 > /dev/null 2>&1 &
+
 sleep 5
+
+# Run tests
 ./test_api.sh
 ```
 
+**Expected Results**:
+- Health check: ✓ (shows 9 features including lag and engineered features)
+- `/predict/feast/batch`: ✓ (returns predictions)
+
 ---
 
-## 4. Manual Verification (Advanced)
+## 4. Testing Your Deployment
 
-If you need to debug specific endpoints manually, use these **fully copy-pasteable** commands.
+### 4.1 Using the Automated Test Script
 
-### Port Forwarding
+The `test_api.sh` script automatically detects which mode is deployed and runs appropriate tests:
+
 ```bash
-pkill -f "kubectl port-forward"
-kubectl port-forward service/ml-prediction-service 8000:80 > /dev/null 2>&1 &
+./test_api.sh
 ```
 
-### 4.1. Health Check
+### 4.2 Manual Testing
+
+#### Health Check
 ```bash
 curl -s http://localhost:8000/health | python3 -m json.tool
 ```
 
-### 4.2. Standard Prediction (24-Hour Payload)
+**Standard mode response**:
+```json
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "data_type": "timeseries",
+  "features": ["HUFL", "MUFL", "mobility_inflow"]
+}
+```
+
+**Feast mode response**:
+```json
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "data_type": "timeseries",
+  "features": ["HUFL", "MUFL", "mobility_inflow", "HUFL_lag24", "MUFL_lag24", "HUFL_roll12_mean", "MUFL_roll12_mean", "hour_sin", "hour_cos"]
+}
+```
+
+#### Standard Prediction
 ```bash
-curl -s -X POST "http://localhost:8000/predict" \
+curl -s -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
@@ -163,160 +266,440 @@ curl -s -X POST "http://localhost:8000/predict" \
   }' | python3 -m json.tool
 ```
 
-### 4.3. Batch Predict (Feast Only)
+#### Feast Batch Prediction
 ```bash
-curl -s -X POST "http://localhost:8000/predict/feast/batch" \
+curl -s -X POST http://localhost:8000/predict/feast/batch \
   -H "Content-Type: application/json" \
   -d '{
     "time_point": "2024-01-09T00:00:00",
-    "entities": [1, 2]
+    "entities": [1, 2, 3]
   }' | python3 -m json.tool
 ```
 
-### 4.4. Multistep Prediction (Time-Series Only)
+### 4.3 Checking Pod Status
+
 ```bash
-curl -s -X POST "http://localhost:8000/predict/multistep" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "steps_ahead": 12,
-    "data": {
-      "date": ["2020-01-01 00:00:00", "2020-01-01 01:00:00", "2020-01-01 02:00:00", "2020-01-01 03:00:00", "2020-01-01 04:00:00", "2020-01-01 05:00:00", "2020-01-01 06:00:00", "2020-01-01 07:00:00", "2020-01-01 08:00:00", "2020-01-01 09:00:00", "2020-01-01 10:00:00", "2020-01-01 11:00:00", "2020-01-01 12:00:00", "2020-01-01 13:00:00", "2020-01-01 14:00:00", "2020-01-01 15:00:00", "2020-01-01 16:00:00", "2020-01-01 17:00:00", "2020-01-01 18:00:00", "2020-01-01 19:00:00", "2020-01-01 20:00:00", "2020-01-01 21:00:00", "2020-01-01 22:00:00", "2020-01-01 23:00:00"],
-      "HUFL": [5.827, 5.8, 5.969, 6.372, 7.153, 7.976, 8.715, 9.340, 9.763, 9.986, 10.040, 9.916, 9.609, 9.156, 8.591, 7.970, 7.338, 6.745, 6.233, 5.838, 5.582, 5.465, 5.465, 5.557],
-      "MUFL": [1.599, 1.492, 1.492, 1.492, 1.492, 1.509, 1.582, 1.711, 1.896, 2.113, 2.337, 2.552, 2.742, 2.902, 3.024, 3.104, 3.137, 3.125, 3.067, 2.969, 2.838, 2.683, 2.515, 2.346],
-      "mobility_inflow": [1.234, 1.456, 1.678, 1.890, 2.123, 2.456, 2.789, 3.012, 3.234, 3.456, 3.678, 3.890, 4.012, 4.123, 4.234, 4.345, 4.456, 4.567, 4.678, 4.789, 4.890, 4.901, 4.912, 4.923]
-    }
-  }' | python3 -m json.tool
+# View all pods in ml-pipeline namespace
+kubectl get pods -n ml-pipeline
+
+# Check specific deployment
+kubectl get deployment -n ml-pipeline
+
+# View logs from API
+kubectl logs -n ml-pipeline deployment/ml-prediction-api-standard --tail=50
+
+# View logs from training job
+kubectl logs -n ml-pipeline job/training-job-standard-etth1 --tail=100
 ```
 
 ---
 
-## 5. Customizing the Training Pipeline
-You can specify a custom pipeline configuration file located in `mlproject/configs/pipelines/`.
+## 5. Understanding the Two Modes
 
-**Syntax:**
-```bash
-./deploy.sh -m [mode] -p [pipeline_config] -e [experiment_config]
-```
+### 5.1 Standard Mode
 
-**Options:**
-- `-m`: Deployment mode (`standard` or `feast`, default: `standard`)
-- `-p`: Pipeline config file (default: `standard_train.yaml`)
-- `-e`: Experiment config file (default: derived from mode)
-- `-n`: Namespace (default: `ml-pipeline`)
-- `-d`: Dry run (generate manifests only, do not deploy)
-- `-h`: Show help message
+**What it does**:
+- Trains XGBoost model on raw timeseries data (3 features)
+- Uses `etth3.yaml` experiment configuration
+- Model expects 24 timesteps of data with 3 features each
+- Simpler and faster to deploy
 
-**Examples:**
+**Model Details**:
+- Experiment name: `xgboost`
+- Features: `HUFL`, `MUFL`, `mobility_inflow`
+- Input chunk length: 24 hours
+- Output chunk length: 6 hours (forecasts next 6 hours)
 
-1.  **Feast Mode with Conditional Branching**:
-    ```bash
-    # Uses pipelines/conditional_branch_feast.yaml AND experiments/etth3_feast.yaml (default)
-    ./deploy.sh -m feast -p conditional_branch_feast.yaml
-    ```
+**API Endpoints**:
+- `/health` - Check API status
+- `/predict` - Single prediction (requires 24 timesteps)
+- `/predict/multistep` - Multi-step ahead prediction
 
-2.  **Tabular Scenario (Custom Experiment)**:
-    ```bash
-    # Uses pipelines/conditional_branch_tabular.yaml AND experiments/tabular.yaml
-    ./deploy.sh -m feast -p conditional_branch_tabular.yaml -e tabular.yaml
-    ```
+### 5.2 Feast Mode
 
-**How it works:**
-The script injects:
-*   `{{PIPELINE_CONFIG}}` -> `mlproject/configs/pipelines/...`
-*   `{{EXPERIMENT_CONFIG}}` -> `mlproject/configs/experiments/...`
-*   Generated manifests are stored in `k8s/generated/` for debugging.
+**What it does**:
+- Uses Feast feature store for feature engineering
+- Adds lag features (24-hour lags) and rolling statistics
+- Uses `etth3_feast.yaml` experiment configuration
+- Creates 9 features total (3 base + 6 engineered)
 
----
+**Model Details**:
+- Experiment name: `feast_xgboost`
+- Base features: `HUFL`, `MUFL`, `mobility_inflow`
+- Engineered features: `HUFL_lag24`, `MUFL_lag24`, `HUFL_roll12_mean`, `MUFL_roll12_mean`, `hour_sin`, `hour_cos`
+- More complex but potentially more accurate
 
-## 6. Updating the Model (Retraining & Reloading)
+**API Endpoints**:
+- `/health` - Check API status
+- `/predict` - Entity-based prediction
+- `/predict/feast/batch` - Batch prediction for multiple entities
 
-If you have new data or want to update the model with a different configuration:
+### 5.3 Key Differences
 
-### 6.1. Retrain the Model
-Just run `deploy.sh` again with the same or different configuration. It will automatically delete the old job and start a new one.
-```bash
-./deploy.sh -m feast -p conditional_branch_feast.yaml
-```
-
-### 6.2. Reload the API
-Once the training job is **Complete**, you must restart the API deployment to load the new model into memory.
-```bash
-# For Feast Mode
-kubectl rollout restart deployment/ml-prediction-api-feast
-
-# For Standard Mode
-kubectl rollout restart deployment/ml-prediction-api-standard
-```
+| Aspect | Standard Mode | Feast Mode |
+|--------|--------------|------------|
+| Setup Complexity | Simple | Requires Feast initialization |
+| Features | 3 raw features | 9 features (3 raw + 6 engineered) |
+| Training Time | Faster | Slower |
+| Model Accuracy | Good baseline | Potentially better with engineered features |
+| Use Case | Learning, prototyping | Production, feature experimentation |
 
 ---
 
-## 7. Cleanup
+## 6. Troubleshooting
 
-To remove all deployed resources, stop port-forwarding, and clean up the environment:
+### 6.1 Common Issues and Solutions
+
+#### Issue: "ImagePullBackOff" or "ErrImagePull"
+
+**Cause**: Kubernetes can't find your Docker images.
+
+**Solution**:
+```bash
+# Ensure you're using Minikube's Docker daemon
+eval $(minikube docker-env)
+
+# Rebuild images
+./docker-build.sh -i train
+./docker-build.sh -i serve
+
+# Verify images exist
+docker images | grep ml-pipeline
+```
+
+#### Issue: Training job completes but no model is registered
+
+**Cause**: The training command in `k8s/job-training-standard.yaml` was commented out (this was a bug that we fixed).
+
+**Solution**: The fix is already in place. The training command should look like:
+```yaml
+command:
+- /bin/bash
+- -c
+- |
+  # [STANDARD] Simple training
+  cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.dag_run train -e {{PROJECT_ROOT}}/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} -p {{PROJECT_ROOT}}/mlproject/configs/pipelines/{{PIPELINE_CONFIG}}
+```
+
+#### Issue: API returns old predictions or "model not found"
+
+**Cause**: API loaded before training completed, or didn't reload after new model was trained.
+
+**Solution**:
+```bash
+# Always restart API after training completes
+kubectl rollout restart deployment ml-prediction-api-standard -n ml-pipeline
+# OR for feast
+kubectl rollout restart deployment ml-prediction-api-feast -n ml-pipeline
+
+# Wait for rollout to complete
+kubectl rollout status deployment ml-prediction-api-standard -n ml-pipeline
+```
+
+#### Issue: "Connection refused" when testing API
+
+**Cause**: Port forwarding is not active.
+
+**Solution**:
+```bash
+# Kill any existing port forwards
+pkill -f "kubectl port-forward"
+
+# Start new port forward
+kubectl port-forward -n ml-pipeline service/ml-prediction-service 8000:80 > /dev/null 2>&1 &
+
+# Wait and test
+sleep 5
+curl http://localhost:8000/health
+```
+
+#### Issue: Minikube fails to start with Docker errors
+
+**Cause**: Docker daemon not running.
+
+**Solution**:
+```bash
+# For WSL2 or systems without systemd
+sudo service docker start
+
+# For systems with systemd
+sudo systemctl start docker
+
+# Verify Docker is running
+docker ps
+
+# Then start Minikube
+minikube start --driver=docker --cpus=4 --memory=8192
+```
+
+#### Issue: Training job stays in "Pending" state
+
+**Check pod status**:
+```bash
+kubectl get pods -n ml-pipeline
+kubectl describe pod -n ml-pipeline <pod-name>
+```
+
+Common causes:
+- Insufficient resources: Increase Minikube resources
+- ImagePullBackOff: See solution above
+- Volume mount issues: Ensure you're running from project root
+
+#### Issue: "Serving config not found" or API fails to start
+
+**Cause**: Serving configuration was not generated for your pipeline.
+
+**Solution**: The deployment script now auto-generates serving configs, but if you encounter issues:
+```bash
+# Manually generate serving config
+python -c "
+from mlproject.src.generator.orchestrator import ConfigGenerator
+
+generator = ConfigGenerator(
+    train_config_path='mlproject/configs/pipelines/your_pipeline.yaml',
+    experiment_config_path='mlproject/configs/experiments/your_experiment.yaml'
+)
+generator.generate_all('mlproject/configs/generated', alias='latest')
+"
+
+# Verify it was created
+ls mlproject/configs/generated/*_serve.yaml
+```
+
+### 6.2 Debugging Commands
 
 ```bash
-# 1. Run the cleanup script
-chmod +x cleanup.sh
-./cleanup.sh
+# Check cluster status
+minikube status
+kubectl cluster-info
 
-# 2. (Optional) Stop Minikube
+# View all resources in namespace
+kubectl get all -n ml-pipeline
+
+# Describe a stuck pod
+kubectl describe pod <pod-name> -n ml-pipeline
+
+# View pod logs
+kubectl logs <pod-name> -n ml-pipeline
+
+# Follow logs in real-time
+kubectl logs -f <pod-name> -n ml-pipeline
+
+# Execute command in running pod
+kubectl exec -it <pod-name> -n ml-pipeline -- bash
+
+# Check events
+kubectl get events -n ml-pipeline --sort-by='.lastTimestamp'
+```
+
+### 6.3 Complete Reset
+
+If things are completely broken, start fresh:
+
+```bash
+# Delete namespace (removes all resources)
+kubectl delete namespace ml-pipeline
+
+# Wait a moment
+sleep 10
+
+# Redeploy from scratch
+./deploy.sh -m standard -e etth3.yaml
+```
+
+---
+
+## 7. Advanced Topics
+
+### 7.1 Switching Between Modes
+
+To switch from standard to feast (or vice versa):
+
+```bash
+# Current mode pods will be deleted automatically
+./deploy.sh -m feast -e etth3_feast.yaml
+
+# Wait for training
+kubectl wait --for=condition=complete job/training-job-feast-etth1 -n ml-pipeline --timeout=600s
+
+# Restart API
+kubectl rollout restart deployment ml-prediction-api-feast -n ml-pipeline
+```
+
+### 7.2 Using Custom Configurations
+
+You can specify custom pipeline and experiment configs. The deployment script automatically generates serving configurations if they don't exist.
+
+#### Example: Using Different Pipelines
+
+```bash
+# Deploy with nested sub-pipeline
+./deploy.sh -m standard -p nested_suppipeline.yaml -e etth3.yaml
+
+# Deploy with parallel ensemble
+./deploy.sh -m standard -p parallel_ensemble.yaml -e etth3.yaml
+
+# Deploy with conditional branching
+./deploy.sh -m standard -p conditional_branch.yaml -e etth3.yaml
+
+# Dry run (generate manifests without deploying)
+./deploy.sh -m standard -e etth3.yaml -d
+```
+
+#### How Serving Config Auto-Generation Works
+
+The deployment script automatically:
+1. **Checks** if `mlproject/configs/generated/<pipeline>_serve.yaml` exists
+2. **Generates** it if missing using `ConfigGenerator`
+3. **Uses** the generated config for the API deployment
+
+**Example**:
+```bash
+# If parallel_ensemble_serve.yaml doesn't exist, it will be auto-generated
+./deploy.sh -m standard -p parallel_ensemble.yaml -e etth3.yaml
+```
+
+Output:
+```
+[Pre-Deploy] Generating serving config: parallel_ensemble_serve.yaml
+[ConfigGenerator] Successfully generated: mlproject/configs/generated/parallel_ensemble_serve.yaml
+```
+
+**Manual Generation** (if you want to inspect before deploying):
+```bash
+python -c "
+from mlproject.src.generator.orchestrator import ConfigGenerator
+
+generator = ConfigGenerator(
+    train_config_path='mlproject/configs/pipelines/your_pipeline.yaml',
+    experiment_config_path='mlproject/configs/experiments/your_experiment.yaml'
+)
+paths = generator.generate_all('mlproject/configs/generated', alias='latest')
+print(f'Generated configs: {paths}')
+"
+```
+
+Generated files will be in `mlproject/configs/generated/`:
+- `<pipeline>_serve.yaml` - For serving/inference
+- `<pipeline>_eval.yaml` - For evaluation
+- `<pipeline>_tune.yaml` - For hyperparameter tuning (if include_tune=True)
+
+### 7.3 Accessing MLflow UI
+
+```bash
+# Forward MLflow port
+kubectl port-forward -n ml-pipeline service/mlflow-service 5000:5000 &
+
+# Open in browser
+# http://localhost:5000
+```
+
+You can view:
+- All training runs
+- Model metrics and parameters
+- Registered models and versions
+- Artifacts
+
+### 7.4 Retraining Models
+
+To retrain with updated data or configuration:
+
+```bash
+# 1. Update your data or configs
+# 2. Redeploy (old training jobs are automatically deleted)
+./deploy.sh -m standard -e etth3.yaml
+
+# 3. Wait for training
+kubectl wait --for=condition=complete job/training-job-standard-etth1 -n ml-pipeline --timeout=600s
+
+# 4. Restart API to load new model
+kubectl rollout restart deployment ml-prediction-api-standard -n ml-pipeline
+```
+
+### 7.5 Scaling the API
+
+```bash
+# Scale to more replicas for higher load
+kubectl scale deployment ml-prediction-api-standard --replicas=4 -n ml-pipeline
+
+# Verify
+kubectl get deployment ml-prediction-api-standard -n ml-pipeline
+```
+
+### 7.6 Cleanup
+
+To remove all resources:
+
+```bash
+# Delete the namespace (removes everything)
+kubectl delete namespace ml-pipeline
+
+# Stop Minikube
 minikube stop
+
+# Delete Minikube cluster (complete reset)
+minikube delete
 ```
 
 ---
 
-## 8. MLflow Tracking (New)
+## Quick Reference - Common Commands
 
-The deployment now includes a dedicated MLflow Server running in the cluster.
-
-### Accessing the UI
 ```bash
-# Forward port 5000
-kubectl port-forward service/mlflow-service 5000:5000
-```
-Open [http://localhost:5000](http://localhost:5000) in your browser.
+# Build images
+eval $(minikube docker-env)
+./docker-build.sh -i train
+./docker-build.sh -i serve
 
-### Data Persistence
-*   **Artifacts**: Stored in your local project's `mlruns/` folder.
-*   **Database**: Stored as `mlruns/mlflow.db` (SQLite).
-*   **Why?**: This ensures you can access experiments locally even if you delete the Kubernetes cluster.
+# Deploy standard mode
+./deploy.sh -m standard -e etth3.yaml
+
+# Deploy feast mode
+./deploy.sh -m feast -e etth3_feast.yaml
+
+# Wait for training
+kubectl wait --for=condition=complete job/training-job-standard-etth1 -n ml-pipeline --timeout=600s
+
+# Restart API
+kubectl rollout restart deployment ml-prediction-api-standard -n ml-pipeline
+
+# Port forward
+kubectl port-forward -n ml-pipeline service/ml-prediction-service 8000:80 &
+
+# Test
+./test_api.sh
+
+# View pods
+kubectl get pods -n ml-pipeline
+
+# View logs
+kubectl logs -n ml-pipeline job/training-job-standard-etth1
+
+# Cleanup
+kubectl delete namespace ml-pipeline
+```
 
 ---
 
-## 9. Troubleshooting
+## Summary Checklist
 
-### Connection Refused / Unable to Connect to Server
-*   **Cause**: Minikube is not running or `kubectl` is configured for a different cluster.
-*   **Fix**: Run `minikube status`. If stopped, run `minikube start`.
+Before deploying:
+- [ ] Docker is installed and running
+- [ ] kubectl is installed
+- [ ] Minikube is installed and started
+- [ ] You've run `eval $(minikube docker-env)`
+- [ ] You've built both Docker images
+- [ ] You're in the project root directory
 
-### Minikube fails with PROVIDER_DOCKER_VERSION_EXIT_1
-*   **Error**: `failed to connect to the docker API` OR `System has not been booted with systemd`.
-*   **Cause**: Docker daemon is not running, often common in WSL2 without systemd enabled.
-*   **Fix**:
-    1.  Try the SysVinit command (common for WSL):
-        ```bash
-        sudo service docker start
-        ```
-    2.  If that doesn't work, try systemd:
-        ```bash
-        sudo systemctl start docker
-        ```
-    3.  **WSL2 Users**: Ensure Docker Desktop is running if you are using it.
-    4.  Retry `minikube start`.
+For successful deployment:
+- [ ] Training job completes (check with kubectl wait)
+- [ ] Model is registered in MLflow (check logs)
+- [ ] API is restarted after training
+- [ ] Port forwarding is active
+- [ ] Tests pass with `./test_api.sh`
 
-### ImagePullBackOff / ImageNotFound
-*   **Cause**: Kubernetes cannot find your local Docker images because your shell isn't pointing to Minikube's Docker daemon.
-*   **Fix**:
-    ```bash
-    eval $(minikube docker-env)
-    ./docker-build.sh -i train
-    ./docker-build.sh -i serve
-    ```
-
-### HostPath / Mount Errors
-*   **Cause**: The script attempts to mount local directories (like `mlruns`). The updated script automatically detects your project root, but ensure you are running `deploy.sh` from the project root directory.
-*   **Fix**: Always run scripts from the project root:
-    ```bash
-    cd /path/to/ml_pipeline_template
-    ./deploy.sh ...
-    ```
+If something fails:
+- [ ] Check pod status: `kubectl get pods -n ml-pipeline`
+- [ ] Check logs: `kubectl logs -n ml-pipeline <pod-name>`
+- [ ] Verify images: `docker images | grep ml-pipeline`
+- [ ] Try complete reset: `kubectl delete namespace ml-pipeline`

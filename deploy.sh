@@ -77,6 +77,30 @@ fi
 
 # Create Generated Directory
 mkdir -p "$GENERATED_DIR"
+mkdir -p "mlproject/configs/generated"
+
+# 1.5. Generate Serving Config if not exists
+SERVE_CONFIG_PATH="mlproject/configs/generated/$SERVING_CONFIG"
+if [ ! -f "$SERVE_CONFIG_PATH" ]; then
+    echo "[Pre-Deploy] Generating serving config: $SERVING_CONFIG"
+    python -c "
+from mlproject.src.generator.orchestrator import ConfigGenerator
+
+try:
+    # Generate serve config
+    generator = ConfigGenerator(
+        train_config_path='mlproject/configs/pipelines/$PIPELINE_CONFIG',
+        experiment_config_path='mlproject/configs/experiments/$EXPERIMENT_CONFIG'
+    )
+    paths = generator.generate_all('mlproject/configs/generated', alias='latest', include_tune=False)
+    print(f'[Pre-Deploy] Generated: {paths.get(\"serve\", \"N/A\")}')
+except Exception as e:
+    print(f'[Pre-Deploy] Warning: Failed to generate serve config: {e}')
+    print('[Pre-Deploy] Continuing with existing config if available...')
+"
+else
+    echo "[Pre-Deploy] Using existing serving config: $SERVE_CONFIG_PATH"
+fi
 
 # 2. Setup Context
 if [ "$DRY_RUN" = false ]; then

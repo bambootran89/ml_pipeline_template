@@ -16,9 +16,33 @@ parse_json() {
 }
 
 # --------------------------------------------------------
+# 0. Pre-check: Detect active deployment type
+# --------------------------------------------------------
+echo -e "\n[0/5] Detecting active deployment..."
+DEPLOYMENT_TYPE="unknown"
+
+# Check which deployment is running in k8s
+if command -v kubectl &> /dev/null; then
+    FEAST_READY=$(kubectl get deployment ml-prediction-api-feast -n ml-pipeline -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    STANDARD_READY=$(kubectl get deployment ml-prediction-api-standard -n ml-pipeline -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+
+    if [ "$FEAST_READY" -gt 0 ]; then
+        DEPLOYMENT_TYPE="feast"
+        echo "Detected Feast deployment (ml-prediction-api-feast) with $FEAST_READY ready replicas"
+    elif [ "$STANDARD_READY" -gt 0 ]; then
+        DEPLOYMENT_TYPE="standard"
+        echo "Detected Standard deployment (ml-prediction-api-standard) with $STANDARD_READY ready replicas"
+    else
+        echo "WARNING: No ready deployments found, will rely on health check"
+    fi
+else
+    echo "WARNING: kubectl not found, will rely on health check"
+fi
+
+# --------------------------------------------------------
 # 1. Health Check & Type Detection
 # --------------------------------------------------------
-echo -e "\n[1/4] Testing Health Check (/health)..."
+echo -e "\n[1/5] Testing Health Check (/health)..."
 HEALTH_JSON=$(curl -s "$BASE_URL/health")
 echo "$HEALTH_JSON" | parse_json
 
@@ -26,18 +50,19 @@ DATA_TYPE=$(echo "$HEALTH_JSON" | python3 -c "import sys, json; print(json.load(
 FEATURES=$(echo "$HEALTH_JSON" | python3 -c "import sys, json; print(json.load(sys.stdin).get('features', []))" 2>/dev/null)
 
 # Feature-based detection for Feast (since 'timeseries' fits both)
-if [[ "$FEATURES" == *"lag"* ]]; then
-    echo "Detected Feast Model (based on lag features)."
+if [[ "$FEATURES" == *"lag"* ]] || [ "$DEPLOYMENT_TYPE" == "feast" ]; then
+    echo "Detected Feast Model (based on lag features or deployment type)."
     DATA_TYPE="feast"
 fi
 
 echo "Detected Data Type: $DATA_TYPE"
+echo "Deployment Type: $DEPLOYMENT_TYPE"
 
 # --------------------------------------------------------
 # 2. Standard Predict (Conditional)
 # --------------------------------------------------------
-if [ "$DATA_TYPE" == "feast" ]; then
-    echo -e "\n[2/4] Testing Feast Predict (/predict)..."
+if [ "$DATA_TYPE" == "feast" ] || [ "$DEPLOYMENT_TYPE" == "feast" ]; then
+    echo -e "\n[2/5] Testing Feast Predict (/predict)..."
     # Feast model expects Entity IDs + Timestamp, NOT raw features
     # Adjust payload based on your serving logic.
     # Usually: {"data": {"location_id": [1], "event_timestamp": ["..."]}}
@@ -62,7 +87,7 @@ if [ "$DATA_TYPE" == "feast" ]; then
       -d "$PAYLOAD" | parse_json
 
 else
-    echo -e "\n[2/4] Testing Standard Predict (/predict)..."
+    echo -e "\n[2/5] Testing Standard Predict (/predict)..."
     if [ "$DATA_TYPE" == "tabular" ]; then
         PAYLOAD='{
             "data": {
@@ -95,7 +120,7 @@ fi
 # 3. Batch/Feast Prediction (Conditional)
 # --------------------------------------------------------
 if [ "$DATA_TYPE" == "tabular" ]; then
-    echo -e "\n[3/4] Testing Tabular Batch Predict (/predict/batch)..."
+    echo -e "\n[3/5] Testing Tabular Batch Predict (/predict/batch)..."
     curl -s -X POST "$BASE_URL/predict/batch" \
       -H "Content-Type: application/json" \
       -d '{
@@ -109,8 +134,8 @@ if [ "$DATA_TYPE" == "tabular" ]; then
           "Embarked": ["S", "C", "S", "S", "S"]
         }
       }' | parse_json
-elif [ "$DATA_TYPE" == "feast" ]; then
-    echo -e "\n[3/4] Testing Feast Batch Predict (/predict/feast/batch)..."
+elif [ "$DATA_TYPE" == "feast" ] || [ "$DEPLOYMENT_TYPE" == "feast" ]; then
+    echo -e "\n[3/5] Testing Feast Batch Predict (/predict/feast/batch)..."
     curl -s -X POST "$BASE_URL/predict/feast/batch" \
       -H "Content-Type: application/json" \
       -d '{
@@ -118,14 +143,14 @@ elif [ "$DATA_TYPE" == "feast" ]; then
         "entities": [1, 2, 3]
       }' | parse_json
 else
-    echo -e "\n[3/4] Skipped Batch Predict (Time Series Mode)"
+    echo -e "\n[3/5] Skipped Batch Predict (Time Series Mode)"
 fi
 
 # --------------------------------------------------------
 # 4. Multistep Prediction (Conditional)
 # --------------------------------------------------------
-if [ "$DATA_TYPE" == "timeseries" ]; then
-    echo -e "\n[4/4] Testing Multistep Predict (/predict/multistep)..."
+if [ "$DATA_TYPE" == "timeseries" ] && [ "$DEPLOYMENT_TYPE" != "feast" ]; then
+    echo -e "\n[4/5] Testing Multistep Predict (/predict/multistep)..."
     curl -s -X POST "$BASE_URL/predict/multistep" \
       -H "Content-Type: application/json" \
       -d '{
@@ -138,9 +163,23 @@ if [ "$DATA_TYPE" == "timeseries" ]; then
         }
       }' | parse_json
 else
-    echo -e "\n[4/4] Skipped Multistep Predict (Tabular Mode)"
+    echo -e "\n[4/5] Skipped Multistep Predict (Not Standard Timeseries Mode)"
+fi
+
+# --------------------------------------------------------
+# 5. Deployment Summary
+# --------------------------------------------------------
+echo -e "\n[5/5] Deployment Summary..."
+if command -v kubectl &> /dev/null; then
+    echo "Active Deployments:"
+    kubectl get deployments -n ml-pipeline -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,AVAILABLE:.status.availableReplicas 2>/dev/null | grep -E "NAME|ml-prediction"
+    echo ""
+    echo "Service Endpoints:"
+    kubectl get svc ml-prediction-service -n ml-pipeline -o custom-columns=NAME:.metadata.name,TYPE:.spec.type,PORT:.spec.ports[0].port,NODEPORT:.spec.ports[0].nodePort 2>/dev/null
 fi
 
 echo -e "\n=================================================="
 echo " Tests Complete."
+echo " Data Type: $DATA_TYPE"
+echo " Deployment: $DEPLOYMENT_TYPE"
 echo "=================================================="
