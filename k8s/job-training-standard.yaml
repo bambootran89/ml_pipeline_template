@@ -25,12 +25,12 @@ spec:
       initContainers:
       - name: fix-permissions
         image: busybox
-        command: ["sh", "-c", "chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns"]
+        command: ["sh", "-c", "chown -R 1000:1000 {{PROJECT_ROOT}}/mlruns"]
         securityContext:
           runAsUser: 0
         volumeMounts:
         - name: mlruns-volume
-          mountPath: /home/cuong/ml_pipeline_template/mlruns
+          mountPath: "{{PROJECT_ROOT}}/mlruns"
 
       containers:
       - name: trainer
@@ -38,22 +38,23 @@ spec:
         imagePullPolicy: IfNotPresent
         volumeMounts:
         - name: mlruns-volume
-          mountPath: /home/cuong/ml_pipeline_template/mlruns
+          mountPath: "{{PROJECT_ROOT}}/mlruns"
 
         command:
         - /bin/bash
         - -c
         - |
-          # [STANDARD] Simple training  cd /home/cuong/ml_pipeline_template && python -m mlproject.src.pipeline.dag_run train -e /home/cuong/ml_pipeline_template/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} -p /home/cuong/ml_pipeline_template/mlproject/configs/pipelines/{{PIPELINE_CONFIG}}
+          # [STANDARD] Simple training  cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.dag_run train -e {{PROJECT_ROOT}}/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} -p {{PROJECT_ROOT}}/mlproject/configs/pipelines/{{PIPELINE_CONFIG}}
 
         env:
+        # [MLFLOW] Connecting to MLflow Service
         - name: MLFLOW_TRACKING_URI
-          value: "http://host.minikube.internal:5000"
+          value: "http://mlflow-service:5000"
         - name: PYTHONUNBUFFERED
           value: "1"
 
       volumes:
       - name: mlruns-volume
         hostPath:
-          path: /home/cuong/ml_pipeline_template/mlruns
+          path: "{{PROJECT_ROOT}}/mlruns"
           type: DirectoryOrCreate

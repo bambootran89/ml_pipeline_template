@@ -28,12 +28,12 @@ spec:
       - name: fix-permissions-seed-data
         image: ml-pipeline-train:latest # Using train image because it has the source data
         imagePullPolicy: IfNotPresent
-        command: ["/bin/bash", "-c", "cp -rn /home/cuong/ml_pipeline_template/feature_repo_etth1/data/* /mnt/feast_data/ || true && chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns /mnt/feast_data"]
+        command: ["/bin/bash", "-c", "cp -rn {{PROJECT_ROOT}}/feature_repo_etth1/data/* /mnt/feast_data/ || true && chown -R 1000:1000 {{PROJECT_ROOT}}/mlruns /mnt/feast_data"]
         securityContext:
           runAsUser: 0
         volumeMounts:
         - name: mlruns-volume
-          mountPath: /home/cuong/ml_pipeline_template/mlruns
+          mountPath: "{{PROJECT_ROOT}}/mlruns"
         - name: feast-data-volume
           mountPath: /mnt/feast_data
 
@@ -51,9 +51,9 @@ spec:
           containerPort: 8000
 
         env:
-        # [MLFLOW] Use file-based registry to access artifacts from shared volume (avoiding network issues)
+        # [MLFLOW] Use MLflow Service
         - name: MLFLOW_TRACKING_URI
-          value: "file:///home/cuong/ml_pipeline_template/mlruns"
+          value: "http://mlflow-service:5000"
         - name: PYTHONUNBUFFERED
           value: "1"
 
@@ -64,9 +64,9 @@ spec:
 
         volumeMounts:
         - name: mlruns-volume
-          mountPath: /home/cuong/ml_pipeline_template/mlruns
+          mountPath: "{{PROJECT_ROOT}}/mlruns"
         - name: feast-data-volume
-          mountPath: /home/cuong/ml_pipeline_template/feature_repo_etth1/data
+          mountPath: "{{PROJECT_ROOT}}/feature_repo_etth1/data"
 
         livenessProbe:
           httpGet:
@@ -84,9 +84,9 @@ spec:
       volumes:
       - name: mlruns-volume
         hostPath:
-          path: /home/cuong/ml_pipeline_template/mlruns
+          path: "{{PROJECT_ROOT}}/mlruns"
           type: DirectoryOrCreate
       - name: feast-data-volume
         hostPath:
-          path: /home/cuong/ml_pipeline_template/feature_repo_etth1/data
+          path: "{{PROJECT_ROOT}}/feature_repo_etth1/data"
           type: DirectoryOrCreate
