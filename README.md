@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-2b5b84?logo=python&logoColor=white)](https://www.python.org/)
 [![Feast](https://img.shields.io/badge/Feast-Feature%20Store-388e3c?logo=feast&logoColor=white)](https://feast.dev/)
-[![MLflow](https://img.shields.io/badge/MLflow-Tracking-0d47a1?logo=mlflow&logoColor=white)](https://mlflow.org/)
+[![MLflow](https://img.shields.io/badge/MLflow-Tracking%20Server-0d47a1?logo=mlflow&logoColor=white)](https://mlflow.org/)
 [![Optuna](https://img.shields.io/badge/Optuna-Tuning-6a1b9a?logo=optuna&logoColor=white)](https://optuna.org/)
 [![Ray Serve](https://img.shields.io/badge/Ray%20Serve-Serving-1565c0?logo=ray&logoColor=white)](https://docs.ray.io/en/latest/serve/index.html)
 [![Hydra](https://img.shields.io/badge/Hydra-Config-ef6c00?logo=hydra&logoColor=white)](https://hydra.cc/)
@@ -296,13 +296,13 @@ For professional deployment, use the automated build and deployment scripts.
 Use the enhanced deployment script which supports dynamic configuration.
 ```bash
 # Deploy in Feast mode (Advanced)
-./deploy.sh feast
+./deploy.sh -m feast
 
 # Deploy in Standard mode (Simple)
-./deploy.sh standard
+./deploy.sh -m standard
 
 # Deploy specific scenario (e.g., Tabular)
-./deploy.sh feast conditional_branch_tabular.yaml tabular.yaml
+./deploy.sh -m feast -p conditional_branch_tabular.yaml -e tabular.yaml
 ```
 
 ### 3. Verify Deployment

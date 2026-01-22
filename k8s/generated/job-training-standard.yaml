@@ -25,12 +25,12 @@ spec:
       initContainers:
       - name: fix-permissions
         image: busybox
-        command: ["sh", "-c", "chown -R 1000:1000 {{PROJECT_ROOT}}/mlruns"]
+        command: ["sh", "-c", "chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns"]
         securityContext:
           runAsUser: 0
         volumeMounts:
         - name: mlruns-volume
-          mountPath: "{{PROJECT_ROOT}}/mlruns"
+          mountPath: "/home/cuong/ml_pipeline_template/mlruns"
 
       containers:
       - name: trainer
@@ -38,14 +38,14 @@ spec:
         imagePullPolicy: IfNotPresent
         volumeMounts:
         - name: mlruns-volume
-          mountPath: "{{PROJECT_ROOT}}/mlruns"
+          mountPath: "/home/cuong/ml_pipeline_template/mlruns"
 
         command:
         - /bin/bash
         - -c
         - |
           # [STANDARD] Simple training
-          cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.dag_run train -e {{PROJECT_ROOT}}/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} -p {{PROJECT_ROOT}}/mlproject/configs/pipelines/{{PIPELINE_CONFIG}}
+          cd /home/cuong/ml_pipeline_template && python -m mlproject.src.pipeline.dag_run train -e /home/cuong/ml_pipeline_template/mlproject/configs/experiments/etth3.yaml -p /home/cuong/ml_pipeline_template/mlproject/configs/pipelines/nested_suppipeline.yaml
 
         env:
         # [MLFLOW] Connecting to MLflow Service
@@ -57,5 +57,5 @@ spec:
       volumes:
       - name: mlruns-volume
         hostPath:
-          path: "{{PROJECT_ROOT}}/mlruns"
+          path: "/home/cuong/ml_pipeline_template/mlruns"
           type: DirectoryOrCreate

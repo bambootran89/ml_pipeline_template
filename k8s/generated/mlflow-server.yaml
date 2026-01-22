@@ -34,5 +34,5 @@ spec:
       volumes:
       - name: ml-artifacts
         hostPath:
-          path: "{{PROJECT_ROOT}}/mlruns"
+          path: "/home/cuong/ml_pipeline_template/mlruns"
           type: DirectoryOrCreate

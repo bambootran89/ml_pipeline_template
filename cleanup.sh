@@ -23,9 +23,11 @@ kubectl delete services --all -n $NAMESPACE --ignore-not-found
 # echo "[3/4] Removing namespace '$NAMESPACE'..."
 # kubectl delete namespace $NAMESPACE --ignore-not-found
 
-# 4. Cleanup Local Temporary Manifests
-echo "[4/4] Cleaning up local temporary files..."
-rm -f k8s/tmp-*.yaml
+# 4. Cleanup MLflow and Local Temporary Manifests
+echo "[4/4] Cleaning up MLflow and generated files..."
+kubectl delete deployment mlflow-server -n $NAMESPACE --ignore-not-found || true
+kubectl delete service mlflow-service -n $NAMESPACE --ignore-not-found || true
+rm -rf k8s/generated/
 
 echo "=================================================="
 echo " Cleanup Complete!"

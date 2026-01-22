@@ -37,7 +37,7 @@ data:
     - "hour_cos"
 
 experiment:
-  name: "xgboost"
+  name: "feast_xgboost"
   type: "timeseries"
   model: "xgboost"
   model_type: "ml"
