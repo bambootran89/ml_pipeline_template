@@ -65,12 +65,12 @@ This separation provides:
 | **Base Image** | python:3.11-slim | python:3.11-slim |
 | **Size** | ~1.5-2GB | ~600-800MB |
 | **ML Libraries** | All (XGBoost, TensorFlow, etc.) | None (uses serialized models) |
-| **Training Code** | ✅ Full pipeline code | ❌ Not included |
-| **Serving Code** | ✅ Included | ✅ Only serving module |
-| **Data** | ✅ Mounted for training | ❌ Not needed |
+| **Training Code** | Full pipeline code | Not included |
+| **Serving Code** | Included | Only serving module |
+| **Data** | Mounted for training | Not needed |
 | **MLflow** | Client + Server connection | Client only (model loading) |
 | **Feast** | Full SDK + ingestion | Online client only |
-| **Dev Tools** | ✅ git, vim, pytest | ❌ Not included |
+| **Dev Tools** | git, vim, pytest | Not included |
 | **Security** | Internal use | Customer-safe |
 | **Use Case** | Train, eval, tune, experiment | Production inference only |
 
@@ -373,7 +373,7 @@ curl -X POST http://localhost:8001/predict/feast \
 
 ### Serving Image (Customer)
 
-✅ **Security Features:**
+**Security Features:**
 - No training source code
 - No training data
 - No development tools
@@ -381,7 +381,7 @@ curl -X POST http://localhost:8001/predict/feast \
 - Runs as non-root user (UID 1000)
 - Minimal attack surface (~600MB image)
 
-❌ **Not Included:**
+**Not Included:**
 - Training pipeline code
 - Data preprocessing source
 - Hyperparameter tuning logic
