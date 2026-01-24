@@ -1,11 +1,12 @@
-# Multi-stage Dockerfile for production-ready ML pipeline
+# syntax=docker/dockerfile:1
+# Optimized Dockerfile for serving only
+# Contains only minimal dependencies and code needed for inference
 
 # ============================================================================
 # Stage 1: Builder - Install dependencies and build wheels
 # ============================================================================
 FROM python:3.11-slim as builder
 
-# Prevent Python from writing pyc files and enable unbuffered output
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
@@ -15,62 +16,86 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# Copy only requirements first for better layer caching
-COPY requirements/prod.txt requirements.txt
+# Copy serving requirements only
+COPY requirements/ requirements/
+COPY requirements/serve.txt requirements.txt
 
-# Create wheels for all dependencies to speed up final stage
+# Create wheels for dependencies
 RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
 
 # ============================================================================
-# Stage 2: Runtime - Minimal production image
+# Stage 2: Runtime - Minimal serving image
 # ============================================================================
 FROM python:3.11-slim as runtime
 
-# Metadata labels
 LABEL maintainer="ML Pipeline Team"
 LABEL version="1.0.0"
-LABEL description="Production ML Pipeline with FastAPI and Ray Serve"
+LABEL description="Minimal ML Serving API with FastAPI"
 
-# Environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONPATH=/home/cuong/ml_pipeline_template \
     MLFLOW_TRACKING_URI=http://localhost:5000
 
-# Install only runtime dependencies (no build tools)
+# Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create non-root user for security
+# Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
 
 WORKDIR /home/cuong/ml_pipeline_template
 
-# Copy wheels from builder stage
-COPY --from=builder /build/wheels /wheels
+# Install dependencies from pre-built wheels using mount to avoid extra layer
+RUN --mount=type=bind,from=builder,source=/build/wheels,target=/wheels \
+    pip install --no-cache --no-index --find-links=/wheels /wheels/*
 
-# Install dependencies from pre-built wheels
-RUN pip install --no-cache --no-index --find-links=/wheels /wheels/* \
-    && rm -rf /wheels
+# Copy only necessary files for serving
+# 1. Setup and package files
+COPY --chown=appuser:appuser setup.py ./
+COPY --chown=appuser:appuser README.md ./
+COPY --chown=appuser:appuser LICENSE ./
+COPY --chown=appuser:appuser requirements/ requirements/
+# Optimize: Overwrite prod.txt with serve.txt to avoid installing training dependencies (torch, etc.) via setup.py
+COPY --chown=appuser:appuser requirements/serve.txt requirements/prod.txt
+COPY --chown=appuser:appuser mlproject/__init__.py mlproject/
 
-# Copy application code
-COPY --chown=appuser:appuser . /home/cuong/ml_pipeline_template
+# 2. Serving code
+COPY --chown=appuser:appuser mlproject/serve/ mlproject/serve/
+
+# 3. Required source modules for serving
+COPY --chown=appuser:appuser mlproject/src/__init__.py mlproject/src/
+COPY --chown=appuser:appuser mlproject/src/features/ mlproject/src/features/
+COPY --chown=appuser:appuser mlproject/src/utils/ mlproject/src/utils/
+COPY --chown=appuser:appuser mlproject/src/preprocess/ mlproject/src/preprocess/
+COPY --chown=appuser:appuser mlproject/src/tracking/ mlproject/src/tracking/
+COPY --chown=appuser:appuser mlproject/src/generator/ mlproject/src/generator/
+
+# 4. Configs (experiments and generated)
+COPY --chown=appuser:appuser mlproject/configs/ mlproject/configs/
+
+# 5. Helper scripts
+COPY --chown=appuser:appuser mlproject/serve_api.sh mlproject/
 
 # Install the package in editable mode
 RUN pip install --no-cache-dir -e .
 
 # Create directories for runtime data
-RUN mkdir -p /home/cuong/ml_pipeline_template/mlruns /home/cuong/ml_pipeline_template/artifacts /home/cuong/ml_pipeline_template/logs \
+RUN mkdir -p /home/cuong/ml_pipeline_template/mlruns \
+             /home/cuong/ml_pipeline_template/artifacts \
+             /home/cuong/ml_pipeline_template/logs \
     && chown -R appuser:appuser /home/cuong/ml_pipeline_template
+
+# Make scripts executable
+RUN chmod +x mlproject/serve_api.sh
 
 # Switch to non-root user
 USER appuser
@@ -83,33 +108,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Default command: start FastAPI server
-# Ensure helper scripts are executable
-RUN chmod +x mlproject/serve_api.sh
-
-# Default command: Helper script that auto-generates config if needed
 CMD ["./mlproject/serve_api.sh", "-e", "mlproject/configs/experiments/etth3.yaml", "-a", "latest", "mlproject/configs/generated/standard_train_serve.yaml"]
-
-# ============================================================================
-# Stage 3: Development - Include dev tools
-# ============================================================================
-FROM runtime as development
-
-USER root
-
-# Install development dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    vim \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy dev requirements
-COPY requirements/dev.txt /tmp/dev-requirements.txt
-
-# Install dev dependencies
-RUN pip install --no-cache-dir -r /tmp/dev-requirements.txt \
-    && rm /tmp/dev-requirements.txt
-
-USER appuser
-
-# Override CMD for development (interactive shell)
-CMD ["/bin/bash"]

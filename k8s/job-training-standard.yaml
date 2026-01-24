@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: training-job-standard-etth1
+  name: training-job-standard-{{EXPERIMENT_NAME}}
   labels:
     app: ml-training
     job-type: training

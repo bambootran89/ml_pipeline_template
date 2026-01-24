@@ -139,8 +139,8 @@ flowchart TB
     %% MLflow Registry
     subgraph Registry["MLflow Registry (Paired by Alias)"]
         direction TB
-        PrepReg["xgboost_preprocessor<br/>Alias:<br/> production → v3"]:::registry
-        ModelReg["xgboost_model<br/>Alias: <br/>production → v3"]:::registry
+        PrepReg["xgboost_preprocessor<br/>Alias:<br/> production -> v3"]:::registry
+        ModelReg["xgboost_model<br/>Alias: <br/>production -> v3"]:::registry
 
     end
 
@@ -239,9 +239,9 @@ flowchart LR
 
     %% Aliases (Shared)
     subgraph Aliases["Shared Aliases (Pairing)"]
-        Latest["latest<br/>→ v3"]:::alias
-        Staging["staging<br/>→ v2"]:::alias
-        Production["production<br/>→ v1"]:::alias
+        Latest["latest<br/>-> v3"]:::alias
+        Staging["staging<br/>-> v2"]:::alias
+        Production["production<br/>-> v1"]:::alias
     end
 
     %% Serving
@@ -271,15 +271,15 @@ flowchart LR
 **MLflow UI View:**
 ```
 Models/
-├── xgboost_preprocessor
-│   ├── Version 3 (latest)    ← Latest training
-│   ├── Version 2 (staging)   ← Testing
-│   └── Version 1 (production) ← Live traffic
-│
-└── xgboost_model
-    ├── Version 3 (latest)    ← Paired with preprocessor v3
-    ├── Version 2 (staging)   ← Paired with preprocessor v2
-    └── Version 1 (production) ← Paired with preprocessor v1
+|-- xgboost_preprocessor
+|   |-- Version 3 (latest)    <- Latest training
+|   |-- Version 2 (staging)   <- Testing
+|   +-- Version 1 (production) <- Live traffic
+|
++-- xgboost_model
+    |-- Version 3 (latest)    <- Paired with preprocessor v3
+    |-- Version 2 (staging)   <- Paired with preprocessor v2
+    +-- Version 1 (production) <- Paired with preprocessor v1
 ```
 
 **Benefits:**
@@ -460,7 +460,7 @@ flowchart TB
     subgraph Phase3["Phase 3: Training"]
         Pipeline["Training Pipeline<br/>- Load from Feast<br/>- CV/Tuning<br/>- Preprocessing fit"]:::training
         LogBoth["Log TWO PyFunc models<br/>xgboost_preprocessor v3<br/>xgboost_model v3"]:::training
-        AssignAlias["Assign SAME alias<br/>@production → v3<br/>(Both models)"]:::registry
+        AssignAlias["Assign SAME alias<br/>@production -> v3<br/>(Both models)"]:::registry
     end
 
     %% Phase 4: Deployment
@@ -544,7 +544,7 @@ flowchart TB
 ### For Data Engineers
 - **Feature Store**: Feast for feature management
 - **Consistent features**: Same definitions for training/serving
-- **Materialization**: Offline → Online sync
+- **Materialization**: Offline -> Online sync
 - **Multi-entity**: Batch queries for efficiency
 
 ---

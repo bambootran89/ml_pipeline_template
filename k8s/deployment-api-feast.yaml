@@ -35,7 +35,7 @@ spec:
         - name: mlruns-volume
           mountPath: "{{PROJECT_ROOT}}/mlruns"
         - name: feast-data-volume
-          mountPath: /mnt/feast_data
+          mountPath: "{{PROJECT_ROOT}}/{{REPO_NAME}}"
 
       containers:
       - name: api-container

@@ -11,6 +11,17 @@ NC='\033[0m' # No Color
 source mlproject_env/bin/activate
 export PYTHONPATH=.
 
+# Cleanup function to kill background server
+cleanup() {
+    echo "Cleaning up..."
+    if [ ! -z "$SERVER_PID" ]; then
+        kill $SERVER_PID > /dev/null 2>&1 || true
+    fi
+    fuser -k 8082/tcp > /dev/null 2>&1 || true
+    ray stop > /dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
 EXP_CONFIG="mlproject/configs/experiments/etth3.yaml"
 TRAIN_PIPE="mlproject/configs/pipelines/standard_train.yaml"
 SERVE_PIPE="mlproject/configs/generated/standard_train_serve.yaml"

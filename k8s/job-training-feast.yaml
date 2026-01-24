@@ -28,14 +28,24 @@ spec:
         image: ml-pipeline-train:latest
         imagePullPolicy: IfNotPresent
         # Command: Copy data from image location to shared mount, then fix ownership
-        command: ["/bin/bash", "-c", "cp -rn /home/cuong/ml_pipeline_template/feature_repo_etth1/data/* /mnt/feast_data/ || true && chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns /mnt/feast_data"]
+        command:
+        - /bin/bash
+        - -c
+        - |
+          if [ "{{DATA_TYPE}}" = "tabular" ]; then
+            echo "[Init] Running Titanic ingestion for tabular data into staging area"
+            cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.feature_ops.ingest_titanic --csv mlproject/data/titanic.csv --repo {{PROJECT_ROOT}}/{{REPO_NAME}} && chown -R 1000:1000 {{PROJECT_ROOT}}/{{REPO_NAME}} {{PROJECT_ROOT}}/mlruns
+          else
+            echo "[Init] Running ETTh1 ingestion for timeseries data into staging area"
+            cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.feature_ops.ingest_batch_etth1 --csv mlproject/data/ETTh1.csv --repo {{PROJECT_ROOT}}/{{REPO_NAME}} --entity location_id && chown -R 1000:1000 {{PROJECT_ROOT}}/{{REPO_NAME}} {{PROJECT_ROOT}}/mlruns
+          fi
         securityContext:
           runAsUser: 0   # Run as root to allow chown
         volumeMounts:
         - name: mlruns-volume
           mountPath: "{{PROJECT_ROOT}}/mlruns"
         - name: feast-data-volume
-          mountPath: /mnt/feast_data
+          mountPath: "{{PROJECT_ROOT}}/{{REPO_NAME}}"
 
       containers:
       - name: trainer
@@ -54,7 +64,8 @@ spec:
         - /bin/bash
         - -c
         - |
-          # 1. 'feast apply' to register features in registry.db (on shared volume)
+
+          # 1. Skip 'feast apply' as registry is pre-populated by ingestion script
           # 2. Run training pipeline using Feast configuration
           cd {{PROJECT_ROOT}}/feature_repo_etth1 && feast apply && cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.dag_run train -e {{PROJECT_ROOT}}/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} -p {{PROJECT_ROOT}}/mlproject/configs/pipelines/{{PIPELINE_CONFIG}}
 

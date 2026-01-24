@@ -292,7 +292,7 @@ kubectl logs -n ml-pipeline deployment/ml-prediction-api-standard --tail=50
 kubectl logs -n ml-pipeline job/training-job-standard-etth1 --tail=100
 ```
 
----
+### 4.4 Checking Pod Status
 
 ## 5. Understanding the Two Modes
 

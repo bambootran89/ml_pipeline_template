@@ -222,11 +222,11 @@ flowchart TB
 **Directory Structure:**
 ```
 src/datamodule/loaders/
-├── base.py              # BaseDataLoader interface
-├── feast_loader.py      # Feast integration
-├── file_loader.py       # CSV/Parquet
-├── database_loader.py   # SQL databases
-└── factory.py           # DataLoaderFactory
+|-- base.py              # BaseDataLoader interface
+|-- feast_loader.py      # Feast integration
+|-- file_loader.py       # CSV/Parquet
+|-- database_loader.py   # SQL databases
++-- factory.py           # DataLoaderFactory
 ```
 
 **Config Examples:**
@@ -281,11 +281,11 @@ class DataLoaderFactory:
 **Directory Structure:**
 ```
 src/datamodule/
-├── base.py              # BaseDataModule interface
-├── ts_datamodule.py     # Time-series
-├── ml_datamodule.py     # Tabular (classification/regression)
-├── splitter.py          # Splitting strategies
-└── factory.py           # DataModuleFactory
+|-- base.py              # BaseDataModule interface
+|-- ts_datamodule.py     # Time-series
+|-- ml_datamodule.py     # Tabular (classification/regression)
+|-- splitter.py          # Splitting strategies
++-- factory.py           # DataModuleFactory
 ```
 
 **ML Type Support:**
@@ -449,10 +449,10 @@ Note: Train size increases (model sees more data)
 **Directory Structure:**
 ```
 src/datamodule/
-├── splitter.py
-    ├── TimeSeriesSplitter      # Expanding window
-    ├── KFoldSplitter           # Standard K-Fold
-    └── StratifiedKFoldSplitter # For classification
+|-- splitter.py
+    |-- TimeSeriesSplitter      # Expanding window
+    |-- KFoldSplitter           # Standard K-Fold
+    +-- StratifiedKFoldSplitter # For classification
 ```
 
 ---
@@ -531,13 +531,13 @@ flowchart TB
 **Directory Structure:**
 ```
 src/preprocess/
-├── transform_manager.py     # Orchestrator
-├── transforms/
-│   ├── fill_missing.py      # Imputation (stateful)
-│   ├── normalize.py         # Scaling (stateful)
-│   ├── label_encoding.py    # Encoding (stateful)
-│   └── math_transforms.py   # Log, clip (stateless)
-└── offline.py               # Offline preprocessor
+|-- transform_manager.py     # Orchestrator
+|-- transforms/
+|   |-- fill_missing.py      # Imputation (stateful)
+|   |-- normalize.py         # Scaling (stateful)
+|   |-- label_encoding.py    # Encoding (stateful)
+|   +-- math_transforms.py   # Log, clip (stateless)
++-- offline.py               # Offline preprocessor
 ```
 
 **Anti-Leakage Guarantee:**
@@ -628,18 +628,18 @@ flowchart TB
 **Directory Structure:**
 ```
 src/models/
-├── base.py                  # MLModelWrapper interface
-├── xgboost_wrapper.py       # XGBoost (tabular)
-├── catboost_wrapper.py      # CatBoost (tabular)
-├── nlinear_wrapper.py       # NLinear (timeseries)
-├── tft_wrapper.py           # TFT (timeseries)
-└── model_factory.py         # ModelFactory
+|-- base.py                  # MLModelWrapper interface
+|-- xgboost_wrapper.py       # XGBoost (tabular)
+|-- catboost_wrapper.py      # CatBoost (tabular)
+|-- nlinear_wrapper.py       # NLinear (timeseries)
+|-- tft_wrapper.py           # TFT (timeseries)
++-- model_factory.py         # ModelFactory
 
 src/trainer/
-├── base.py                  # BaseTrainer
-├── ml_trainer.py            # Sklearn-style
-├── dl_trainer.py            # PyTorch
-└── trainer_factory.py       # TrainerFactory
+|-- base.py                  # BaseTrainer
+|-- ml_trainer.py            # Sklearn-style
+|-- dl_trainer.py            # PyTorch
++-- trainer_factory.py       # TrainerFactory
 ```
 
 **Unified Interface:**
@@ -762,9 +762,9 @@ tuning:
 **Directory Structure:**
 ```
 src/tuning/
-├── optuna_tuner.py          # Optuna integration
-├── search_space.py          # Parameter definitions
-└── callbacks.py             # Early stopping, pruning
+|-- optuna_tuner.py          # Optuna integration
+|-- search_space.py          # Parameter definitions
++-- callbacks.py             # Early stopping, pruning
 ```
 
 ---
@@ -883,15 +883,15 @@ mlflow.set_registered_model_alias(
 **MLflow UI Structure:**
 ```
 Models/
-├── xgboost_preprocessor
-│   ├── Version 3 (production, latest)
-│   ├── Version 2 (staging)
-│   └── Version 1
-│
-└── xgboost_model
-    ├── Version 3 (production, latest)  # Paired with preprocessor v3
-    ├── Version 2 (staging)             # Paired with preprocessor v2
-    └── Version 1                       # Paired with preprocessor v1
+|-- xgboost_preprocessor
+|   |-- Version 3 (production, latest)
+|   |-- Version 2 (staging)
+|   +-- Version 1
+|
++-- xgboost_model
+    |-- Version 3 (production, latest)  # Paired with preprocessor v3
+    |-- Version 2 (staging)             # Paired with preprocessor v2
+    +-- Version 1                       # Paired with preprocessor v1
 ```
 
 ---
@@ -948,20 +948,20 @@ python -m mlproject.src.pipeline.run train \
 **Key Guarantees:**
 - **No data leakage**: Val never seen during preprocessing fit
 - **Dual PyFunc**: Separate but paired models
-- **Reproducible**: Config + Version → Exact result
+- **Reproducible**: Config + Version -> Exact result
 - **Multi-type**: Supports timeseries and tabular ML
 - **Flexible**: Easy to add new models, data sources, splitters
 
 **Directory Structure Utilized:**
 ```
 mlproject/src/
-├── datamodule/
-│   ├── loaders/        # DataIO (Feast/File/DB)
-│   ├── ts_datamodule   # Timeseries handling
-│   └── ml_datamodule   # Tabular handling
-├── preprocess/         # TransformManager
-├── models/             # Model wrappers
-├── trainer/            # Training loops
-├── tuning/             # Optuna integration
-└── tracking/           # MLflow integration
+|-- datamodule/
+|   |-- loaders/        # DataIO (Feast/File/DB)
+|   |-- ts_datamodule   # Timeseries handling
+|   +-- ml_datamodule   # Tabular handling
+|-- preprocess/         # TransformManager
+|-- models/             # Model wrappers
+|-- trainer/            # Training loops
+|-- tuning/             # Optuna integration
++-- tracking/           # MLflow integration
 ```

@@ -17,42 +17,42 @@ This separation provides:
 
 ## Architecture Diagram
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Shared Infrastructure                     │
-├─────────────────────────────────────────────────────────────┤
-│  MLflow Server (Port 5000)                                  │
-│  - Stores trained models                                     │
-│  - Manages model versions and aliases                        │
-│                                                              │
-│  Feast Registry (Port 6566) [Optional]                      │
-│  - Online feature store                                      │
-│  - For real-time feature retrieval                          │
-└─────────────────────────────────────────────────────────────┘
-         ↓ Shared Connection ↓              ↓ Shared Connection ↓
-┌──────────────────────────────┐  ┌──────────────────────────────┐
-│  TRAINING (In-house)         │  │  SERVING (Customer)          │
-├──────────────────────────────┤  ├──────────────────────────────┤
-│ Dockerfile.train             │  │ Dockerfile.serve             │
-│                              │  │                              │
-│ Components:                  │  │ Components:                  │
-│ ✓ Full ML training           │  │ ✓ FastAPI + Uvicorn         │
-│ ✓ Data preprocessing         │  │ ✓ MLflow client (skinny)    │
-│ ✓ Feature engineering        │  │ ✓ Feast client (optional)   │
-│ ✓ Model evaluation           │  │ ✓ Minimal dependencies      │
-│ ✓ Hyperparameter tuning      │  │                              │
-│ ✓ Feast ingestion            │  │ Size: ~600-800MB            │
-│ ✓ All ML libraries           │  │                              │
-│ ✓ Development tools          │  │ Security:                    │
-│                              │  │ ✓ No training code           │
-│ Size: ~1.5-2GB               │  │ ✓ No source data             │
-│                              │  │ ✓ Read-only model access     │
-│ Usage:                       │  │                              │
-│ - Train models               │  │ Usage:                       │
-│ - Evaluate models            │  │ - Serve predictions          │
-│ - Tune hyperparameters       │  │ - Load models from MLflow    │
-│ - Ingest features to Feast   │  │ - (Optional) Fetch features  │
-└──────────────────────────────┘  └──────────────────────────────┘
+```text
++-------------------------------------------------------------+
+|                    Shared Infrastructure                     |
++-------------------------------------------------------------+
+|  MLflow Server (Port 5000)                                  |
+|  - Stores trained models                                     |
+|  - Manages model versions and aliases                        |
+|                                                              |
+|  Feast Registry (Port 6566) [Optional]                      |
+|  - Online feature store                                      |
+|  - For real-time feature retrieval                          |
++-------------------------------------------------------------+
+         v Shared Connection v              v Shared Connection v
++------------------------------+  +------------------------------+
+|  TRAINING (In-house)         |  |  SERVING (Customer)          |
++------------------------------+  +------------------------------+
+| Dockerfile.train             |  | Dockerfile.serve             |
+|                              |  |                              |
+| Components:                  |  | Components:                  |
+| - Full ML training           |  | - FastAPI + Uvicorn          |
+| - Data preprocessing         |  | - MLflow client (skinny)     |
+| - Feature engineering        |  | - Feast client (optional)    |
+| - Model evaluation           |  | - Minimal dependencies       |
+| - Hyperparameter tuning      |  |                              |
+| - Feast ingestion            |  | Size: ~600-800MB             |
+| - All ML libraries           |  |                              |
+| - Development tools          |  | Security:                    |
+|                              |  | - No training code           |
+| Size: ~1.5-2GB               |  | - No source data             |
+|                              |  | - Read-only model access     |
+| Usage:                       |  |                              |
+| - Train models               |  | Usage:                       |
+| - Evaluate models            |  | - Serve predictions          |
+| - Tune hyperparameters       |  | - Load models from MLflow    |
+| - Ingest features to Feast   |  | - (Optional) Fetch features  |
++------------------------------+  +------------------------------+
 ```
 
 ---
