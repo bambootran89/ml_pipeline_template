@@ -34,7 +34,7 @@ This is a **DAG-driven ML framework** built for production-grade scalability and
 ### For Data Engineers
 - **Feature Store Integration**: Centralized management using Feast.
 - **Consistent features**: Same feature definitions used for both training and online serving.
-- **Materialization**: Automated Offline → Online sync for real-time feature availability.
+- **Materialization**: Automated Offline -> Online sync for real-time feature availability.
 - **Multi-entity support**: Optimized batch queries and point-in-time joins for efficiency.
 
 ## Documentation

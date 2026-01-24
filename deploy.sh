@@ -132,10 +132,15 @@ fi
 # 3. Cleanup Old Resources
 if [ "$DRY_RUN" = false ]; then
     echo "[Cleanup] Removing existing jobs and deployments..."
-    kubectl delete job training-job-feast-etth1 --ignore-not-found
-    kubectl delete job training-job-standard-etth1 --ignore-not-found
+
+    # Clean up ALL potential deployments to avoid Service conflicts (round-robin issues)
     kubectl delete deployment ml-prediction-api-feast --ignore-not-found
     kubectl delete deployment ml-prediction-api-standard --ignore-not-found
+
+    # Dynamic cleanup for the specific job we are about to create (to avoid immutable field errors)
+    JOB_NAME="training-job-${MODE}-${EXPERIMENT_NAME}"
+    echo "  Deleting Job: $JOB_NAME"
+    kubectl delete job "$JOB_NAME" --ignore-not-found
 else
     echo "[Run] Skipping cleanup (Dry Run)"
 fi

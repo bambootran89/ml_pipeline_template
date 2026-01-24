@@ -5,7 +5,7 @@ The same pattern applies to any other algorithm (LightGBM, TabNet, custom Torch 
 
 ## Step 1: Implement a Model Wrapper
 
-Create a new wrapper that conforms to the project’s unified MLModelWrapper interface.
+Create a new wrapper that conforms to the project's unified MLModelWrapper interface.
 
 File: mlproject/src/models/catboost_wrapper.py
 

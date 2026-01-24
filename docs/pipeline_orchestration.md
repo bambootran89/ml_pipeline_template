@@ -15,35 +15,38 @@ The traditional monolithic pipeline approach has limitations when building compl
 ## Key Design Principle: Separation of Concerns
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    EXPERIMENT CONFIG                        │
-│              (WHAT to train/evaluate)                       │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  • Data source (path, type, columns)                │    │
-│  │  • Model selection (xgboost, tft, nlinear)          │    │
-│  │  • Hyperparameters (learning_rate, n_estimators)    │    │
-│  │  • MLflow settings (tracking, registry)             │    │
-│  └─────────────────────────────────────────────────────┘    │
-│    (example) configs/experiments/etth3.yaml                 │
-└─────────────────────────────────────────────────────────────┘
+```text
++-------------------------------------------------------------+
+|                    EXPERIMENT CONFIG                        |
+|              (WHAT to train/evaluate)                       |
+|  +-----------------------------------------------------+    |
+|  |  * Data source (path, type, columns)                |    |
+|  |  * Model selection (xgboost, tft, nlinear)          |    |
+|  |  * Hyperparameters (learning_rate, n_estimators)    |    |
+|  |  * MLflow settings (tracking, registry)             |    |
+|  +-----------------------------------------------------+    |
+|    (example) configs/experiments/etth3.yaml                 |
++-------------------------------------------------------------+
                             +
-┌─────────────────────────────────────────────────────────────┐
-│                    PIPELINE CONFIG                          │
-│              (HOW to execute steps)                         │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  • Step definitions (id, type, depends_on)          │    │
-│  │  • Data wiring (input/output key mapping)           │    │
-│  │  • Execution flow (sequential, parallel, branch)    │    │
-│  │  • Advanced patterns (sub-pipelines, conditions)    │    │
-│  └─────────────────────────────────────────────────────┘    │
-│    (example) configs/pipelines/standard_train.yaml          │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    MERGED EXECUTION                         │
-│  Same experiment config + Different pipeline configs        │
-│  = Different workflows without changing code!               │
-└─────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------+
+|                    PIPELINE CONFIG                          |
+|              (HOW to execute steps)                         |
+|  +-----------------------------------------------------+    |
+|  |  * Step definitions (id, type, depends_on)          |    |
+|  |  * Data wiring (input/output key mapping)           |    |
+|  |  * Execution flow (sequential, parallel, branch)    |    |
+|  |  * Advanced patterns (sub-pipelines, conditions)    |    |
+|  +-----------------------------------------------------+    |
+|    (example) configs/pipelines/standard_train.yaml          |
++-------------------------------------------------------------+
+                            |
+                            V
++-------------------------------------------------------------+
+|                    MERGED EXECUTION                         |
+|  Same experiment config + Different pipeline configs        |
+|  = Different workflows without changing code!               |
++-------------------------------------------------------------+
+```
 ```
 ## Available Manual Pipeline Types
 
@@ -142,17 +145,17 @@ python -m mlproject.src.pipeline.dag_run tune \
 ### Pipeline Flow with Profiling
 
 ```
-load_data → preprocess → train_model → evaluate → profiling → log_results
-                                                       ↓
+load_data -> preprocess -> train_model -> evaluate -> profiling -> log_results
+                                                       V
                                             [Profile Report]
-                                            • Metrics summary
-                                            • Cluster distributions
-                                            • Prediction statistics
+                                            * Metrics summary
+                                            * Cluster distributions
+                                            * Prediction statistics
 ```
 
 ## Advanced Pipeline Examples
 
-### 1. Two-Stage Pipeline (KMeans → XGBoost)
+### 1. Two-Stage Pipeline (KMeans -> XGBoost)
 Use clustering labels as additional features for classification.
 
 ```bash
@@ -184,8 +187,8 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 **Flow:**
 ```
-load_data → preprocess → kmeans_features → xgboost_model → evaluate → log
-                              ↓
+load_data -> preprocess -> kmeans_features -> xgboost_model -> evaluate -> log
+                              V
                     [cluster_labels]
 ```
 
@@ -221,10 +224,12 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 **Flow:**
 ```
-load_data → preprocess → ┬─ xgboost_branch -─┬→ eval_xgb ─┬→ log
-                         ├─ catboost_branch ─┤→ eval_cat ─┤
-                         └─ kmeans_branch ───┘            │
-                              (parallel)                  ↓
+```
+load_data -> preprocess -> +-- xgboost_branch --> eval_xgb --+-> log
+                         +-- catboost_branch --> eval_cat --+
+                         +-- kmeans_branch ---+             |
+                              (parallel)                    V
+```
 ```
 
 ### 3. Conditional Branching
@@ -259,10 +264,10 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 **Flow:**
 
-load_data → preprocess → branch ─┬─ [feature_columns_size < 4] → TFT (deep learning)
-                                 └─ [feature_columns_size >= 4] → XGBoost (ML)
-                                          ↓
-                                      evaluate → log
+load_data -> preprocess -> branch -+- [feature_columns_size < 4] -> TFT (deep learning)
+                                 +- [feature_columns_size >= 4] -> XGBoost (ML)
+                                          V
+                                      evaluate -> log
 Encapsulate feature engineering as a reusable sub-pipeline.
 
 ```bash
@@ -294,14 +299,15 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 **Flow:**
 ```
-load_data → feature_pipeline (sub) → train_model → evaluate → log
-                   ↓
-           ┌──────────────┐
-           │  normalize   │
-           │      ↓       │
-           │   cluster    │
-           │ (features)   │
-           └──────────────┘
+load_data -> feature_pipeline (sub) -> train_model -> evaluate -> log
+                   V
+           +--------------+
+           |  normalize   |
+           |      |       |
+           |      V       |
+           |   cluster    |
+           | (features)   |
+           +--------------+
 ```
 
 #### 5. Dynamic Adapter

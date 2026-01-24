@@ -141,9 +141,9 @@ sleep 5
 ```
 
 **Expected Results**:
-- Health check: ✓ (shows 3 features: HUFL, MUFL, mobility_inflow)
-- `/predict`: ✓ (returns predictions)
-- `/predict/multistep`: ✓ (returns predictions)
+- Health check: [PASS] (shows 3 features: HUFL, MUFL, mobility_inflow)
+- `/predict`: [PASS] (returns predictions)
+- `/predict/multistep`: [PASS] (returns predictions)
 
 ---
 
@@ -217,10 +217,10 @@ sleep 5
 ```
 
 **Expected Results**:
-- Health check: ✓ (shows 9 features for time series, 7 features for tabular)
-- `/predict`: ✓ (returns predictions with Feast features)
-- `/predict/feast`: ✓ (entity-based prediction for tabular)
-- `/predict/feast/batch`: ✓ (batch entity prediction for tabular)
+- Health check: [PASS] (shows 9 features for time series, 7 features for tabular)
+- `/predict`: [PASS] (returns predictions with Feast features)
+- `/predict/feast`: [PASS] (entity-based prediction for tabular)
+- `/predict/feast/batch`: [PASS] (batch entity prediction for tabular)
 
 **Feast-specific Endpoints (Tabular only):**
 ```bash

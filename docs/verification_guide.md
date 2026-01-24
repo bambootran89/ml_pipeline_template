@@ -361,69 +361,69 @@ For each scenario, the script performs:
 ### Output
 
 ```bash
-╔════════════════════════════════════════════════════╗
-║   Comprehensive ML Pipeline Deployment Tests      ║
-╚════════════════════════════════════════════════════╝
+====================================================
+   Comprehensive ML Pipeline Deployment Tests
+====================================================
 
 Checking prerequisites...
-✓ Kubernetes cluster accessible
-✓ Docker images found
+[PASS] Kubernetes cluster accessible
+[PASS] Docker images found
 
 Starting deployment tests...
 
-═══════════════════════════════════════
+---------------------------------------
          FEAST MODE TESTS
-═══════════════════════════════════════
+---------------------------------------
 
-════════════════════════════════════════════════════
+==================================================
 Test 1: feast_feast_tabular.yaml
   Mode: feast
   Experiment: feast_tabular.yaml
   Data Type: tabular
-════════════════════════════════════════════════════
+==================================================
 [1/6] Deploying...
-✓ Deployment submitted
+[PASS] Deployment submitted
 [2/6] Waiting for training job: training-job-feast-titanic
-✓ Training completed
-✓ Model registered: Created version '42' of model 'xgboost_train_model'.
+[PASS] Training completed
+[PASS] Model registered: Created version '42' of model 'xgboost_train_model'.
 [3/6] Updating Feast ConfigMap...
-✓ ConfigMap updated
+[PASS] ConfigMap updated
 [4/6] Restarting API pods...
-✓ API pods ready
+[PASS] API pods ready
 [5/6] Setting up port forward...
-✓ Port forward ready
+[PASS] Port forward ready
 [6/6] Running API tests...
   Testing /health endpoint...
-  ✓ Health check PASS
+  [PASS] Health check PASS
   Testing /predict (tabular single)...
-  ✓ Single prediction PASS: {'train_model_predictions': [0]}
+  [PASS] Single prediction PASS: {'train_model_predictions': [0]}
   Testing /predict/feast endpoint...
-  ✓ /predict/feast PASS: 3 entities
+  [PASS] /predict/feast PASS: 3 entities
   Testing /predict/feast/batch endpoint...
-  ✓ /predict/feast/batch PASS: 5 entities
-✓ All API tests PASSED
+  [PASS] /predict/feast/batch PASS: 5 entities
+[PASS] All API tests PASSED
 
 [... Tests 2-4 ...]
 
-╔════════════════════════════════════════════════════╗
-║              TEST SUMMARY                          ║
-╚════════════════════════════════════════════════════╝
+====================================================
+              TEST SUMMARY
+====================================================
 
-✓ feast_feast_tabular.yaml - ALL TESTS PASSED
-✓ feast_etth3_feast.yaml - ALL TESTS PASSED
-✓ standard_tabular.yaml - ALL TESTS PASSED
-✓ standard_etth3.yaml - ALL TESTS PASSED
+[PASS] feast_feast_tabular.yaml - ALL TESTS PASSED
+[PASS] feast_etth3_feast.yaml - ALL TESTS PASSED
+[PASS] standard_tabular.yaml - ALL TESTS PASSED
+[PASS] standard_etth3.yaml - ALL TESTS PASSED
 
 Total Tests:   4
 Passed:        4
 Failed:        0
 Skipped:       0
 
-╔════════════════════════════════════════════════════╗
-║                                                    ║
-║      ✓ ALL TESTS PASSED SUCCESSFULLY!             ║
-║                                                    ║
-╚════════════════════════════════════════════════════╝
+====================================================
+
+      [PASS] ALL TESTS PASSED SUCCESSFULLY!
+
+====================================================
 ```
 
 ### Test Details

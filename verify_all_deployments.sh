@@ -54,7 +54,7 @@ test_health() {
     RESPONSE=$(curl -s http://localhost:8000/health 2>/dev/null || echo '{}')
 
     if echo "$RESPONSE" | grep -q '"status":"healthy"'; then
-        echo -e "${GREEN}  ✓ Health check PASS${NC}"
+        echo -e "${GREEN}  [PASS] Health check OK${NC}"
         echo "$RESPONSE" | python3 -m json.tool | grep -E "(status|model_loaded|data_type|features)" | head -10
         return 0
     else
@@ -108,11 +108,13 @@ test_timeseries_predict() {
       }' 2>/dev/null || echo '{}')
 
     if echo "$RESPONSE" | grep -q "predictions"; then
+        # Show first 5 predictions
+        PREDS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=list(d.get('predictions',{}).values())[0] if d.get('predictions') else []; print(p[:5])" 2>/dev/null || echo "[]")
         COUNT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=list(d.get('predictions',{}).values())[0] if d.get('predictions') else []; print(len(p))" 2>/dev/null || echo "0")
-        echo -e "${GREEN}  ✓ Prediction PASS: $COUNT timesteps${NC}"
+        echo -e "${GREEN}  [PASS] Prediction OK: $COUNT timesteps. First 5: $PREDS${NC}"
         return 0
     else
-        echo -e "${RED}  ✗ Prediction FAILED${NC}"
+        echo -e "${RED}  [FAIL] Prediction FAILED${NC}"
         return 1
     fi
 }
@@ -139,11 +141,12 @@ test_timeseries_feast_predict() {
       }' 2>/dev/null || echo '{}')
 
     if echo "$RESPONSE" | grep -q "predictions"; then
+        PREDS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=list(d.get('predictions',{}).values())[0] if d.get('predictions') else []; print(p[:5])" 2>/dev/null || echo "[]")
         COUNT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=list(d.get('predictions',{}).values())[0] if d.get('predictions') else []; print(len(p))" 2>/dev/null || echo "0")
-        echo -e "${GREEN}  ✓ Feast Prediction PASS: $COUNT timesteps${NC}"
+        echo -e "${GREEN}  [PASS] Feast Prediction OK: $COUNT timesteps. First 5: $PREDS${NC}"
         return 0
     else
-        echo -e "${RED}  ✗ Feast Prediction FAILED${NC}"
+        echo -e "${RED}  [FAIL] Feast Prediction FAILED${NC}"
         return 1
     fi
 }
@@ -160,8 +163,9 @@ test_feast_endpoints() {
           -d '{"entities": [1, 2, 3], "time_point": "now"}' 2>/dev/null || echo '{}')
 
         if echo "$RESPONSE" | grep -q "predictions"; then
+            PREDS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d.get('predictions',{}).get('train_model_predictions',[]); print(p)" 2>/dev/null || echo "[]")
             COUNT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d.get('predictions',{}).get('train_model_predictions',[]); print(len(p))" 2>/dev/null || echo "0")
-            echo -e "${GREEN}  ✓ /predict/feast PASS: $COUNT entities${NC}"
+            echo -e "${GREEN}  ✓ /predict/feast PASS: $COUNT entities. Values: $PREDS${NC}"
         else
             echo -e "${RED}  ✗ /predict/feast FAILED${NC}"
             return 1
@@ -174,8 +178,9 @@ test_feast_endpoints() {
           -d '{"entities": [1, 2, 3, 4, 5], "time_point": "now"}' 2>/dev/null || echo '{}')
 
         if echo "$RESPONSE" | grep -q "predictions"; then
+            PREDS=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d.get('predictions',{}).get('train_model_predictions',[]); print(p)" 2>/dev/null || echo "[]")
             COUNT=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); p=d.get('predictions',{}).get('train_model_predictions',[]); print(len(p))" 2>/dev/null || echo "0")
-            echo -e "${GREEN}  ✓ /predict/feast/batch PASS: $COUNT entities${NC}"
+            echo -e "${GREEN}  ✓ /predict/feast/batch PASS: $COUNT entities. Values: $PREDS${NC}"
             return 0
         else
             echo -e "${RED}  ✗ /predict/feast/batch FAILED${NC}"
@@ -192,28 +197,32 @@ run_deployment_test() {
     local experiment=$2
     local repo=$3
     local data_type=$4
+    local pipeline_config=${5:-"standard_train.yaml"} # Default to standard_train.yaml if not provided
+    local skip_predict=${6:-"false"}
     local test_name="${mode}_${experiment}"
 
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
     echo ""
-    echo -e "${BLUE}════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}Test $TOTAL_TESTS: $test_name${NC}"
-    echo -e "${BLUE}  Mode: $mode${NC}"
-    echo -e "${BLUE}  Experiment: $experiment${NC}"
-    echo -e "${BLUE}  Data Type: $data_type${NC}"
-    echo -e "${BLUE}════════════════════════════════════════════════════${NC}"
+    echo "=================================================="
+    echo "Test $TOTAL_TESTS: $test_name"
+    echo "  Mode: $mode"
+    echo "  Experiment: $experiment"
+    echo "  Pipeline: $pipeline_config"
+    echo "  Data Type: $data_type"
+    echo "=================================================="
 
     # Deploy
     echo -e "${BLUE}[1/6] Deploying...${NC}"
-    if ! ./deploy.sh -m "$mode" -e "$experiment" -r "$repo" -t "$data_type" > /tmp/deploy_${test_name}.log 2>&1; then
+    # Pass -p pipeline_config to deploy.sh
+    if ! ./deploy.sh -m "$mode" -e "$experiment" -r "$repo" -t "$data_type" -p "$pipeline_config" > /tmp/deploy_${test_name}.log 2>&1; then
         echo -e "${RED}✗ Deployment FAILED${NC}"
         cat /tmp/deploy_${test_name}.log | tail -20
-        RESULTS+=("${RED}✗ $test_name - Deployment Failed${NC}")
+        RESULTS+=("${RED}[FAIL] $test_name - Deployment Failed${NC}")
         FAILED_TESTS=$((FAILED_TESTS + 1))
         return 1
     fi
-    echo -e "${GREEN}✓ Deployment submitted${NC}"
+    echo -e "${GREEN}[PASS] Deployment submitted${NC}"
 
     # Get job name
     # Get job name deterministicly
@@ -225,35 +234,35 @@ run_deployment_test() {
     # Verify if job exists (it might take a second to appear)
     sleep 2
     if ! kubectl get job $JOB_NAME -n ml-pipeline > /dev/null 2>&1; then
-       echo -e "${YELLOW}⚠ Job $JOB_NAME not found yet, checking list...${NC}"
+       echo -e "${YELLOW}[WARN] Job $JOB_NAME not found yet, checking list...${NC}"
        kubectl get jobs -n ml-pipeline
     fi
 
     if [ -z "$JOB_NAME" ]; then
-        echo -e "${YELLOW}⚠ No training job found, using existing model${NC}"
+        echo -e "${YELLOW}[WARN] No training job found, using existing model${NC}"
     else
         echo -e "${BLUE}[2/6] Waiting for training job: $JOB_NAME${NC}"
 
         # Wait for job with timeout
         if kubectl wait --for=condition=complete job/$JOB_NAME -n ml-pipeline --timeout=600s > /dev/null 2>&1; then
-            echo -e "${GREEN}✓ Training completed${NC}"
+            echo -e "${GREEN}[PASS] Training completed${NC}"
 
             # Verify model registration
             if kubectl logs -n ml-pipeline job/$JOB_NAME --tail=50 2>/dev/null | grep -q "Created version"; then
                 VERSION=$(kubectl logs -n ml-pipeline job/$JOB_NAME --tail=50 2>/dev/null | grep "Created version" | tail -1)
-                echo -e "${GREEN}✓ Model registered: $VERSION${NC}"
+                echo -e "${GREEN}[PASS] Model registered: $VERSION${NC}"
             fi
         else
             JOB_STATUS=$(kubectl get job $JOB_NAME -n ml-pipeline -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || echo "Unknown")
 
             if [ "$JOB_STATUS" = "Failed" ]; then
-                echo -e "${RED}✗ Training job FAILED${NC}"
+                echo -e "${RED}[FAIL] Training job FAILED${NC}"
                 kubectl logs -n ml-pipeline job/$JOB_NAME --tail=30 2>/dev/null || true
-                RESULTS+=("${RED}✗ $test_name - Training Failed${NC}")
+                RESULTS+=("${RED}[FAIL] $test_name - Training Failed${NC}")
                 FAILED_TESTS=$((FAILED_TESTS + 1))
                 return 1
             else
-                echo -e "${YELLOW}⚠ Training timeout, continuing with existing model${NC}"
+                echo -e "${YELLOW}[WARN] Training timeout, continuing with existing model${NC}"
             fi
         fi
     fi
@@ -268,7 +277,7 @@ run_deployment_test() {
         else
             kubectl create configmap feature-store-config --from-file=feature_store.yaml=feature_repo_etth1/feature_store.yaml -n ml-pipeline > /dev/null 2>&1
         fi
-        echo -e "${GREEN}✓ ConfigMap updated${NC}"
+        echo -e "${GREEN}[PASS] ConfigMap updated${NC}"
     else
         echo -e "${BLUE}[3/6] Skipping ConfigMap (Standard mode)${NC}"
     fi
@@ -282,12 +291,12 @@ run_deployment_test() {
 
     # Wait for rollout to complete
     if kubectl rollout status deployment $DEPLOYMENT_NAME -n ml-pipeline --timeout=180s > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ API pods ready${NC}"
+        echo -e "${GREEN}[PASS] API pods ready${NC}"
     else
-        echo -e "${RED}✗ API pods failed to start${NC}"
+        echo -e "${RED}[FAIL] API pods failed to start${NC}"
         kubectl get pods -n ml-pipeline -l app=ml-prediction
         kubectl describe deployment $DEPLOYMENT_NAME -n ml-pipeline | tail -20
-        RESULTS+=("${RED}✗ $test_name - API Failed to Start${NC}")
+        RESULTS+=("${RED}[FAIL] $test_name - API Failed to Start${NC}")
         FAILED_TESTS=$((FAILED_TESTS + 1))
         return 1
     fi
@@ -300,12 +309,12 @@ run_deployment_test() {
     sleep 8
 
     if ! wait_for_port_forward; then
-        echo -e "${RED}✗ Port forward failed${NC}"
-        RESULTS+=("${RED}✗ $test_name - Port Forward Failed${NC}")
+        echo -e "${RED}[FAIL] Port forward failed${NC}"
+        RESULTS+=("${RED}[FAIL] $test_name - Port Forward Failed${NC}")
         FAILED_TESTS=$((FAILED_TESTS + 1))
         return 1
     fi
-    echo -e "${GREEN}✓ Port forward ready${NC}"
+    echo -e "${GREEN}[PASS] Port forward ready${NC}"
 
     # Run tests
     echo -e "${BLUE}[6/6] Running API tests...${NC}"
@@ -317,18 +326,22 @@ run_deployment_test() {
 
     sleep 2
 
-    if [ "$data_type" = "tabular" ]; then
-        if ! test_tabular_predict; then
-            TEST_PASSED=false
-        fi
+    if [ "$skip_predict" = "true" ]; then
+        echo -e "${YELLOW}  ⚠ Skipping prediction tests (marked as skipped)${NC}"
     else
-        if [ "$mode" = "feast" ]; then
-            if ! test_timeseries_feast_predict; then
+        if [ "$data_type" = "tabular" ]; then
+            if ! test_tabular_predict; then
                 TEST_PASSED=false
             fi
         else
-            if ! test_timeseries_predict; then
-                TEST_PASSED=false
+            if [ "$mode" = "feast" ]; then
+                if ! test_timeseries_feast_predict; then
+                    TEST_PASSED=false
+                fi
+            else
+                if ! test_timeseries_predict; then
+                    TEST_PASSED=false
+                fi
             fi
         fi
     fi
@@ -342,22 +355,22 @@ run_deployment_test() {
     fi
 
     if [ "$TEST_PASSED" = true ]; then
-        echo -e "${GREEN}✓ All API tests PASSED${NC}"
-        RESULTS+=("${GREEN}✓ $test_name - ALL TESTS PASSED${NC}")
+        echo -e "${GREEN}[PASS] All API tests PASSED${NC}"
+        RESULTS+=("${GREEN}[PASS] $test_name - ALL TESTS PASSED${NC}")
         PASSED_TESTS=$((PASSED_TESTS + 1))
         return 0
     else
-        echo -e "${RED}✗ Some API tests FAILED${NC}"
-        RESULTS+=("${RED}✗ $test_name - API Tests Failed${NC}")
+        echo -e "${RED}[FAIL] Some API tests FAILED${NC}"
+        RESULTS+=("${RED}[FAIL] $test_name - API Tests Failed${NC}")
         FAILED_TESTS=$((FAILED_TESTS + 1))
         return 1
     fi
 }
 
 # Main execution
-echo -e "${BLUE}╔════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║   Comprehensive ML Pipeline Deployment Tests      ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════════════════╝${NC}"
+echo -e "${BLUE}====================================================${NC}"
+echo -e "${BLUE}   Comprehensive ML Pipeline Deployment Tests      ${NC}"
+echo -e "${BLUE}====================================================${NC}"
 
 # Check prerequisites
 echo -e "${BLUE}Checking prerequisites...${NC}"
@@ -377,33 +390,54 @@ echo -e "${GREEN}✓ Docker images found${NC}"
 # Test scenarios
 echo -e "\n${BLUE}Starting deployment tests...${NC}\n"
 
+# ----------------------------------------------------------------------
+# NEW TESTS: Expanded Scenarios (Nested, Dynamic, Conditional)
+# ----------------------------------------------------------------------
+echo -e "\n${YELLOW}---------------------------------------${NC}"
+echo -e "${YELLOW}      EXPANDED SCENARIO TESTS          ${NC}"
+echo -e "${YELLOW}---------------------------------------${NC}"
+
+# 7. Conditional Branch (using timeseries data as per config analysis)
+# Note: conditional_branch.yaml refers to tft_ts.yaml / xgboost_ts.yaml
+# MOVED TO TOP FOR DEBUGGING
+run_deployment_test "standard" "etth3.yaml" "n/a" "timeseries" "conditional_branch.yaml" "true"
+
+# 5. Nested Pipeline (using tabular data for clustering)
+# Note: nested_suppipeline.yaml uses 'cluster_type_1' which implies tabular/clustering logic
+run_deployment_test "standard" "tabular.yaml" "n/a" "tabular" "nested_suppipeline.yaml"
+
+# 6. Dynamic Adapter (using tabular data for kmeans then xgboost)
+# Note: dynamic_adapter_train.yaml uses 'kmeans_dynamic'
+run_deployment_test "standard" "tabular.yaml" "n/a" "tabular" "dynamic_adapter_train.yaml"
+
+
 # FEAST MODE TESTS
-echo -e "${YELLOW}═══════════════════════════════════════${NC}"
+echo -e "${YELLOW}---------------------------------------${NC}"
 echo -e "${YELLOW}         FEAST MODE TESTS              ${NC}"
-echo -e "${YELLOW}═══════════════════════════════════════${NC}"
+echo -e "${YELLOW}---------------------------------------${NC}"
 
 # Tabular Feast (this works)
-run_deployment_test "feast" "feast_tabular.yaml" "titanic_repo" "tabular"
+run_deployment_test "feast" "feast_tabular.yaml" "titanic_repo" "tabular" "standard_train.yaml"
 
 # Time Series Feast (now works with on-the-fly ingestion)
-run_deployment_test "feast" "etth3_feast.yaml" "feature_repo_etth1" "timeseries"
+run_deployment_test "feast" "etth3_feast.yaml" "feature_repo_etth1" "timeseries" "standard_train.yaml"
 
 # STANDARD MODE TESTS
-echo -e "\n${YELLOW}═══════════════════════════════════════${NC}"
+echo -e "\n${YELLOW}---------------------------------------${NC}"
 echo -e "${YELLOW}        STANDARD MODE TESTS            ${NC}"
-echo -e "${YELLOW}═══════════════════════════════════════${NC}"
+echo -e "${YELLOW}---------------------------------------${NC}"
 
 # Tabular Standard
-run_deployment_test "standard" "tabular.yaml" "n/a" "tabular"
+run_deployment_test "standard" "tabular.yaml" "n/a" "tabular" "standard_train.yaml"
 
 # Time Series Standard
-run_deployment_test "standard" "etth3.yaml" "n/a" "timeseries"
+run_deployment_test "standard" "etth3.yaml" "n/a" "timeseries" "standard_train.yaml"
 
 # Print final summary
 echo ""
-echo -e "${BLUE}╔════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║              TEST SUMMARY                          ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════════════════╝${NC}"
+echo -e "${BLUE}====================================================${NC}"
+echo -e "${BLUE}              TEST SUMMARY                          ${NC}"
+echo -e "${BLUE}====================================================${NC}"
 echo ""
 
 for result in "${RESULTS[@]}"; do
@@ -418,17 +452,17 @@ echo -e "${YELLOW}Skipped:       $SKIPPED_TESTS${NC}"
 
 echo ""
 if [ $FAILED_TESTS -eq 0 ]; then
-    echo -e "${GREEN}╔════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║                                                    ║${NC}"
-    echo -e "${GREEN}║      ✓ ALL TESTS PASSED SUCCESSFULLY!             ║${NC}"
-    echo -e "${GREEN}║                                                    ║${NC}"
-    echo -e "${GREEN}╚════════════════════════════════════════════════════╝${NC}"
+    echo -e "${GREEN}====================================================${NC}"
+    echo -e "${GREEN}                                                    ${NC}"
+    echo -e "${GREEN}      [PASS] ALL TESTS PASSED SUCCESSFULLY!             ${NC}"
+    echo -e "${GREEN}                                                    ${NC}"
+    echo -e "${GREEN}====================================================${NC}"
     exit 0
 else
-    echo -e "${RED}╔════════════════════════════════════════════════════╗${NC}"
-    echo -e "${RED}║                                                    ║${NC}"
-    echo -e "${RED}║      ✗ SOME TESTS FAILED                          ║${NC}"
-    echo -e "${RED}║                                                    ║${NC}"
-    echo -e "${RED}╚════════════════════════════════════════════════════╝${NC}"
+    echo -e "${RED}====================================================${NC}"
+    echo -e "${RED}                                                    ${NC}"
+    echo -e "${RED}      [FAIL] SOME TESTS FAILED                          ${NC}"
+    echo -e "${RED}                                                    ${NC}"
+    echo -e "${RED}====================================================${NC}"
     exit 1
 fi
