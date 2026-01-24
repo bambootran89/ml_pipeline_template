@@ -216,7 +216,18 @@ run_deployment_test() {
     echo -e "${GREEN}✓ Deployment submitted${NC}"
 
     # Get job name
-    JOB_NAME=$(kubectl get jobs -n ml-pipeline -o jsonpath='{.items[?(@.metadata.labels.job-type=="training")].metadata.name}' | tr ' ' '\n' | grep -v "^$" | tail -1)
+    # Get job name deterministicly
+    # Logic matches deploy.sh: EXPERIMENT_NAME=$(basename "$EXPERIMENT_CONFIG" .yaml | sed 's/_feast$//' | sed 's/_/-/g')
+    EXP_NAME=$(basename "$experiment" .yaml | sed 's/_feast$//' | sed 's/_/-/g')
+    JOB_NAME="training-job-${mode}-${EXP_NAME}"
+    echo -e "${BLUE}  Target Job Name: $JOB_NAME${NC}"
+
+    # Verify if job exists (it might take a second to appear)
+    sleep 2
+    if ! kubectl get job $JOB_NAME -n ml-pipeline > /dev/null 2>&1; then
+       echo -e "${YELLOW}⚠ Job $JOB_NAME not found yet, checking list...${NC}"
+       kubectl get jobs -n ml-pipeline
+    fi
 
     if [ -z "$JOB_NAME" ]; then
         echo -e "${YELLOW}⚠ No training job found, using existing model${NC}"
