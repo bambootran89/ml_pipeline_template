@@ -28,24 +28,14 @@ spec:
         image: ml-pipeline-train:latest
         imagePullPolicy: IfNotPresent
         # Command: Copy data from image location to shared mount, then fix ownership
-        command:
-        - /bin/bash
-        - -c
-        - |
-          if [ "{{DATA_TYPE}}" = "tabular" ]; then
-            echo "[Init] Running Titanic ingestion for tabular data into staging area"
-            cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.feature_ops.ingest_titanic --csv mlproject/data/titanic.csv --repo {{PROJECT_ROOT}}/{{REPO_NAME}} && chown -R 1000:1000 {{PROJECT_ROOT}}/{{REPO_NAME}} {{PROJECT_ROOT}}/mlruns
-          else
-            echo "[Init] Running ETTh1 ingestion for timeseries data into staging area"
-            cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.feature_ops.ingest_batch_etth1 --csv mlproject/data/ETTh1.csv --repo {{PROJECT_ROOT}}/{{REPO_NAME}} --entity location_id && chown -R 1000:1000 {{PROJECT_ROOT}}/{{REPO_NAME}} {{PROJECT_ROOT}}/mlruns
-          fi
+        command: ["/bin/bash", "-c", "cp -rn /home/cuong/ml_pipeline_template/feature_repo_etth1/data/* /mnt/feast_data/ || true && chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns /mnt/feast_data"]
         securityContext:
           runAsUser: 0   # Run as root to allow chown
         volumeMounts:
         - name: mlruns-volume
-          mountPath: "{{PROJECT_ROOT}}/mlruns"
+          mountPath: "/home/cuong/ml_pipeline_template/mlruns"
         - name: feast-data-volume
-          mountPath: "{{PROJECT_ROOT}}/{{REPO_NAME}}"
+          mountPath: /mnt/feast_data
 
       containers:
       - name: trainer
@@ -54,20 +44,19 @@ spec:
         volumeMounts:
         # [PERSISTENCE] MLflow runs persistence
         - name: mlruns-volume
-          mountPath: "{{PROJECT_ROOT}}/mlruns"
+          mountPath: "/home/cuong/ml_pipeline_template/mlruns"
         # [FEAST SPECIFIC] Shared volume for Feature Store (Registry + Offline Store)
         # Mounted at the location where 'features.py' expects data
         - name: feast-data-volume
-          mountPath: "{{PROJECT_ROOT}}/feature_repo_etth1/data"
+          mountPath: "/home/cuong/ml_pipeline_template/feature_repo_etth1/data"
 
         command:
         - /bin/bash
         - -c
         - |
-
-          # 1. Skip 'feast apply' as registry is pre-populated by ingestion script
+          # 1. 'feast apply' to register features in registry.db (on shared volume)
           # 2. Run training pipeline using Feast configuration
-          cd {{PROJECT_ROOT}}/feature_repo_etth1 && feast apply && cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.dag_run train -e {{PROJECT_ROOT}}/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} -p {{PROJECT_ROOT}}/mlproject/configs/pipelines/{{PIPELINE_CONFIG}}
+          cd /home/cuong/ml_pipeline_template/feature_repo_etth1 && feast apply && cd /home/cuong/ml_pipeline_template && python -m mlproject.src.pipeline.dag_run train -e /home/cuong/ml_pipeline_template/mlproject/configs/experiments/etth3_feast.yaml -p /home/cuong/ml_pipeline_template/mlproject/configs/pipelines/standard_train.yaml
 
         env:
         # [MLFLOW] Connecting to MLflow Service in Cluster
@@ -80,10 +69,10 @@ spec:
       # [HOSTPATH] Shared volume for MLflow artifacts
       - name: mlruns-volume
         hostPath:
-          path: "{{PROJECT_ROOT}}/mlruns"
+          path: "/home/cuong/ml_pipeline_template/mlruns"
           type: DirectoryOrCreate
       # [FEAST SPECIFIC] Shared volume for Feature Store data
       - name: feast-data-volume
         hostPath:
-          path: "{{PROJECT_ROOT}}/feature_repo_etth1/data"
+          path: "/home/cuong/ml_pipeline_template/feature_repo_etth1/data"
           type: DirectoryOrCreate

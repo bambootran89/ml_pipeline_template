@@ -301,17 +301,14 @@ For professional deployment, use the automated build and deployment scripts.
 ### 2. Deploy to Kubernetes (Local or Cluster)
 Use the enhanced deployment script with automatic feature ingestion.
 ```bash
-# Deploy in Feast mode (time series with automatic feature engineering)
-./deploy.sh -m feast -e etth3_feast.yaml -t timeseries
+# Deploy in Feast mode (Advanced)
+./deploy.sh -m feast
 
-# Deploy in Feast mode (tabular with automatic feature engineering)
-./deploy.sh -m feast -e feast_tabular.yaml -t tabular
+# Deploy in Standard mode (Simple)
+./deploy.sh -m standard
 
-# Deploy in Standard mode (simple, no Feast)
-./deploy.sh -m standard -e etth3.yaml -t timeseries
-
-# Deploy tabular without Feast
-./deploy.sh -m standard -e tabular.yaml -t tabular
+# Deploy specific scenario (e.g., Tabular)
+./deploy.sh -m feast -p conditional_branch_tabular.yaml -e tabular.yaml
 ```
 
 Feast mode automatically:

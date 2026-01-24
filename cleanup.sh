@@ -24,23 +24,10 @@ kubectl delete services --all -n $NAMESPACE --ignore-not-found
 # kubectl delete namespace $NAMESPACE --ignore-not-found
 
 # 4. Cleanup MLflow and Local Temporary Manifests
-# 4. Local Resource Cleanup (Ray & Ports)
-echo "[4/5] Cleaning up Local Resources..."
-echo " - Stopping Ray..."
-ray stop > /dev/null 2>&1 || true
-
-echo " - Freeing port 8082..."
-fuser -k 8082/tcp > /dev/null 2>&1 || true
-if lsof -t -i:8082 > /dev/null 2>&1; then
-    lsof -t -i:8082 | xargs kill -9 > /dev/null 2>&1 || true
-fi
-
-# 5. Cleanup MLflow and generated files
-echo "[5/5] Cleaning up MLflow artifacts..."
+echo "[4/4] Cleaning up MLflow and generated files..."
 kubectl delete deployment mlflow-server -n $NAMESPACE --ignore-not-found || true
 kubectl delete service mlflow-service -n $NAMESPACE --ignore-not-found || true
-# Optional: Clear temp logs if desired, uncomment to valid
-# rm -rf tmplogs/
+rm -rf k8s/generated/
 
 echo "=================================================="
 echo " Cleanup Complete!"

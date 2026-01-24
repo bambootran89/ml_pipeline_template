@@ -9,8 +9,6 @@ PIPELINE_CONFIG="standard_train.yaml"
 EXPERIMENT_CONFIG=""
 NAMESPACE="ml-pipeline"
 GENERATED_DIR="k8s/generated"
-REPO_NAME="feature_repo_etth1"
-DATA_TYPE="timeseries"
 DRY_RUN=false
 
 # Help Function
@@ -21,8 +19,6 @@ usage() {
     echo "  -p CONFIG     Pipeline config file (default: standard_train.yaml)"
     echo "  -e CONFIG     Experiment config file (default: derived from mode)"
     echo "  -n NAMESPACE  Kubernetes namespace (default: ml-pipeline)"
-    echo "  -r REPO       Feast repository name (default: feature_repo_etth1)"
-    echo "  -t TYPE       Data type: timeseries or tabular (default: timeseries)"
     echo "  -d            Dry run (generate manifests only, do not deploy)"
     echo "  -h            Show this help message"
     echo ""
@@ -32,14 +28,12 @@ usage() {
 }
 
 # Parse Arguments
-while getopts "m:p:e:n:r:t:dh" opt; do
+while getopts "m:p:e:n:dh" opt; do
     case $opt in
         m) MODE="$OPTARG" ;;
         p) PIPELINE_CONFIG="$OPTARG" ;;
         e) EXPERIMENT_CONFIG="$OPTARG" ;;
         n) NAMESPACE="$OPTARG" ;;
-        r) REPO_NAME="$OPTARG" ;;
-        t) DATA_TYPE="$OPTARG" ;;
         d) DRY_RUN=true ;;
         h) usage ;;
         *) usage ;;
@@ -54,9 +48,6 @@ if [ -z "$EXPERIMENT_CONFIG" ]; then
         EXPERIMENT_CONFIG="etth3.yaml"
     fi
 fi
-
-# Derive Experiment Name from Config (remove .yaml extension and _feast suffix if present)
-EXPERIMENT_NAME=$(basename "$EXPERIMENT_CONFIG" .yaml | sed 's/_feast$//' | sed 's/_/-/g')
 
 # Derive Serving Config from Pipeline Config
 # e.g. standard_train.yaml -> standard_train_serve.yaml
@@ -132,15 +123,10 @@ fi
 # 3. Cleanup Old Resources
 if [ "$DRY_RUN" = false ]; then
     echo "[Cleanup] Removing existing jobs and deployments..."
-
-    # Clean up ALL potential deployments to avoid Service conflicts (round-robin issues)
+    kubectl delete job training-job-fast-etth1 --ignore-not-found
+    kubectl delete job training-job-standard-etth1 --ignore-not-found
     kubectl delete deployment ml-prediction-api-feast --ignore-not-found
     kubectl delete deployment ml-prediction-api-standard --ignore-not-found
-
-    # Dynamic cleanup for the specific job we are about to create (to avoid immutable field errors)
-    JOB_NAME="training-job-${MODE}-${EXPERIMENT_NAME}"
-    echo "  Deleting Job: $JOB_NAME"
-    kubectl delete job "$JOB_NAME" --ignore-not-found
 else
     echo "[Run] Skipping cleanup (Dry Run)"
 fi
@@ -173,10 +159,7 @@ JOB_MANIFEST="$GENERATED_DIR/job-training-$MODE.yaml"
 # Use | as delimiter for paths
 sed -e "s|{{PIPELINE_CONFIG}}|$PIPELINE_CONFIG|g" \
     -e "s|{{EXPERIMENT_CONFIG}}|$EXPERIMENT_CONFIG|g" \
-    -e "s|{{EXPERIMENT_NAME}}|$EXPERIMENT_NAME|g" \
     -e "s|{{PROJECT_ROOT}}|$PROJECT_ROOT|g" \
-    -e "s|{{REPO_NAME}}|$REPO_NAME|g" \
-    -e "s|{{DATA_TYPE}}|$DATA_TYPE|g" \
     k8s/job-training-$MODE.yaml > "$JOB_MANIFEST"
 
 if [ "$DRY_RUN" = false ]; then
@@ -197,8 +180,6 @@ sed -e "s|{{PIPELINE_CONFIG}}|$PIPELINE_CONFIG|g" \
     -e "s|{{EXPERIMENT_CONFIG}}|$EXPERIMENT_CONFIG|g" \
     -e "s|{{SERVING_CONFIG}}|$SERVING_CONFIG|g" \
     -e "s|{{PROJECT_ROOT}}|$PROJECT_ROOT|g" \
-    -e "s|{{REPO_NAME}}|$REPO_NAME|g" \
-    -e "s|{{DATA_TYPE}}|$DATA_TYPE|g" \
     k8s/deployment-api-$MODE.yaml > "$API_MANIFEST"
 
 if [ "$DRY_RUN" = false ]; then

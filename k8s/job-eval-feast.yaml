@@ -24,7 +24,7 @@ spec:
       - name: fix-permissions-seed-data
         image: ml-pipeline-train:latest
         imagePullPolicy: IfNotPresent
-        command: ["/bin/bash", "-c", "cp -rn /home/cuong/ml_pipeline_template/feature_repo_etth1/data/* /mnt/feast_data/ || true && chown -R 1000:1000 /home/cuong/ml_pipeline_template/mlruns /mnt/feast_data"]
+        command: ["/bin/bash", "-c", "cp -rn {{PROJECT_ROOT}}/feature_repo_etth1/data/* /mnt/feast_data/ || true && chown -R 1000:1000 {{PROJECT_ROOT}}/mlruns /mnt/feast_data"]
         securityContext:
           runAsUser: 0
         volumeMounts:
@@ -42,17 +42,11 @@ spec:
           mountPath: "{{PROJECT_ROOT}}/mlruns"
         - name: feast-data-volume
           mountPath: "{{PROJECT_ROOT}}/feature_repo_etth1/data"
-
         command:
         - /bin/bash
         - -c
         - |
-          # [FEAST] Evaluation
-          cd {{PROJECT_ROOT}}/feature_repo_etth1 && feast apply && cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.dag_run eval \
-            -e {{PROJECT_ROOT}}/mlproject/configs/experiments/{{EXPERIMENT_CONFIG}} \
-            -p {{PROJECT_ROOT}}/mlproject/configs/pipelines/{{PIPELINE_CONFIG}} \
-            -a latest
-
+          cd {{PROJECT_ROOT}}/feature_repo_etth1 && feast apply && cd {{PROJECT_ROOT}} && python -m mlproject.src.pipeline.dag_run train -e {{PROJECT_ROOT}}/mlproject/configs/experiments/etth3_feast.yaml -p {{PROJECT_ROOT}}/mlproject/configs/pipelines/standard_train.yaml
         env:
         - name: MLFLOW_TRACKING_URI
           value: "http://mlflow-service:5000"
