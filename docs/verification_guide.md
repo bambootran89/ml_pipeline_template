@@ -4,13 +4,14 @@ This document describes the comprehensive verification scripts available for tes
 
 ## Overview
 
-The project includes five main verification scripts that test different aspects of the system:
+The project includes six main verification scripts that test different aspects of the system:
 
 1. **verify_all_pipelines.sh** - Complete pipeline verification across all configurations
 2. **verify_legacy_run.sh** - Backward compatibility testing for v1.run interface
 3. **verify_full_lifecycle.sh** - End-to-end ML lifecycle testing
 4. **verify_feast_integration.sh** - Comprehensive Feast feature store testing
 5. **verify_config_generation.sh** - Config generation and execution validation
+6. **verify_all_deployments.sh** - Kubernetes deployment verification for all modes
 
 ## Prerequisites
 
@@ -304,6 +305,258 @@ python -m mlproject.src.pipeline.dag_run generate \
 
 ---
 
+## 6. Kubernetes Deployment Verification
+
+**Script:** `verify_all_deployments.sh`
+
+Comprehensive end-to-end testing of Kubernetes deployments across all modes and data types.
+
+### Usage
+
+```bash
+./verify_all_deployments.sh
+```
+
+### What It Tests
+
+This script performs complete deployment verification for 4 scenarios:
+
+1. **Feast Tabular Deployment**
+   - Deploys with `feast_tabular.yaml` experiment config
+   - Uses Titanic dataset with tabular features
+   - Tests ConfigMap creation and Feast integration
+   - Verifies entity-based predictions
+
+2. **Feast Time Series Deployment**
+   - Deploys with `etth3_feast.yaml` experiment config
+   - On-the-fly feature ingestion via init container
+   - Tests 9 engineered features (lag, rolling, time)
+   - Verifies time series predictions with Feast features
+
+3. **Standard Tabular Deployment**
+   - Deploys with `tabular.yaml` experiment config
+   - Simple tabular prediction without Feast
+   - Tests basic classification endpoints
+
+4. **Standard Time Series Deployment**
+   - Deploys with `etth3.yaml` experiment config
+   - Time series forecasting without feature engineering
+   - Tests multi-step prediction endpoints
+
+### Test Workflow
+
+For each scenario, the script performs:
+
+1. **Deployment** - Runs `deploy.sh` with appropriate flags
+2. **Training Verification** - Waits for training job completion (max 10 minutes)
+3. **Model Registration Check** - Verifies model logged to MLflow
+4. **ConfigMap Creation** - Creates Feast ConfigMap (Feast mode only)
+5. **API Restart** - Restarts API pods to load new model
+6. **Port Forwarding** - Sets up local access on port 8000
+7. **API Testing**:
+   - Health check endpoint
+   - Standard prediction endpoints
+   - Feast-specific endpoints (`/predict/feast`, `/predict/feast/batch`)
+
+### Output
+
+```bash
+╔════════════════════════════════════════════════════╗
+║   Comprehensive ML Pipeline Deployment Tests      ║
+╚════════════════════════════════════════════════════╝
+
+Checking prerequisites...
+✓ Kubernetes cluster accessible
+✓ Docker images found
+
+Starting deployment tests...
+
+═══════════════════════════════════════
+         FEAST MODE TESTS
+═══════════════════════════════════════
+
+════════════════════════════════════════════════════
+Test 1: feast_feast_tabular.yaml
+  Mode: feast
+  Experiment: feast_tabular.yaml
+  Data Type: tabular
+════════════════════════════════════════════════════
+[1/6] Deploying...
+✓ Deployment submitted
+[2/6] Waiting for training job: training-job-feast-titanic
+✓ Training completed
+✓ Model registered: Created version '42' of model 'xgboost_train_model'.
+[3/6] Updating Feast ConfigMap...
+✓ ConfigMap updated
+[4/6] Restarting API pods...
+✓ API pods ready
+[5/6] Setting up port forward...
+✓ Port forward ready
+[6/6] Running API tests...
+  Testing /health endpoint...
+  ✓ Health check PASS
+  Testing /predict (tabular single)...
+  ✓ Single prediction PASS: {'train_model_predictions': [0]}
+  Testing /predict/feast endpoint...
+  ✓ /predict/feast PASS: 3 entities
+  Testing /predict/feast/batch endpoint...
+  ✓ /predict/feast/batch PASS: 5 entities
+✓ All API tests PASSED
+
+[... Tests 2-4 ...]
+
+╔════════════════════════════════════════════════════╗
+║              TEST SUMMARY                          ║
+╚════════════════════════════════════════════════════╝
+
+✓ feast_feast_tabular.yaml - ALL TESTS PASSED
+✓ feast_etth3_feast.yaml - ALL TESTS PASSED
+✓ standard_tabular.yaml - ALL TESTS PASSED
+✓ standard_etth3.yaml - ALL TESTS PASSED
+
+Total Tests:   4
+Passed:        4
+Failed:        0
+Skipped:       0
+
+╔════════════════════════════════════════════════════╗
+║                                                    ║
+║      ✓ ALL TESTS PASSED SUCCESSFULLY!             ║
+║                                                    ║
+╚════════════════════════════════════════════════════╝
+```
+
+### Test Details
+
+**Feast Tabular Test Endpoints:**
+```bash
+# Health check - expects 7 features
+curl http://localhost:8000/health
+
+# Single prediction
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"Pclass": [3], "Age": [25.0], ...}}'
+
+# Entity-based prediction
+curl -X POST http://localhost:8000/predict/feast \
+  -H "Content-Type: application/json" \
+  -d '{"entities": [1], "time_point": "now"}'
+
+# Batch entity prediction
+curl -X POST http://localhost:8000/predict/feast/batch \
+  -H "Content-Type: application/json" \
+  -d '{"entities": [1, 2, 3, 4, 5], "time_point": "now"}'
+```
+
+**Feast Time Series Test Endpoints:**
+```bash
+# Health check - expects 9 features
+curl http://localhost:8000/health
+
+# Time series prediction with Feast features
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"date": [...], "HUFL": [...], "MUFL": [...], ...}}'
+```
+
+**Standard Mode Test Endpoints:**
+```bash
+# Health check - expects 3 features (time series) or 7 features (tabular)
+curl http://localhost:8000/health
+
+# Standard prediction
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"data": {...}}'
+```
+
+### Prerequisites
+
+Before running the script:
+
+```bash
+# Kubernetes cluster must be running
+minikube status  # or kubectl cluster-info
+
+# Docker images must be built
+docker images | grep ml-pipeline
+# Should show: ml-pipeline-train:latest and ml-pipeline-serve:latest
+
+# Build if missing
+eval $(minikube docker-env)
+./docker-build.sh -i train
+./docker-build.sh -i serve
+
+# Activate Python environment
+source mlproject_env/bin/activate
+export PYTHONPATH=.
+```
+
+### Logs and Debugging
+
+Deployment logs are saved to `/tmp/deploy_{test_name}.log`:
+
+```bash
+# View deployment logs for specific test
+cat /tmp/deploy_feast_feast_tabular.yaml.log
+cat /tmp/deploy_feast_etth3_feast.yaml.log
+cat /tmp/deploy_standard_tabular.yaml.log
+cat /tmp/deploy_standard_etth3.yaml.log
+```
+
+Port forwarding logs:
+```bash
+cat /tmp/port-forward.log
+```
+
+Check live pod status:
+```bash
+kubectl get pods -n ml-pipeline
+kubectl logs -n ml-pipeline <pod-name>
+kubectl describe pod -n ml-pipeline <pod-name>
+```
+
+### Use Cases
+
+**Run before commits:**
+```bash
+# Verify all deployment scenarios still work after code changes
+./verify_all_deployments.sh
+```
+
+**Run after infrastructure changes:**
+```bash
+# Test deployment after K8s manifest updates
+./verify_all_deployments.sh
+```
+
+**Run for CI/CD:**
+```bash
+# Automated testing in CI pipeline
+./verify_all_deployments.sh
+if [ $? -eq 0 ]; then
+  echo "All deployments verified, proceeding with release"
+else
+  echo "Deployment verification failed, blocking release"
+  exit 1
+fi
+```
+
+### Cleanup
+
+The script automatically cleans up port forwards on exit. To fully clean up deployments:
+
+```bash
+# Remove all K8s resources
+kubectl delete namespace ml-pipeline
+
+# OR use cleanup script
+./cleanup.sh
+```
+
+---
+
 ## Troubleshooting
 
 ### Port Already in Use
@@ -507,8 +760,9 @@ Typical execution times on standard hardware:
 | verify_full_lifecycle.sh | 15-20 min | 6 phases (standard + nested) |
 | verify_feast_integration.sh | 45-60 min | 9 combos x 2 frameworks |
 | verify_config_generation.sh | 25-35 min | All pipelines x 4 configs |
+| verify_all_deployments.sh | 20-30 min | 4 K8s deployment scenarios |
 
-**Total comprehensive verification:** ~2 hours
+**Total comprehensive verification:** ~2.5 hours
 
 ---
 
@@ -516,15 +770,17 @@ Typical execution times on standard hardware:
 
 ```bash
 # Run all verifications (full test suite)
-./verify_all_pipelines.sh
+./verify_all_pipelines.sh           # Local pipeline verification
 ./verify_legacy_run.sh
 ./verify_full_lifecycle.sh
 ./verify_feast_integration.sh
 ./verify_config_generation.sh
+./verify_all_deployments.sh         # K8s deployment verification
 
 # Run specific tests
 ./verify_full_lifecycle.sh          # E2E only
 ./verify_feast_integration.sh       # Feast only
+./verify_all_deployments.sh         # K8s only
 
 # Check logs
 ls tmplogs/                         # List all logs

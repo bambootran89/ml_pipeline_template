@@ -6,12 +6,14 @@ experiment:
   hyperparams:
     input_chunk_length: 24
     output_chunk_length: 6
-    type: "regression"
+    type: "classification"
     args:
-      iterations: 1000
+      n_estimators: 1000
       learning_rate: 0.05
-      depth: 6
-      loss_function: "MultiRMSE"
+      max_depth: 6
+      loss_function: "Logloss"
+      objective: "Logloss"
+      eval_metric: "AUC"
       task_type: "CPU"
       early_stopping_rounds: 20
       verbose: 100

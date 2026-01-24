@@ -165,3 +165,4 @@ minikube-linux-amd64
 # Temporary deployment/verification files
 verify_output*
 k8s/tmp-*.yaml
+k8s/generated

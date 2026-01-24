@@ -154,10 +154,12 @@ python -m mlproject.src.pipeline.dag_run tune \
 
 # Feature Store Integration
 
-Create and populate the Feast feature store.
-Run scheduled periodic data ingestion (e.g., daily)
+## Local Development
+
+For local development, create and populate the Feast feature store manually.
+
 ```bash
-# Ingest Batch: Typically runs in large-scale data processing jobs (Spark/Pandas). It may run for a long time.
+# Ingest Batch: Typically runs in large-scale data processing jobs (Spark/Pandas)
 python -m mlproject.src.pipeline.feature_ops.ingest_batch_etth1 \
     --csv mlproject/data/ETTh1.csv \
     --repo feature_repo_etth1
@@ -167,10 +169,9 @@ python -m mlproject.src.pipeline.feature_ops.ingest_titanic \
     --repo titanic_repo
 ```
 
-Sync data to the online store for API inference
+Sync data to the online store for API inference:
 ```bash
-# Materialize: Can run independently. Example: you can update the online store
-# hourly without rerunning feature engineering if offline features are already available.
+# Materialize: Updates the online store from offline features
 python -m mlproject.src.pipeline.feature_ops.materialize_etth1 \
     --repo feature_repo_etth1 \
     --data feature_repo_etth1/data/features.parquet
@@ -179,6 +180,11 @@ python -m mlproject.src.pipeline.feature_ops.materialize_titanic \
     --repo titanic_repo \
     --data titanic_repo/data/titanic.parquet
 ```
+
+## Kubernetes Deployment
+
+Feature ingestion is handled automatically via init containers. No manual preparation needed.
+See [Deployment Guide](docs/deployment_guide.md) for details.
 
 Training with automatic data loading from Feast:
 ```bash
@@ -293,22 +299,34 @@ For professional deployment, use the automated build and deployment scripts.
 ```
 
 ### 2. Deploy to Kubernetes (Local or Cluster)
-Use the enhanced deployment script which supports dynamic configuration.
+Use the enhanced deployment script with automatic feature ingestion.
 ```bash
-# Deploy in Feast mode (Advanced)
-./deploy.sh -m feast
+# Deploy in Feast mode (time series with automatic feature engineering)
+./deploy.sh -m feast -e etth3_feast.yaml -t timeseries
 
-# Deploy in Standard mode (Simple)
-./deploy.sh -m standard
+# Deploy in Feast mode (tabular with automatic feature engineering)
+./deploy.sh -m feast -e feast_tabular.yaml -t tabular
 
-# Deploy specific scenario (e.g., Tabular)
-./deploy.sh -m feast -p conditional_branch_tabular.yaml -e tabular.yaml
+# Deploy in Standard mode (simple, no Feast)
+./deploy.sh -m standard -e etth3.yaml -t timeseries
+
+# Deploy tabular without Feast
+./deploy.sh -m standard -e tabular.yaml -t tabular
 ```
+
+Feast mode automatically:
+- Runs feature ingestion in init containers
+- Creates necessary ConfigMaps
+- Sets up feature repositories
+- No manual preparation required
 
 ### 3. Verify Deployment
 ```bash
-# Wait for pods and run automated tests
+# Quick test of currently deployed API
 ./test_api.sh
+
+# OR comprehensive test of all deployment scenarios (4 tests)
+./verify_all_deployments.sh
 ```
 
 ## Cleanup & Maintenance

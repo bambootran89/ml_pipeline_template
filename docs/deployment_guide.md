@@ -151,30 +151,26 @@ sleep 5
 
 Feast mode adds feature engineering with lag features and rolling statistics.
 
-### Step 1: Prepare Feast Feature Store
+### Step 1: Deploy Feast Mode
 
-Before deploying, you need to initialize the Feast feature store locally:
-
-```bash
-# 1. Ingest data into feature store
-python -m mlproject.src.pipeline.feature_ops.ingest_batch_etth1 \
-  --csv mlproject/data/ETTh1.csv \
-  --repo feature_repo_etth1
-
-# 2. Materialize features (Offline -> Online store)
-python -m mlproject.src.pipeline.feature_ops.materialize_etth1 \
-  --repo feature_repo_etth1 \
-  --data feature_repo_etth1/data/features.parquet
-```
-
-### Step 2: Deploy Feast Mode
+The deployment automatically handles feature ingestion using init containers. No manual preparation needed.
 
 ```bash
-# Deploy feast mode with etth3_feast.yaml experiment config
-./deploy.sh -m feast -e etth3_feast.yaml
+# Deploy feast mode with etth3_feast.yaml experiment config (for time series)
+./deploy.sh -m feast -e etth3_feast.yaml -t timeseries
+
+# OR deploy with feast_tabular.yaml (for tabular data)
+./deploy.sh -m feast -e feast_tabular.yaml -t tabular
 ```
 
-### Step 3: Wait for Training
+This command will:
+1. Deploy MLflow server
+2. Create init container that runs feature ingestion on-the-fly
+3. Create ConfigMap with Feast configuration
+4. Run training job
+5. Deploy the prediction API
+
+### Step 2: Wait for Training
 
 ```bash
 # Wait for training job to complete
@@ -184,7 +180,18 @@ kubectl wait --for=condition=complete job/training-job-feast-etth1 -n ml-pipelin
 kubectl logs -n ml-pipeline job/training-job-feast-etth1 --tail=30 | grep "Created version"
 ```
 
-### Step 4: Restart API to Load New Model
+**Note on Feature Ingestion:** The init container automatically runs the appropriate ingestion script:
+- For tabular data: `ingest_titanic.py` creates features in `titanic_repo/`
+- For time series: `ingest_batch_etth1.py` creates features in `feature_repo_etth1/`
+
+You can verify ingestion in the pod logs:
+```bash
+# Check init container logs
+POD=$(kubectl get pods -n ml-pipeline -l app=ml-prediction --no-headers -o custom-columns=":metadata.name" | head -1)
+kubectl logs -n ml-pipeline $POD -c init-feast
+```
+
+### Step 3: Restart API to Load New Model
 
 ```bash
 # Restart feast API
@@ -194,7 +201,7 @@ kubectl rollout restart deployment ml-prediction-api-feast -n ml-pipeline
 kubectl wait --for=condition=ready pod -l app=ml-prediction -n ml-pipeline --timeout=120s
 ```
 
-### Step 5: Test Feast API
+### Step 4: Test Feast API
 
 ```bash
 # Kill any existing port forwards
@@ -210,22 +217,62 @@ sleep 5
 ```
 
 **Expected Results**:
-- Health check: ✓ (shows 9 features including lag and engineered features)
-- `/predict/feast/batch`: ✓ (returns predictions)
+- Health check: ✓ (shows 9 features for time series, 7 features for tabular)
+- `/predict`: ✓ (returns predictions with Feast features)
+- `/predict/feast`: ✓ (entity-based prediction for tabular)
+- `/predict/feast/batch`: ✓ (batch entity prediction for tabular)
+
+**Feast-specific Endpoints (Tabular only):**
+```bash
+# Single entity prediction
+curl -s -X POST http://localhost:8000/predict/feast \
+  -H "Content-Type: application/json" \
+  -d '{"entities": [1], "time_point": "now"}'
+
+# Batch entity prediction
+curl -s -X POST http://localhost:8000/predict/feast/batch \
+  -H "Content-Type: application/json" \
+  -d '{"entities": [1, 2, 3, 4, 5], "time_point": "now"}'
+```
 
 ---
 
 ## 4. Testing Your Deployment
 
-### 4.1 Using the Automated Test Script
+### 4.1 Comprehensive Deployment Verification
 
-The `test_api.sh` script automatically detects which mode is deployed and runs appropriate tests:
+Use the `verify_all_deployments.sh` script to test all deployment scenarios:
+
+```bash
+./verify_all_deployments.sh
+```
+
+This script tests 4 complete scenarios:
+1. Feast Tabular - Tests tabular data with Feast feature store
+2. Feast Time Series - Tests time series with engineered features
+3. Standard Tabular - Tests tabular without Feast
+4. Standard Time Series - Tests time series without Feast
+
+Each test includes:
+- Automated deployment
+- Training job completion verification
+- Model registration check
+- API pod restart
+- Health endpoint verification
+- Prediction endpoint testing
+- Feast-specific endpoint testing (for Feast mode)
+
+Expected output: `4/4 TESTS PASSED`
+
+### 4.2 Using the Quick Test Script
+
+The `test_api.sh` script tests the currently deployed API:
 
 ```bash
 ./test_api.sh
 ```
 
-### 4.2 Manual Testing
+### 4.3 Manual Testing
 
 #### Health Check
 ```bash
@@ -266,17 +313,27 @@ curl -s -X POST http://localhost:8000/predict \
   }' | python3 -m json.tool
 ```
 
+#### Feast Single Entity Prediction
+```bash
+curl -s -X POST http://localhost:8000/predict/feast \
+  -H "Content-Type: application/json" \
+  -d '{
+    "time_point": "now",
+    "entities": [1]
+  }' | python3 -m json.tool
+```
+
 #### Feast Batch Prediction
 ```bash
 curl -s -X POST http://localhost:8000/predict/feast/batch \
   -H "Content-Type: application/json" \
   -d '{
-    "time_point": "2024-01-09T00:00:00",
-    "entities": [1, 2, 3]
+    "time_point": "now",
+    "entities": [1, 2, 3, 4, 5]
   }' | python3 -m json.tool
 ```
 
-### 4.3 Checking Pod Status
+### 4.4 Checking Pod Status
 
 ```bash
 # View all pods in ml-pipeline namespace
@@ -331,17 +388,19 @@ kubectl logs -n ml-pipeline job/training-job-standard-etth1 --tail=100
 
 **API Endpoints**:
 - `/health` - Check API status
-- `/predict` - Entity-based prediction
-- `/predict/feast/batch` - Batch prediction for multiple entities
+- `/predict` - Standard prediction (with Feast features for time series)
+- `/predict/feast` - Entity-based prediction (tabular only)
+- `/predict/feast/batch` - Batch prediction for multiple entities (tabular only)
 
 ### 5.3 Key Differences
 
 | Aspect | Standard Mode | Feast Mode |
 |--------|--------------|------------|
-| Setup Complexity | Simple | Requires Feast initialization |
-| Features | 3 raw features | 9 features (3 raw + 6 engineered) |
-| Training Time | Faster | Slower |
+| Setup Complexity | Simple | Automatic via init container |
+| Features | 3 raw features | 9 features (time series) or 7 features (tabular) |
+| Training Time | Faster | Slower (includes feature engineering) |
 | Model Accuracy | Good baseline | Potentially better with engineered features |
+| Feature Ingestion | Not needed | Automatic on-the-fly in K8s |
 | Use Case | Learning, prototyping | Production, feature experimentation |
 
 ---
@@ -444,6 +503,41 @@ Common causes:
 - Insufficient resources: Increase Minikube resources
 - ImagePullBackOff: See solution above
 - Volume mount issues: Ensure you're running from project root
+
+#### Issue: Init container fails with "FileNotFoundError" in Feast mode
+
+**Cause**: Feature ingestion script failed in init container.
+
+**Solution**:
+```bash
+# Check init container logs
+POD=$(kubectl get pods -n ml-pipeline -l app=ml-prediction --no-headers -o custom-columns=":metadata.name" | head -1)
+kubectl logs -n ml-pipeline $POD -c init-feast
+
+# Common causes:
+# 1. CSV data file missing - ensure mlproject/data/ETTh1.csv or titanic.csv exists
+# 2. Repository path mismatch - check volume mounts in k8s/deployment-api-feast.yaml
+# 3. Permissions issue - init container should run as root to set ownership
+```
+
+#### Issue: ConfigMap "feature-store-config" not found
+
+**Cause**: Feast deployment requires ConfigMap with feature_store.yaml.
+
+**Solution**:
+```bash
+# ConfigMap is auto-created by deploy.sh, but if missing:
+
+# For tabular Feast
+kubectl create configmap feature-store-config \
+  --from-file=feature_store.yaml=titanic_repo/feature_store.yaml \
+  -n ml-pipeline
+
+# For time series Feast
+kubectl create configmap feature-store-config \
+  --from-file=feature_store.yaml=feature_repo_etth1/feature_store.yaml \
+  -n ml-pipeline
+```
 
 #### Issue: "Serving config not found" or API fails to start
 

@@ -117,10 +117,10 @@ def main() -> None:
 
     try:
         df = load_raw(args.csv, args.entity)
-        feat_source = save_to_offline_store(df, args.repo)
+        save_to_offline_store(df, args.repo)
 
         store: Any = FeatureStoreFactory.create(store_type="feast", repo_path=args.repo)
-        register_titanic_features(store, args.entity, str(feat_source.absolute()))
+        register_titanic_features(store, args.entity, "data/titanic.parquet")
 
         logger.info("Batch ingestion and registration completed.")
     except Exception as exc:

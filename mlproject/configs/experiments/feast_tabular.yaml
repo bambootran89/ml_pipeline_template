@@ -9,7 +9,7 @@ defaults:
 
 # 2. MLflow tracking & model registry
 mlflow:
-  tracking_uri: mlruns
+  # tracking_uri: mlruns
   experiment_name: Tabular_Titanic_Experiment
   run_name_prefix: xgboost_cls
   enabled: true
